@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Mimogoshi</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Nunito:wght@600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="stage">
+
+  <div class="device" id="device">
+    <div class="device-top">
+      <span class="brand">MIMOGOSHI</span>
+      <span class="led" id="led"></span>
+    </div>
+
+    <div class="screen-bezel">
+      <div class="screen" id="screen">
+        <div class="screen-glow"></div>
+
+        <div class="topbar">
+          <div class="pet-name" id="petName">—</div>
+          <div class="pet-age" id="petAge">Día 0</div>
+        </div>
+
+        <canvas id="petCanvas" width="256" height="256"></canvas>
+
+        <div class="bubble" id="bubble"></div>
+
+        <canvas id="gameCanvas" width="256" height="180" class="hidden"></canvas>
+
+        <div class="stats" id="stats">
+          <div class="stat" data-stat="hunger">
+            <span class="stat-icon">🍖</span>
+            <div class="stat-bar"><div class="stat-fill" id="fill-hunger"></div></div>
+          </div>
+          <div class="stat" data-stat="happiness">
+            <span class="stat-icon">⭐</span>
+            <div class="stat-bar"><div class="stat-fill" id="fill-happiness"></div></div>
+          </div>
+          <div class="stat" data-stat="energy">
+            <span class="stat-icon">⚡</span>
+            <div class="stat-bar"><div class="stat-fill" id="fill-energy"></div></div>
+          </div>
+          <div class="stat" data-stat="hygiene">
+            <span class="stat-icon">🫧</span>
+            <div class="stat-bar"><div class="stat-fill" id="fill-hygiene"></div></div>
+          </div>
+          <div class="stat" data-stat="health">
+            <span class="stat-icon">❤️</span>
+            <div class="stat-bar"><div class="stat-fill" id="fill-health"></div></div>
+          </div>
+        </div>
+
+        <div class="overlay hidden" id="overlay">
+          <div class="overlay-card" id="overlayCard"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn" id="btnFeed" title="Alimentar">
+        <span class="btn-icon">🍖</span><span class="btn-label">Comer</span>
+      </button>
+      <button class="btn" id="btnPlay" title="Jugar">
+        <span class="btn-icon">🎮</span><span class="btn-label">Jugar</span>
+      </button>
+      <button class="btn" id="btnClean" title="Limpiar">
+        <span class="btn-icon">🧹</span><span class="btn-label">Limpiar</span>
+      </button>
+      <button class="btn" id="btnSleep" title="Dormir">
+        <span class="btn-icon">💤</span><span class="btn-label">Dormir</span>
+      </button>
+      <button class="btn" id="btnMed" title="Medicina">
+        <span class="btn-icon">💊</span><span class="btn-label">Medicina</span>
+      </button>
+      <button class="btn btn-ghost" id="btnReset" title="Reiniciar">
+        <span class="btn-icon">↺</span><span class="btn-label">Reiniciar</span>
+      </button>
+    </div>
+
+    <div class="speaker">
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+  </div>
+
+  <p class="footnote">Cuídalo bien. No hay servidor: todo vive en tu navegador (localStorage).</p>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
