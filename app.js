@@ -70,8 +70,8 @@ function normalizeRow(row){
   return row.slice(0, COLS);
 }
 
-function drawSprite(ctx, stage, mood, walkFrame){
-  ctx.clearRect(0,0,CANVAS_W,CANVAS_H);
+function drawSprite(ctx, stage, mood, walkFrame, noClear){
+  if (!noClear) ctx.clearRect(0,0,CANVAS_W,CANVAS_H);
   const pal = PALETTES[stage] || PALETTES.baby;
 
   let rows;
@@ -670,14 +670,30 @@ function endStarsGame(){
 /* ===================== Minijuego 2: baloncesto (timing) ===================== */
 
 const BB_TOTAL_SHOTS = 3;
-/* Ancho de la zona verde/amarilla por tiro (se achica y se pone más difícil) */
+/* La pelota sube y baja junto a la mascota. El acierto depende de qué tan cerca del punto
+   más alto se aprieta TIRAR — las zonas de acierto no se muestran, solo están codificadas
+   como umbrales de altura (0 = abajo, 1 = arriba del todo). Se endurece por tiro. */
 const BB_DIFFICULTY = [
-  { green: 0.20, yellow: 0.10, speed: 0.9 },
-  { green: 0.15, yellow: 0.09, speed: 1.15 },
-  { green: 0.10, yellow: 0.08, speed: 1.4 },
+  { peak: 0.85, near: 0.60, speed: 1.0 },
+  { peak: 0.90, near: 0.70, speed: 1.25 },
+  { peak: 0.95, near: 0.80, speed: 1.5 },
 ];
 
+const BB_GROUND_Y = 120;
+const BB_MONO_X = 38;
+const BB_BALL_X = 56;
+const BB_BALL_TOP_Y = 40;
+const BB_BALL_BOTTOM_Y = 90;
+const BB_HOOP_X = 206;
+const BB_HOOP_Y = 44;
+const BB_FLIGHT_MS = 550;
+const BB_RESULT_MS = 900;
+
 let bb = null;
+
+function bbBallHeight(phase){
+  return (Math.sin(phase - Math.PI/2) + 1) / 2; // 0 abajo, 1 arriba
+}
 
 function startBasketballGame(){
   catchUp();
@@ -694,12 +710,15 @@ function startBasketballGame(){
     gc,
     shot: 0,
     score: 0,
-    marker: 0,
-    dir: 1,
-    resultUntil: 0,
+    phase: 0,
+    state: 'aim',       // 'aim' | 'flight' | 'result'
+    flightStart: 0,
+    flightFrom: null,
+    flightWaypoints: null,
     resultText: '',
+    resultUntil: 0,
     raf: null,
-    locked: false,
+    lastT: 0,
   };
   bb.ctx.imageSmoothingEnabled = false;
 
@@ -711,51 +730,72 @@ function startBasketballGame(){
 }
 
 function resolveShot(){
-  if (!bb || bb.locked || activeMinigame !== 'basketball') return;
+  if (!bb || bb.state !== 'aim' || activeMinigame !== 'basketball') return;
   const diff = BB_DIFFICULTY[bb.shot];
-  const dist = Math.abs(bb.marker - 0.5);
-  bb.locked = true;
+  const h = bbBallHeight(bb.phase);
+  const aim = { x: BB_BALL_X, y: BB_BALL_BOTTOM_Y - h*(BB_BALL_BOTTOM_Y-BB_BALL_TOP_Y) };
 
-  let points = 0, text = '', fx = '';
-  if (dist <= diff.green/2){
-    points = dist <= diff.green/6 ? 3 : 2;
+  let points = 0, text = '', fx = '', waypoints;
+  if (h >= diff.peak){
+    points = h >= (diff.peak + (1-diff.peak)*0.5) ? 3 : 2;
     text = points === 3 ? '¡SWISH!' : '¡ENCESTÓ!';
     fx = '🏀';
-  } else if (dist <= diff.green/2 + diff.yellow){
+    waypoints = [aim, { x: BB_HOOP_X, y: BB_HOOP_Y-14 }, { x: BB_HOOP_X, y: BB_HOOP_Y+16 }];
+  } else if (h >= diff.near){
     points = 0;
     text = 'Rebota en el aro…';
     fx = '〰️';
+    waypoints = [aim, { x: BB_HOOP_X, y: BB_HOOP_Y-8 }, { x: BB_HOOP_X-28, y: BB_HOOP_Y+26 }];
   } else {
     points = 0;
     text = 'No alcanza';
     fx = '💨';
+    const shortX = BB_MONO_X + (BB_HOOP_X-BB_MONO_X) * (0.35 + h*0.25);
+    waypoints = [aim, { x: shortX, y: BB_GROUND_Y-26 }, { x: shortX+10, y: BB_GROUND_Y }];
   }
 
   bb.score += points;
   bb.resultText = `${text} (+${points})`;
-  bb.resultUntil = performance.now() + 900;
+  bb.state = 'flight';
+  bb.flightStart = performance.now();
+  bb.flightWaypoints = waypoints;
   floatFx(fx);
+}
+
+function bbFlightPos(t){
+  const [p0, p1, p2] = bb.flightWaypoints;
+  if (t <= 0.5){
+    const k = t/0.5;
+    return { x: p0.x+(p1.x-p0.x)*k, y: p0.y+(p1.y-p0.y)*k };
+  }
+  const k = (t-0.5)/0.5;
+  return { x: p1.x+(p2.x-p1.x)*k, y: p1.y+(p2.y-p1.y)*k };
 }
 
 function bbLoop(t){
   if (activeMinigame !== 'basketball' || !bb) return;
   const dt = Math.min(0.05, (t - (bb.lastT || t)) / 1000);
   bb.lastT = t;
+  const now = performance.now();
 
-  if (!bb.locked){
+  if (bb.state === 'aim'){
     const diff = BB_DIFFICULTY[bb.shot];
-    bb.marker += bb.dir * dt * 0.55 * diff.speed;
-    if (bb.marker >= 1){ bb.marker = 1; bb.dir = -1; }
-    if (bb.marker <= 0){ bb.marker = 0; bb.dir = 1; }
-  } else if (performance.now() > bb.resultUntil){
-    bb.shot += 1;
-    if (bb.shot >= BB_TOTAL_SHOTS){
-      endBasketballGame();
-      return;
+    bb.phase += dt * 2.6 * diff.speed;
+  } else if (bb.state === 'flight'){
+    if (now - bb.flightStart >= BB_FLIGHT_MS){
+      bb.state = 'result';
+      bb.resultUntil = now + BB_RESULT_MS;
     }
-    bb.locked = false;
-    bb.marker = 0;
-    bb.dir = 1;
+  } else if (bb.state === 'result'){
+    if (now > bb.resultUntil){
+      bb.shot += 1;
+      if (bb.shot >= BB_TOTAL_SHOTS){
+        endBasketballGame();
+        return;
+      }
+      bb.state = 'aim';
+      bb.phase = 0;
+    }
   }
 
   drawBasketball();
@@ -773,37 +813,60 @@ function drawBasketball(){
   ctx.textAlign = 'right';
   ctx.fillText(`🏀 ${bb.score}`, gc.width-8, 16);
 
-  ctx.font = '30px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('🧺', gc.width/2, 42);
+  ctx.strokeStyle = 'rgba(200,242,194,.25)';
+  ctx.beginPath();
+  ctx.moveTo(0, BB_GROUND_Y+2);
+  ctx.lineTo(gc.width, BB_GROUND_Y+2);
+  ctx.stroke();
 
-  const diff = BB_DIFFICULTY[bb.shot] || BB_DIFFICULTY[BB_DIFFICULTY.length-1];
-  const barX = 20, barW = gc.width-40, barY = 70, barH = 18;
+  drawHoop(ctx);
 
-  ctx.fillStyle = 'rgba(255,255,255,.15)';
-  ctx.fillRect(barX, barY, barW, barH);
+  ctx.save();
+  ctx.translate(BB_MONO_X - 25, BB_GROUND_Y - 55);
+  ctx.scale(0.65, 0.65);
+  drawSprite(ctx, state.stage, state.sick ? 'sick' : 'happy', 0, true);
+  ctx.restore();
 
-  const centerX = barX + barW*0.5;
-  const greenW = barW*diff.green;
-  const yellowW = barW*diff.yellow;
-
-  ctx.fillStyle = 'rgba(255,206,75,.55)';
-  ctx.fillRect(centerX - greenW/2 - yellowW, barY, greenW+yellowW*2, barH);
-  ctx.fillStyle = 'rgba(78,224,138,.85)';
-  ctx.fillRect(centerX - greenW/2, barY, greenW, barH);
-
-  const markerX = barX + bb.marker*barW;
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(markerX-2, barY-4, 4, barH+8);
-
-  ctx.font = '16px monospace';
-  ctx.fillStyle = '#fff';
-  if (bb.locked){
-    ctx.fillText(bb.resultText, gc.width/2, barY+50);
+  let ballPos;
+  if (bb.state === 'aim'){
+    const h = bbBallHeight(bb.phase);
+    ballPos = { x: BB_BALL_X, y: BB_BALL_BOTTOM_Y - h*(BB_BALL_BOTTOM_Y-BB_BALL_TOP_Y) };
+  } else if (bb.state === 'flight'){
+    const t = Math.min(1, (performance.now()-bb.flightStart)/BB_FLIGHT_MS);
+    ballPos = bbFlightPos(t);
   } else {
-    ctx.font = '11px monospace';
+    ballPos = bb.flightWaypoints[2];
+  }
+  ctx.font = '16px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('🏀', ballPos.x, ballPos.y);
+
+  ctx.font = '13px monospace';
+  ctx.fillStyle = '#fff';
+  if (bb.state === 'result'){
+    ctx.fillText(bb.resultText, gc.width/2, 108);
+  } else if (bb.state === 'aim'){
+    ctx.font = '10px monospace';
     ctx.fillStyle = 'rgba(255,255,255,.6)';
-    ctx.fillText('Presiona TIRAR en el momento justo', gc.width/2, barY+46);
+    ctx.fillText('TIRAR justo en el punto más alto', gc.width/2, 108);
+  }
+}
+
+function drawHoop(ctx){
+  ctx.fillStyle = '#d8d8e0';
+  ctx.fillRect(BB_HOOP_X+16, BB_HOOP_Y-20, 6, 34);
+  ctx.strokeStyle = '#ff8a3d';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(BB_HOOP_X, BB_HOOP_Y, 16, 5, 0, 0, Math.PI*2);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.35)';
+  ctx.lineWidth = 1;
+  for (let i=-1;i<=1;i++){
+    ctx.beginPath();
+    ctx.moveTo(BB_HOOP_X+i*10, BB_HOOP_Y+2);
+    ctx.lineTo(BB_HOOP_X+i*6, BB_HOOP_Y+16);
+    ctx.stroke();
   }
 }
 
