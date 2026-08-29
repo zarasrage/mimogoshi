@@ -1,441 +1,156 @@
-/* ===================== Mimogoshi — Blip =====================
-   Un solo personaje ("Blip"), animado por definiciones en BLIP_SPRITESHEET
-   (misma forma que un sprite sheet real: frames nombrados + animaciones con
-   su lista de frames y duración en ms cada uno). Por ahora no hay una imagen
-   real que recortar, así que cada frame nombrado se resuelve a una pose
-   dibujada por código (ver FRAME_POSES) — el día que exista el PNG, basta
-   con reemplazar blipDrawFrame() por un drawImage() recortando ese archivo
-   con los mismos nombres/índices, sin tocar el resto del motor.
-*/
+/* ===================== Mimogoshi — Blip (sprite sheet real) =====================
+   Blip se dibuja recortando frames reales de blip_spritesheet.png, usando
+   las coordenadas y animaciones descritas en blip_spritesheet.json (el mismo
+   objeto va embebido acá abajo para no depender de un fetch()). No hay más
+   dibujo procedural que el huevo — para esa etapa no vino arte, así que se
+   pinta a mano con un óvalo chico. */
 
 const CANVAS_W = 80;
 const CANVAS_H = 88;
 
 const OUTLINE = '#20141c';
-const FACE_HIGHLIGHT = '#fffaf2';
-const BLUSH = '#ff9fb3';
 
-/* La etapa sigue tiñendo el color principal de Blip. */
+/* La etapa sigue tiñendo a Blip un poco (además del color nativo del arte).
+   child/adult_neutral quedan sin teñir porque el arte ya es de ese tono azul. */
 const PALETTES = {
-  baby:          { A:'#ffd166', O:OUTLINE },
-  child:         { A:'#7bdff2', O:OUTLINE },
-  teen:          { A:'#a29bfe', O:OUTLINE },
-  adult_good:    { A:'#4ee08a', O:OUTLINE, C:'#ffe66d' },
-  adult_neutral: { A:'#7bdff2', O:OUTLINE },
-  adult_bad:     { A:'#ff8fa3', O:OUTLINE, C:'#8a2846' },
+  baby:          { A:'#ffd166', O:'#c9a24a' },
+  child:         { A:'#7bdff2' },
+  teen:          { A:'#a29bfe' },
+  adult_good:    { A:'#4ee08a' },
+  adult_neutral: { A:'#7bdff2' },
+  adult_bad:     { A:'#ff8fa3' },
   egg:           { A:'#fff4d6', O:'#c9a24a' },
 };
 
 /* ===================== Sprite sheet (JSON) =====================
-   Mismo documento que blip_spritesheet.json en la raíz del repo — se
-   embebe acá para no depender de un fetch(). Define los frames con nombre
-   (por ahora solo como referencia lógica; el tamaño/posición real de tile
-   importa cuando haya una imagen) y las animaciones: qué frames se
-   reproducen y cuánto dura cada uno. */
+   Mismo documento que blip_spritesheet.json en la raíz del repo. */
 const BLIP_SPRITESHEET = {
-  character: 'Blip',
-  tile_size: [32, 32],
-  columns: 7,
-  rows: 4,
+  id: 'blip',
+  name: 'Blip',
+  image: 'blip_spritesheet.png',
+  frameWidth: 64,
+  frameHeight: 64,
+  columns: 5,
+  rows: 6,
+  frames: [
+    {index:0,x:0,y:0,w:64,h:64},{index:1,x:64,y:0,w:64,h:64},{index:2,x:128,y:0,w:64,h:64},{index:3,x:192,y:0,w:64,h:64},{index:4,x:256,y:0,w:64,h:64},
+    {index:5,x:0,y:64,w:64,h:64},{index:6,x:64,y:64,w:64,h:64},{index:7,x:128,y:64,w:64,h:64},{index:8,x:192,y:64,w:64,h:64},{index:9,x:256,y:64,w:64,h:64},
+    {index:10,x:0,y:128,w:64,h:64},{index:11,x:64,y:128,w:64,h:64},{index:12,x:128,y:128,w:64,h:64},{index:13,x:192,y:128,w:64,h:64},{index:14,x:256,y:128,w:64,h:64},
+    {index:15,x:0,y:192,w:64,h:64},{index:16,x:64,y:192,w:64,h:64},{index:17,x:128,y:192,w:64,h:64},{index:18,x:192,y:192,w:64,h:64},{index:19,x:256,y:192,w:64,h:64},
+    {index:20,x:0,y:256,w:64,h:64},{index:21,x:64,y:256,w:64,h:64},{index:22,x:128,y:256,w:64,h:64},{index:23,x:192,y:256,w:64,h:64},{index:24,x:256,y:256,w:64,h:64},
+    {index:25,x:0,y:320,w:64,h:64},{index:26,x:64,y:320,w:64,h:64},{index:27,x:128,y:320,w:64,h:64},{index:28,x:192,y:320,w:64,h:64},
+  ],
   animations: {
-    idle:      { frames: ['normal','idle_squash','normal','blink'], durations_ms: [780,780,2500,180] },
-    walk:      { frames: ['walk_1','walk_2'], durations_ms: [220,220] },
-    happy:     { frames: ['happy_1','happy_2','happy_3','happy_4','normal'], durations_ms: [150,150,200,150,1750] },
-    sad:       { frames: ['sad_1','sad_2'], durations_ms: [900,900] },
-    sick:      { frames: ['sick_1','sick_2'], durations_ms: [170,170] },
-    sleep:     { frames: ['sleep_1','sleep_2'], durations_ms: [800,800] },
-    eat:       { frames: ['eat_1','eat_2','eat_3'], durations_ms: [220,220,320] },
-    pet:       { frames: ['pet_1','pet_2','pet_3','happy_4'], durations_ms: [150,150,180,420] },
-    clean:     { frames: ['clean_1','clean_2','clean_1','clean_2'], durations_ms: [100,100,100,400] },
-    medicine:  { frames: ['medicine_1','blink','medicine_2'], durations_ms: [220,220,410] },
-    celebrate: { frames: ['happy_1','happy_2','celebrate','happy_4'], durations_ms: [150,150,220,380] },
-    dead:      { frames: ['dead_1','dead_2'], durations_ms: [520,520] },
+    idle:      { frames:[0,2,3,4], fps:3, loop:true },
+    walk:      { frames:[5,6], fps:5, loop:true },
+    happy:     { frames:[7,8,9], fps:7, loop:false },
+    sad:       { frames:[10,11], fps:3, loop:true },
+    sick:      { frames:[12,13], fps:4, loop:true },
+    sleep:     { frames:[14,15], fps:2, loop:true },
+    eat:       { frames:[16,17,18], fps:6, loop:false },
+    pet:       { frames:[19,20,21], fps:7, loop:false },
+    clean:     { frames:[22,23], fps:6, loop:false },
+    medicine:  { frames:[24,25], fps:5, loop:false },
+    celebrate: { frames:[26], fps:1, loop:false },
+    dead:      { frames:[27,28], fps:2, loop:true },
   },
 };
 
-/* Qué pose procedural dibuja cada frame nombrado del sprite sheet.
-   body: normal | squash | stretch | sleep | ghost
-   face: normal | blink | happy | sad | sick | sleep | dead | eat-open
-   spark: normal | happy | sad | sick | sleep | pet | celebrate | dead
-   extra: null | heart | food | food-bite | z1 | z2 | ghost */
-const FRAME_POSES = {
-  normal:       { },
-  blink:        { face:'blink' },
-  idle_squash:  { body:'squash' },
-  walk_1:       { dx:-1, dy:-1 },
-  walk_2:       { body:'squash', dx:1 },
-  happy_1:      { body:'squash', face:'happy', spark:'happy' },
-  happy_2:      { body:'stretch', face:'happy', dy:-2, spark:'happy' },
-  happy_3:      { face:'happy', dy:-3, spark:'happy' },
-  happy_4:      { body:'squash', face:'happy', spark:'happy' },
-  sad_1:        { face:'sad' },
-  sad_2:        { body:'squash', face:'sad', dy:1 },
-  sick_1:       { face:'sick', dx:-1, spark:'sick' },
-  sick_2:       { face:'sick', dx:1, spark:'sick' },
-  sleep_1:      { body:'sleep', face:'sleep', spark:'sleep', extra:'z1' },
-  sleep_2:      { body:'sleep', face:'sleep', dy:1, spark:'sleep', extra:'z2' },
-  eat_1:        { face:'eat-open', extra:'food' },
-  eat_2:        { body:'squash', face:'happy', extra:'food-bite' },
-  eat_3:        { face:'happy' },
-  pet_1:        { body:'squash', face:'happy', spark:'pet', extra:'heart' },
-  pet_2:        { body:'stretch', face:'happy', dy:-1, spark:'pet', extra:'heart' },
-  pet_3:        { face:'happy', dy:-2, spark:'pet', extra:'heart' },
-  clean_1:      { face:'blink', dx:-1, spark:'happy' },
-  clean_2:      { face:'blink', dx:1, spark:'happy' },
-  medicine_1:   { face:'sick', spark:'sick' },
-  medicine_2:   { face:'happy', spark:'happy' },
-  celebrate:    { body:'stretch', face:'happy', dy:-2, spark:'celebrate' },
-  dead_1:       { body:'ghost', face:'dead', spark:'dead', extra:'ghost' },
-  dead_2:       { body:'ghost', face:'dead', dy:-1, spark:'dead', extra:'ghost' },
-};
-
-function resolveFramePose(name){
-  const f = FRAME_POSES[name] || {};
-  return {
-    body: f.body || 'normal',
-    face: f.face || 'normal',
-    spark: f.spark || 'normal',
-    extra: f.extra || null,
-    dx: f.dx || 0,
-    dy: f.dy || 0,
-  };
-}
+const BLIP_IMAGE = new Image();
+let blipImageReady = false;
+BLIP_IMAGE.onload = () => { blipImageReady = true; };
+BLIP_IMAGE.src = BLIP_SPRITESHEET.image;
 
 /* ===================== Reproductor de animación =====================
-   Recorre BLIP_SPRITESHEET.animations[nombre].frames usando sus
-   durations_ms para saber qué frame nombrado toca dibujar ahora mismo. */
-const blipAnim = { name: null, startedAt: 0 };
+   Recorre animations[nombre].frames a "fps" cuadros por segundo. El flag
+   "loop" del JSON importa para decidir cuánto dura una acción (comer, mimo,
+   etc.) antes de volver al ánimo normal; mientras una animación de ánimo
+   está activa (idle/walk/happy/sad/sick/sleep/dead) siempre se repite, para
+   que Blip nunca se quede pegado en un cuadro mientras ese ánimo dure. */
 
+function animFrameMs(name){ return 1000 / BLIP_SPRITESHEET.animations[name].fps; }
 function animDuration(name){
   const anim = BLIP_SPRITESHEET.animations[name];
-  return anim.durations_ms.reduce((a,b) => a+b, 0);
+  return anim.frames.length * animFrameMs(name);
 }
-
-function currentFrameName(name, elapsed){
+function frameIndexAt(name, elapsed){
   const anim = BLIP_SPRITESHEET.animations[name];
-  const total = animDuration(name);
-  let t = total > 0 ? elapsed % total : 0;
-  for (let i=0; i<anim.frames.length; i++){
-    if (t < anim.durations_ms[i]) return anim.frames[i];
-    t -= anim.durations_ms[i];
-  }
-  return anim.frames[anim.frames.length-1];
+  const frameMs = animFrameMs(name);
+  const t = elapsed % (anim.frames.length * frameMs);
+  const i = Math.min(anim.frames.length - 1, Math.floor(t / frameMs));
+  return anim.frames[i];
 }
 
-let blipAction = null; // { name, startedAt } — animación de una sola acción (comer, mimo, etc.)
+let blipAction = null; // { name, startedAt } — animación de una sola vez (comer, mimo, limpiar...)
 
 function triggerBlipAction(name){
   if (!BLIP_SPRITESHEET.animations[name]) return;
   blipAction = { name, startedAt: performance.now() };
 }
 
-function pickAnimationName(mood, walkFrame, now){
+function pickAnimation(mood, walkFrame, now){
   if (blipAction){
     const elapsed = now - blipAction.startedAt;
-    if (elapsed < animDuration(blipAction.name)) return { name: blipAction.name, startedAt: blipAction.startedAt, loop: false };
+    if (elapsed < animDuration(blipAction.name)) return { name: blipAction.name, startedAt: blipAction.startedAt };
     blipAction = null;
   }
-  if (mood === 'dead') return { name:'dead', startedAt:0, loop:true };
-  if (mood === 'sleepy') return { name:'sleep', startedAt:0, loop:true };
-  if (mood === 'sick') return { name:'sick', startedAt:0, loop:true };
-  if (mood === 'sad') return { name:'sad', startedAt:0, loop:true };
-  if (walkFrame === 1 || walkFrame === 2) return { name:'walk', startedAt:0, loop:true };
-  if (mood === 'happy') return { name:'happy', startedAt:0, loop:true };
-  return { name:'idle', startedAt:0, loop:true };
+  if (mood === 'dead')    return { name:'dead',  startedAt:0 };
+  if (mood === 'sleepy')  return { name:'sleep', startedAt:0 };
+  if (mood === 'sick')    return { name:'sick',  startedAt:0 };
+  if (mood === 'sad')     return { name:'sad',   startedAt:0 };
+  if (walkFrame === 1 || walkFrame === 2) return { name:'walk', startedAt:0 };
+  if (mood === 'happy')   return { name:'happy', startedAt:0 };
+  return { name:'idle', startedAt:0 };
 }
 
-function blipPose(mood, walkFrame, now){
-  const { name, startedAt } = pickAnimationName(mood, walkFrame, now);
-  const frameName = currentFrameName(name, now - startedAt);
-  return resolveFramePose(frameName);
-}
+/* ===================== Huevo =====================
+   No vino arte para esta etapa: un óvalo chico dibujado a mano. */
 
-/* ===================== Colores ===================== */
-
-function blipHexToRgb(hex){
-  const h = String(hex || '#7bdff2').replace('#','');
-  const full = h.length === 3 ? h.split('').map(c => c+c).join('') : h;
-  const n = parseInt(full, 16);
-  return { r:(n >> 16) & 255, g:(n >> 8) & 255, b:n & 255 };
-}
-function blipMixColor(a, b, t){
-  const A = blipHexToRgb(a), B = blipHexToRgb(b);
-  const mix = k => Math.round(A[k] + (B[k] - A[k]) * t);
-  return `rgb(${mix('r')},${mix('g')},${mix('b')})`;
-}
-function blipColors(stage){
-  const pal = PALETTES[stage] || PALETTES.child;
-  const main = pal.A || '#7bdff2';
-  return {
-    main,
-    light: blipMixColor(main, '#ffffff', 0.28),
-    shadow: blipMixColor(main, OUTLINE, 0.18),
-    outline: pal.O || OUTLINE,
-    accent: pal.C || '#ffe66d',
-    blush: BLUSH,
-    tear: '#72b7ff',
-    ghost: '#dfeaff',
-  };
-}
-
-/* ===================== Siluetas =====================
-   Grid lógico de 15x20, un "pixel" de Blip = BLIP_PIXEL px reales.
-   Cada fila es [y, xInicio, xFin]. */
-
-const BLIP_PIXEL = 4;
-const BLIP_ORIGIN_X = 10;
-const BLIP_ORIGIN_Y = 4;
-
-const BLIP_BODY_NORMAL = [
-  [7,5,9], [8,3,11], [9,2,12], [10,1,13],
-  [11,0,14], [12,0,14], [13,0,14], [14,0,14], [15,0,14],
-  [16,1,13], [17,2,12], [18,3,11], [19,5,9],
-];
-const BLIP_BODY_SQUASH = [
-  [8,4,10], [9,2,12], [10,1,13],
-  [11,0,14], [12,0,14], [13,0,14], [14,0,14], [15,0,14], [16,0,14],
-  [17,1,13], [18,2,12], [19,4,10],
-];
-const BLIP_BODY_STRETCH = [
-  [6,5,9], [7,4,10], [8,3,11], [9,2,12], [10,1,13],
-  [11,1,13], [12,1,13], [13,1,13], [14,1,13], [15,1,13],
-  [16,2,12], [17,3,11], [18,4,10], [19,5,9],
-];
-const BLIP_BODY_SLEEP = [
-  [12,5,9], [13,3,11], [14,2,12], [15,1,13],
-  [16,0,14], [17,0,14], [18,1,13], [19,3,11],
-];
-const BLIP_GHOST_BODY = [
-  [6,5,9], [7,3,11], [8,2,12], [9,1,13],
-  [10,0,14], [11,0,14], [12,0,14], [13,0,14], [14,0,14],
-  [15,1,13], [16,2,12], [17,3,11],
-  [18,5,11], [19,7,12],
-];
-const BLIP_EGG_BODY = [
-  [9,6,8], [10,4,10], [11,3,11], [12,2,12],
-  [13,2,12], [14,2,12], [15,2,12],
-  [16,3,11], [17,4,10], [18,6,8],
-];
-
-/* Destello/antena. */
-const BLIP_SPARK = [
-  [9,0],[10,0],
-  [7,1],[8,1],[11,1],
-  [6,2],[9,2],[12,2],
-  [6,3],[9,3],[12,3],
-  [7,4],[8,4],[11,4],
-  [10,5],[9,6],
-];
-
-function blipCell(ctx, x, y, color, dx = 0, dy = 0){
-  ctx.fillStyle = color;
-  ctx.fillRect(
-    BLIP_ORIGIN_X + (x + dx) * BLIP_PIXEL,
-    BLIP_ORIGIN_Y + (y + dy) * BLIP_PIXEL,
-    BLIP_PIXEL,
-    BLIP_PIXEL
-  );
-}
-
-function blipMaskFromRows(rows){
-  const set = new Set();
-  for (const [y,x0,x1] of rows) for (let x=x0; x<=x1; x++) set.add(`${x},${y}`);
-  return set;
-}
-
-function blipDrawBody(ctx, rows, colors, dx = 0, dy = 0, ghost = false){
-  const mask = blipMaskFromRows(rows);
-  const main = ghost ? colors.ghost : colors.main;
-  const light = ghost ? '#f6fbff' : colors.light;
-  const shadow = ghost ? '#b9d8ef' : colors.shadow;
-
-  for (const key of mask){
-    const [x,y] = key.split(',').map(Number);
-    const border =
-      !mask.has(`${x-1},${y}`) || !mask.has(`${x+1},${y}`) ||
-      !mask.has(`${x},${y-1}`) || !mask.has(`${x},${y+1}`);
-
-    let color = main;
-    if (border) color = colors.outline;
-    else if (y >= 17) color = shadow;
-    else if (y <= 9 && x <= 7) color = light;
-
-    blipCell(ctx, x, y, color, dx, dy);
-  }
-
-  if (!ghost){
-    const highlight = [[4,10],[3,11]];
-    for (const [x,y] of highlight) if (mask.has(`${x},${y}`)) blipCell(ctx, x, y, colors.light, dx, dy);
-  }
-}
-
-function blipDrawSpark(ctx, colors, mode, dx = 0, dy = 0, t = 0){
-  if (mode === 'sleep'){
-    blipCell(ctx, 9, 6, colors.outline, dx, dy);
-    return;
-  }
-  if (mode === 'sick'){
-    blipCell(ctx, 9, 6, colors.outline, dx, dy);
-    blipCell(ctx, 10, 5, colors.shadow, dx, dy);
-    return;
-  }
-
-  const pulse = mode === 'happy' || mode === 'pet' || mode === 'celebrate';
-  const twinkle = Math.floor(t / 520) % 2 === 0;
-
-  for (const [x,y] of BLIP_SPARK){
-    let color = y >= 5 ? colors.outline : colors.light;
-    if (pulse && (y <= 1 || x === 12)) color = colors.accent;
-    else if (!pulse && twinkle && ((x===9 && y===0) || (x===12 && y===2))) color = colors.accent;
-    blipCell(ctx, x, y, color, dx, dy);
-  }
-
-  if (pulse && Math.floor(t / 160) % 2 === 0){
-    blipCell(ctx, 13, 1, colors.accent, dx, dy);
-    blipCell(ctx, 12, 0, colors.accent, dx, dy);
-  }
-}
-
-function blipDrawX(ctx, x, y, color, dx = 0, dy = 0){
-  const pts = [[0,0],[2,0],[1,1],[0,2],[2,2]];
-  for (const [px,py] of pts) blipCell(ctx, x+px, y+py, color, dx, dy);
-}
-
-function blipDrawFace(ctx, face, colors, dx = 0, dy = 0, bodyStyle = 'normal', t = 0){
-  let eyeY = 11, mouthY = 13;
-  if (bodyStyle === 'squash'){ eyeY = 12; mouthY = 14; }
-  if (bodyStyle === 'stretch'){ eyeY = 10; mouthY = 12; }
-  if (bodyStyle === 'sleep'){ eyeY = 16; mouthY = 18; }
-  if (bodyStyle === 'ghost'){ eyeY = 11; mouthY = 14; }
-
-  const ink = colors.outline;
-
-  if (face === 'blink' || face === 'sleep'){
-    for (let x=3;x<=5;x++) blipCell(ctx, x, eyeY, ink, dx, dy);
-    for (let x=9;x<=11;x++) blipCell(ctx, x, eyeY, ink, dx, dy);
-  } else if (face === 'happy'){
-    [[3,1],[4,0],[5,1],[9,1],[10,0],[11,1]].forEach(([x,oy]) => blipCell(ctx, x, eyeY+oy, ink, dx, dy));
-  } else if (face === 'sad'){
-    blipCell(ctx, 4, eyeY, ink, dx, dy);
-    blipCell(ctx, 10, eyeY, ink, dx, dy);
-    blipCell(ctx, 4, eyeY+1, colors.tear, dx, dy);
-    if (Math.floor(t / 420) % 2 === 0) blipCell(ctx, 4, eyeY+2, colors.tear, dx, dy);
-  } else if (face === 'sick'){
-    for (let x=3;x<=5;x++) blipCell(ctx, x, eyeY, ink, dx, dy);
-    for (let x=9;x<=11;x++) blipCell(ctx, x, eyeY, ink, dx, dy);
-    blipCell(ctx, 12, eyeY-2, colors.tear, dx, dy);
-    blipCell(ctx, 12, eyeY-1, colors.tear, dx, dy);
-  } else if (face === 'dead'){
-    blipDrawX(ctx, 3, eyeY-1, ink, dx, dy);
-    blipDrawX(ctx, 9, eyeY-1, ink, dx, dy);
-  } else {
-    blipCell(ctx, 4, eyeY, ink, dx, dy);
-    blipCell(ctx, 10, eyeY, ink, dx, dy);
-  }
-
-  if (face === 'happy'){
-    blipCell(ctx, 6, mouthY, ink, dx, dy);
-    blipCell(ctx, 8, mouthY, ink, dx, dy);
-    blipCell(ctx, 7, mouthY+1, ink, dx, dy);
-    blipCell(ctx, 3, mouthY+1, colors.blush, dx, dy);
-    blipCell(ctx, 11, mouthY+1, colors.blush, dx, dy);
-  } else if (face === 'sad'){
-    blipCell(ctx, 6, mouthY+1, ink, dx, dy);
-    blipCell(ctx, 8, mouthY+1, ink, dx, dy);
-    blipCell(ctx, 7, mouthY, ink, dx, dy);
-  } else if (face === 'sick'){
-    blipCell(ctx, 6, mouthY, ink, dx, dy);
-    blipCell(ctx, 7, mouthY+1, ink, dx, dy);
-    blipCell(ctx, 8, mouthY, ink, dx, dy);
-  } else if (face === 'sleep'){
-    blipCell(ctx, 7, mouthY, ink, dx, dy);
-  } else if (face === 'dead'){
-    for (let x=6;x<=8;x++) blipCell(ctx, x, mouthY, ink, dx, dy);
-  } else if (face === 'eat-open'){
-    blipCell(ctx, 6, mouthY, ink, dx, dy);
-    blipCell(ctx, 7, mouthY, ink, dx, dy);
-    blipCell(ctx, 8, mouthY, ink, dx, dy);
-    blipCell(ctx, 6, mouthY+1, ink, dx, dy);
-    blipCell(ctx, 7, mouthY+1, '#ff8fb3', dx, dy);
-    blipCell(ctx, 8, mouthY+1, ink, dx, dy);
-  } else {
-    for (let x=6;x<=8;x++) blipCell(ctx, x, mouthY, ink, dx, dy);
-  }
-}
-
-function blipDrawZ(ctx, colors, level, dx = 0, dy = 0){
-  const drawZ = (x,y) => {
-    blipCell(ctx,x,y,colors.light,dx,dy);
-    blipCell(ctx,x+1,y,colors.light,dx,dy);
-    blipCell(ctx,x+1,y+1,colors.light,dx,dy);
-    blipCell(ctx,x,y+2,colors.light,dx,dy);
-    blipCell(ctx,x+1,y+2,colors.light,dx,dy);
-  };
-  drawZ(12,8);
-  if (level > 1) drawZ(10,5);
-}
-
-function blipDrawHeart(ctx, colors, dx = 0, dy = 0){
-  const c = '#ff7fa5';
-  [[11,3],[13,3],[10,4],[12,4],[14,4],[11,5],[12,5],[13,5],[12,6]].forEach(([x,y]) => blipCell(ctx,x,y,c,dx,dy));
-}
-
-function blipDrawFood(ctx, dx = 0, dy = 0, bite = false){
-  const brown = '#d58b3d', dark = '#6f4528';
-  [[6,16],[7,16],[8,16],[5,17],[6,17],[7,17],[8,17],[9,17],[6,18],[7,18],[8,18]].forEach(([x,y]) => {
-    if (bite && ((x===8 && y===16) || (x===9 && y===17))) return;
-    blipCell(ctx,x,y,brown,dx,dy);
-  });
-  blipCell(ctx,6,17,dark,dx,dy);
-  blipCell(ctx,8,18,dark,dx,dy);
+function drawBlipEgg(ctx, stage){
+  const pal = PALETTES[stage] || PALETTES.egg;
+  const cx = CANVAS_W/2, cy = CANVAS_H/2 + 6, rx = 16, ry = 20;
+  ctx.fillStyle = pal.O || '#c9a24a';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = pal.A;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx-3, ry-3, 0, 0, Math.PI*2);
+  ctx.fill();
 }
 
 /* ===================== Render ===================== */
+
+const BLIP_DRAW_W = 72, BLIP_DRAW_H = 72;
+const BLIP_DRAW_X = (CANVAS_W - BLIP_DRAW_W) / 2;
+const BLIP_DRAW_Y = (CANVAS_H - BLIP_DRAW_H) / 2;
 
 function drawSprite(ctx, stage, mood, walkFrame, noClear){
   if (!noClear) ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
   ctx.imageSmoothingEnabled = false;
 
-  const colors = blipColors(stage);
-
   if (stage === 'egg'){
-    blipDrawBody(ctx, BLIP_EGG_BODY, colors);
+    drawBlipEgg(ctx, stage);
     return;
   }
 
+  if (!blipImageReady) return; // la imagen carga async; el próximo frame ya la tiene
+
   const now = performance.now();
-  const pose = mood === 'dead'
-    ? { body:'ghost', face:'dead', spark:'dead', extra:'ghost', dx:0, dy: Math.floor(now/520)%2 ? -1 : 0 }
-    : blipPose(mood, walkFrame, now);
+  const { name, startedAt } = pickAnimation(mood, walkFrame, now);
+  const frameIndex = frameIndexAt(name, now - startedAt);
+  const frame = BLIP_SPRITESHEET.frames[frameIndex];
 
-  let rows = BLIP_BODY_NORMAL;
-  if (pose.body === 'squash') rows = BLIP_BODY_SQUASH;
-  else if (pose.body === 'stretch') rows = BLIP_BODY_STRETCH;
-  else if (pose.body === 'sleep') rows = BLIP_BODY_SLEEP;
-  else if (pose.body === 'ghost') rows = BLIP_GHOST_BODY;
+  ctx.drawImage(BLIP_IMAGE, frame.x, frame.y, frame.w, frame.h, BLIP_DRAW_X, BLIP_DRAW_Y, BLIP_DRAW_W, BLIP_DRAW_H);
 
-  const ghost = pose.body === 'ghost';
-  blipDrawBody(ctx, rows, colors, pose.dx, pose.dy, ghost);
-
-  if (!ghost){
-    blipDrawSpark(ctx, colors, pose.spark, pose.dx, pose.dy, now);
-  } else {
-    for (let x=5;x<=9;x++) blipCell(ctx,x,3,colors.light,pose.dx,pose.dy);
-    blipCell(ctx,4,4,colors.light,pose.dx,pose.dy);
-    blipCell(ctx,10,4,colors.light,pose.dx,pose.dy);
-  }
-
-  blipDrawFace(ctx, pose.face, colors, pose.dx, pose.dy, pose.body, now);
-
-  if (pose.extra === 'z1') blipDrawZ(ctx, colors, 1, pose.dx, pose.dy);
-  if (pose.extra === 'z2') blipDrawZ(ctx, colors, 2, pose.dx, pose.dy);
-  if (pose.extra === 'heart') blipDrawHeart(ctx, colors, pose.dx, pose.dy);
-  if (pose.extra === 'food') blipDrawFood(ctx, pose.dx, pose.dy, false);
-  if (pose.extra === 'food-bite') blipDrawFood(ctx, pose.dx, pose.dy, true);
-  if (pose.extra === 'ghost' && Math.floor(now/300)%2 === 0){
-    blipCell(ctx,1,8,colors.light,pose.dx,pose.dy);
-    blipCell(ctx,13,6,colors.light,pose.dx,pose.dy);
-    blipCell(ctx,2,16,colors.light,pose.dx,pose.dy);
+  const tint = (PALETTES[stage] || {}).A;
+  if (tint && stage !== 'child' && stage !== 'adult_neutral'){
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-atop';
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = tint;
+    ctx.fillRect(BLIP_DRAW_X, BLIP_DRAW_Y, BLIP_DRAW_W, BLIP_DRAW_H);
+    ctx.restore();
   }
 }
 /* ===================== Comida ===================== */
