@@ -427,8 +427,18 @@ body{
 .menu-item.locked{opacity:.4; cursor:not-allowed;}
 .menu-item:not(.locked):hover{background:rgba(255,255,255,.15);}
 
-.species-list{flex-direction:row; flex-wrap:wrap;}
-.species-list .species-item{flex:1 1 auto; justify-content:center; padding:8px;}
+/* Las especies van en fila y con la miniatura arriba del nombre: apiladas en
+   vertical la lista crecía más que la pantalla y dejaba el botón de Empezar
+   fuera de vista. En columna cada tarjeta mide ~84px y entran varias a lo ancho. */
+.species-list{flex-direction:row; flex-wrap:wrap; justify-content:center; gap:8px;}
+.species-list .species-item{
+  flex:0 0 auto;
+  flex-direction:column;
+  justify-content:center;
+  gap:4px;
+  padding:6px 10px;
+}
+.species-list .species-item .info{align-items:center;}
 .species-thumb{flex-shrink:0; background-repeat:no-repeat;}
 
 .debug-panel{width:100%;}
