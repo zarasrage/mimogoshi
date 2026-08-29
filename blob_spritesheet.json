@@ -1,5 +1,7 @@
 {
-  "character": "Gato",
+  "character": "Blob",
+  "id": "blob",
+  "image": "blob_spritesheet.png",
   "tile_size": [
     32,
     32

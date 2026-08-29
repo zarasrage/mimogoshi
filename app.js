@@ -1,30 +1,21 @@
 /* ===================== Mimogoshi — especies (sprite sheets reales) =====================
-   Cada especie se dibuja recortando frames reales de su spritesheet PNG. Hay dos
-   formatos de JSON de origen (según quién los dibujó):
-   - "índices" (Blip): frames numerados 0..N + animations con {frames:[índices], fps, loop}.
-   - "nombrados" (Mimo/Gato/Mushii): frames con nombre ("normal","walk_1",...) +
-     animations con {frames:[nombres], durations_ms:[...]} (sin loop explícito).
-   normalizeSpecies() convierte ambos a un mismo runtime: frames indexables por
-   posición y animations con "steps" (lista de {frame, durationMs}) + loop.
-   No hay más dibujo procedural que el huevo — para esa etapa no vino arte, así
-   que se pinta a mano con un óvalo chico, igual para las 4 especies. */
+   Cada especie se dibuja recortando frames reales de su spritesheet PNG, con las
+   coordenadas y animaciones de su .json (el mismo documento va embebido acá abajo
+   para no depender de un fetch()). El formato de todas las hojas es el mismo:
+   una grilla de 32x32, frames con nombre ("normal","walk_1",...) y animaciones
+   con {frames:[nombres], durations_ms:[...]}.
+   El único dibujo procedural que queda es el huevo: para esa etapa no vino arte. */
 
-/* 64x64 a propósito: es múltiplo entero del tamaño nativo de los dos tipos de
-   arte que hay (32px en Mimo/Gato/Mushii → x2, 64px en Blip → x1), y el CSS
-   muestra el canvas 1:1 (64px), así que la única escala que queda es la del
-   dispositivo (2x/3x), que es entera. Con medidas que no calzan (antes: canvas
-   80x88, sprite dibujado a 72, mostrado a 50x55) unos píxeles del arte salían
-   de 2 y otros de 3, y en una cara de 32x32 eso junta los ojos con la boca en
-   un borrón — que es exactamente la "cara extra" que se veía. */
+/* 64x64 a propósito: es múltiplo entero del tamaño nativo del arte (32px → x2), y
+   el CSS muestra el canvas 1:1 (64px), así que la única escala que queda es la del
+   dispositivo (2x/3x), que es entera. Con medidas que no calzan unos píxeles del
+   arte salen de 2 y otros de 3, y en una cara de 32x32 eso junta los ojos con la
+   boca en un borrón que parece una segunda cara. */
 const CANVAS_W = 64;
 const CANVAS_H = 64;
 
-const OUTLINE = '#20141c';
-
-/* Solo se usa para el huevo (no tiene arte propio). El resto de las etapas
-   usan el sprite real tal cual viene del PNG — los spritesheets ya son la
-   ilustración completa (cara incluida), así que no se les aplica ningún
-   tinte/recoloreo encima. */
+/* Solo para el huevo. Los sprites se dibujan tal cual vienen del PNG: son la
+   ilustración completa, así que no se les aplica ningún tinte encima. */
 const PALETTES = {
   egg: { A:'#fff4d6', O:'#c9a24a' },
 };
@@ -33,68 +24,12 @@ const PALETTES = {
    son acciones de una sola vez (comer, mimo, limpiar, medicina, celebrar). */
 const LOOPING_ANIMS = new Set(['idle', 'walk', 'sad', 'sick', 'sleep', 'dead']);
 
-/* ===================== Definiciones crudas (mismo documento que los .json en la raíz) ===== */
+/* ===================== Definiciones (mismo documento que los .json de la raíz) ===== */
 
-const BLIP_RAW = {
-  id: 'blip',
-  name: 'Blip',
-  schema: 'indexed',
-  image: 'blip_spritesheet.png',
-  frameWidth: 64,
-  frameHeight: 64,
-  columns: 5,
-  rows: 6,
-  frames: [
-    {index:0,x:0,y:0,w:64,h:64},{index:1,x:64,y:0,w:64,h:64},{index:2,x:128,y:0,w:64,h:64},{index:3,x:192,y:0,w:64,h:64},{index:4,x:256,y:0,w:64,h:64},
-    {index:5,x:0,y:64,w:64,h:64},{index:6,x:64,y:64,w:64,h:64},{index:7,x:128,y:64,w:64,h:64},{index:8,x:192,y:64,w:64,h:64},{index:9,x:256,y:64,w:64,h:64},
-    {index:10,x:0,y:128,w:64,h:64},{index:11,x:64,y:128,w:64,h:64},{index:12,x:128,y:128,w:64,h:64},{index:13,x:192,y:128,w:64,h:64},{index:14,x:256,y:128,w:64,h:64},
-    {index:15,x:0,y:192,w:64,h:64},{index:16,x:64,y:192,w:64,h:64},{index:17,x:128,y:192,w:64,h:64},{index:18,x:192,y:192,w:64,h:64},{index:19,x:256,y:192,w:64,h:64},
-    {index:20,x:0,y:256,w:64,h:64},{index:21,x:64,y:256,w:64,h:64},{index:22,x:128,y:256,w:64,h:64},{index:23,x:192,y:256,w:64,h:64},{index:24,x:256,y:256,w:64,h:64},
-    {index:25,x:0,y:320,w:64,h:64},{index:26,x:64,y:320,w:64,h:64},{index:27,x:128,y:320,w:64,h:64},{index:28,x:192,y:320,w:64,h:64},
-  ],
-  animations: {
-    idle:      { frames:[0,2,3,4], fps:3, loop:true },
-    walk:      { frames:[5,6], fps:5, loop:true },
-    happy:     { frames:[7,8,9], fps:7, loop:false },
-    sad:       { frames:[10,11], fps:3, loop:true },
-    sick:      { frames:[12,13], fps:4, loop:true },
-    sleep:     { frames:[14,15], fps:2, loop:true },
-    eat:       { frames:[16,17,18], fps:6, loop:false },
-    pet:       { frames:[19,20,21], fps:7, loop:false },
-    clean:     { frames:[22,23], fps:6, loop:false },
-    medicine:  { frames:[24,25], fps:5, loop:false },
-    celebrate: { frames:[26], fps:1, loop:false },
-    dead:      { frames:[27,28], fps:2, loop:true },
-  },
-};
-
-const MIMO_RAW = {
-  id: 'mimo',
-  name: 'Mimo',
-  schema: 'named',
-  image: 'mimo_spritesheet.png',
-  tileWidth: 32, tileHeight: 32,
-  columns: 7, rows: 4,
-  frames: {normal:{index:0,x:0,y:0,w:32,h:32},blink:{index:1,x:32,y:0,w:32,h:32},idle_squash:{index:2,x:64,y:0,w:32,h:32},walk_1:{index:3,x:96,y:0,w:32,h:32},walk_2:{index:4,x:128,y:0,w:32,h:32},happy_1:{index:5,x:160,y:0,w:32,h:32},happy_2:{index:6,x:192,y:0,w:32,h:32},happy_3:{index:7,x:0,y:32,w:32,h:32},happy_4:{index:8,x:32,y:32,w:32,h:32},sad_1:{index:9,x:64,y:32,w:32,h:32},sad_2:{index:10,x:96,y:32,w:32,h:32},sick_1:{index:11,x:128,y:32,w:32,h:32},sick_2:{index:12,x:160,y:32,w:32,h:32},sleep_1:{index:13,x:192,y:32,w:32,h:32},sleep_2:{index:14,x:0,y:64,w:32,h:32},eat_1:{index:15,x:32,y:64,w:32,h:32},eat_2:{index:16,x:64,y:64,w:32,h:32},eat_3:{index:17,x:96,y:64,w:32,h:32},pet_1:{index:18,x:128,y:64,w:32,h:32},pet_2:{index:19,x:160,y:64,w:32,h:32},pet_3:{index:20,x:192,y:64,w:32,h:32},clean_1:{index:21,x:0,y:96,w:32,h:32},clean_2:{index:22,x:32,y:96,w:32,h:32},medicine_1:{index:23,x:64,y:96,w:32,h:32},medicine_2:{index:24,x:96,y:96,w:32,h:32},celebrate:{index:25,x:128,y:96,w:32,h:32},dead_1:{index:26,x:160,y:96,w:32,h:32},dead_2:{index:27,x:192,y:96,w:32,h:32}},
-  animations: {idle:{frames:["normal","idle_squash","normal","blink"],durations_ms:[780,780,2500,180]},walk:{frames:["walk_1","walk_2"],durations_ms:[220,220]},happy:{frames:["happy_1","happy_2","happy_3","happy_4","normal"],durations_ms:[150,150,200,150,1750]},sad:{frames:["sad_1","sad_2"],durations_ms:[900,900]},sick:{frames:["sick_1","sick_2"],durations_ms:[170,170]},sleep:{frames:["sleep_1","sleep_2"],durations_ms:[800,800]},eat:{frames:["eat_1","eat_2","eat_3"],durations_ms:[220,220,320]},pet:{frames:["pet_1","pet_2","pet_3","happy_4"],durations_ms:[150,150,180,420]},clean:{frames:["clean_1","clean_2","clean_1","clean_2"],durations_ms:[100,100,100,400]},medicine:{frames:["medicine_1","blink","medicine_2"],durations_ms:[220,220,410]},celebrate:{frames:["happy_1","happy_2","celebrate","happy_4"],durations_ms:[150,150,220,380]},dead:{frames:["dead_1","dead_2"],durations_ms:[520,520]}},
-};
-
-const GATO_RAW = {
-  id: 'gato',
-  name: 'Gato',
-  schema: 'named',
-  image: 'gato_spritesheet.png',
-  tileWidth: 32, tileHeight: 32,
-  columns: 7, rows: 4,
-  frames: {normal:{index:0,x:0,y:0,w:32,h:32},blink:{index:1,x:32,y:0,w:32,h:32},idle_squash:{index:2,x:64,y:0,w:32,h:32},walk_1:{index:3,x:96,y:0,w:32,h:32},walk_2:{index:4,x:128,y:0,w:32,h:32},happy_1:{index:5,x:160,y:0,w:32,h:32},happy_2:{index:6,x:192,y:0,w:32,h:32},happy_3:{index:7,x:0,y:32,w:32,h:32},happy_4:{index:8,x:32,y:32,w:32,h:32},sad_1:{index:9,x:64,y:32,w:32,h:32},sad_2:{index:10,x:96,y:32,w:32,h:32},sick_1:{index:11,x:128,y:32,w:32,h:32},sick_2:{index:12,x:160,y:32,w:32,h:32},sleep_1:{index:13,x:192,y:32,w:32,h:32},sleep_2:{index:14,x:0,y:64,w:32,h:32},eat_1:{index:15,x:32,y:64,w:32,h:32},eat_2:{index:16,x:64,y:64,w:32,h:32},eat_3:{index:17,x:96,y:64,w:32,h:32},pet_1:{index:18,x:128,y:64,w:32,h:32},pet_2:{index:19,x:160,y:64,w:32,h:32},pet_3:{index:20,x:192,y:64,w:32,h:32},clean_1:{index:21,x:0,y:96,w:32,h:32},clean_2:{index:22,x:32,y:96,w:32,h:32},medicine_1:{index:23,x:64,y:96,w:32,h:32},medicine_2:{index:24,x:96,y:96,w:32,h:32},celebrate:{index:25,x:128,y:96,w:32,h:32},dead_1:{index:26,x:160,y:96,w:32,h:32},dead_2:{index:27,x:192,y:96,w:32,h:32}},
-  animations: {idle:{frames:["normal","idle_squash","normal","blink"],durations_ms:[780,780,2500,180]},walk:{frames:["walk_1","walk_2"],durations_ms:[220,220]},happy:{frames:["happy_1","happy_2","happy_3","happy_4","normal"],durations_ms:[150,150,200,150,1750]},sad:{frames:["sad_1","sad_2"],durations_ms:[900,900]},sick:{frames:["sick_1","sick_2"],durations_ms:[170,170]},sleep:{frames:["sleep_1","sleep_2"],durations_ms:[800,800]},eat:{frames:["eat_1","eat_2","eat_3"],durations_ms:[220,220,320]},pet:{frames:["pet_1","pet_2","pet_3","happy_4"],durations_ms:[150,150,180,420]},clean:{frames:["clean_1","clean_2","clean_1","clean_2"],durations_ms:[100,100,100,400]},medicine:{frames:["medicine_1","blink","medicine_2"],durations_ms:[220,220,410]},celebrate:{frames:["happy_1","happy_2","celebrate","happy_4"],durations_ms:[150,150,220,380]},dead:{frames:["dead_1","dead_2"],durations_ms:[520,520]}},
-};
-
-const MUSHII_RAW = {
-  id: 'mushii',
-  name: 'Mushii',
-  schema: 'named',
-  image: 'mushii_spritesheet.png',
+const BLOB_RAW = {
+  id: 'blob',
+  name: 'Blob',
+  image: 'blob_spritesheet.png',
   tileWidth: 32, tileHeight: 32,
   columns: 7, rows: 4,
   frames: {normal:{index:0,x:0,y:0,w:32,h:32},blink:{index:1,x:32,y:0,w:32,h:32},idle_squash:{index:2,x:64,y:0,w:32,h:32},walk_1:{index:3,x:96,y:0,w:32,h:32},walk_2:{index:4,x:128,y:0,w:32,h:32},happy_1:{index:5,x:160,y:0,w:32,h:32},happy_2:{index:6,x:192,y:0,w:32,h:32},happy_3:{index:7,x:0,y:32,w:32,h:32},happy_4:{index:8,x:32,y:32,w:32,h:32},sad_1:{index:9,x:64,y:32,w:32,h:32},sad_2:{index:10,x:96,y:32,w:32,h:32},sick_1:{index:11,x:128,y:32,w:32,h:32},sick_2:{index:12,x:160,y:32,w:32,h:32},sleep_1:{index:13,x:192,y:32,w:32,h:32},sleep_2:{index:14,x:0,y:64,w:32,h:32},eat_1:{index:15,x:32,y:64,w:32,h:32},eat_2:{index:16,x:64,y:64,w:32,h:32},eat_3:{index:17,x:96,y:64,w:32,h:32},pet_1:{index:18,x:128,y:64,w:32,h:32},pet_2:{index:19,x:160,y:64,w:32,h:32},pet_3:{index:20,x:192,y:64,w:32,h:32},clean_1:{index:21,x:0,y:96,w:32,h:32},clean_2:{index:22,x:32,y:96,w:32,h:32},medicine_1:{index:23,x:64,y:96,w:32,h:32},medicine_2:{index:24,x:96,y:96,w:32,h:32},celebrate:{index:25,x:128,y:96,w:32,h:32},dead_1:{index:26,x:160,y:96,w:32,h:32},dead_2:{index:27,x:192,y:96,w:32,h:32}},
@@ -102,37 +37,25 @@ const MUSHII_RAW = {
 };
 
 /* ===================== Normalización a un runtime único =====================
-   Sea cual sea el esquema de origen, el resultado siempre tiene:
+   El .json indexa los frames por nombre; el runtime los quiere como lista de
+   pasos ya resueltos, así que acá se traduce una vez al cargar:
    - frames: array indexable [ {x,y,w,h}, ... ]
-   - animations: { nombre: { steps:[{frameIndex,durationMs}], loop:bool } }
+   - animations: { nombre: { steps:[{frame, durationMs}], loop:bool } }
    - image: HTMLImageElement, y `ready` que se pone en true cuando carga. */
 
 function normalizeSpecies(raw){
-  let frames, frameAt;
-
-  if (raw.schema === 'indexed'){
-    frames = raw.frames.map(f => ({ x:f.x, y:f.y, w:f.w, h:f.h }));
-    frameAt = (ref) => frames[ref];
-  } else {
-    const names = Object.keys(raw.frames).sort((a,b) => raw.frames[a].index - raw.frames[b].index);
-    frames = names.map(n => ({ x:raw.frames[n].x, y:raw.frames[n].y, w:raw.frames[n].w, h:raw.frames[n].h }));
-    const nameToIndex = {};
-    names.forEach((n, i) => { nameToIndex[n] = i; });
-    frameAt = (ref) => frames[nameToIndex[ref]];
-  }
+  const names = Object.keys(raw.frames).sort((a,b) => raw.frames[a].index - raw.frames[b].index);
+  const frames = names.map(n => ({ x:raw.frames[n].x, y:raw.frames[n].y, w:raw.frames[n].w, h:raw.frames[n].h }));
+  const byName = {};
+  names.forEach((n, i) => { byName[n] = frames[i]; });
 
   const animations = {};
   Object.keys(raw.animations).forEach(animName => {
     const a = raw.animations[animName];
-    let steps;
-    if (raw.schema === 'indexed'){
-      const frameMs = 1000 / a.fps;
-      steps = a.frames.map(idx => ({ frame: frameAt(idx), durationMs: frameMs }));
-    } else {
-      steps = a.frames.map((name, i) => ({ frame: frameAt(name), durationMs: a.durations_ms[i] }));
-    }
-    const loop = (typeof a.loop === 'boolean') ? a.loop : LOOPING_ANIMS.has(animName);
-    animations[animName] = { steps, loop };
+    animations[animName] = {
+      steps: a.frames.map((name, i) => ({ frame: byName[name], durationMs: a.durations_ms[i] })),
+      loop: LOOPING_ANIMS.has(animName),
+    };
   });
 
   const image = new Image();
@@ -142,45 +65,37 @@ function normalizeSpecies(raw){
   return runtime;
 }
 
-const SPECIES_RAW = { blip: BLIP_RAW, mimo: MIMO_RAW, gato: GATO_RAW, mushii: MUSHII_RAW };
-const SPECIES = {
-  blip:   normalizeSpecies(BLIP_RAW),
-  mimo:   normalizeSpecies(MIMO_RAW),
-  gato:   normalizeSpecies(GATO_RAW),
-  mushii: normalizeSpecies(MUSHII_RAW),
-};
-const SPECIES_IDS = ['blip', 'mimo', 'gato', 'mushii'];
-function speciesById(id){ return SPECIES[id] || SPECIES.blip; }
+const SPECIES_RAW = { blob: BLOB_RAW };
+const SPECIES = { blob: normalizeSpecies(BLOB_RAW) };
+const SPECIES_IDS = ['blob'];
+const DEFAULT_SPECIES = 'blob';
+function speciesById(id){ return SPECIES[id] || SPECIES[DEFAULT_SPECIES]; }
 
-/* Estilo inline para mostrar el primer frame ("normal"/idle) de una especie como
-   miniatura de tamaño fijo en el selector, recortando su spritesheet real vía
-   background-position en vez de tener que precortar archivos aparte. */
-function speciesThumbStyle(id, boxPx){
+/* Estilo inline para mostrar el frame "normal" de una especie como miniatura en
+   el selector, recortando su spritesheet real vía background-position en vez de
+   tener que precortar archivos aparte. Se escala x2 (entero) por lo mismo que
+   el canvas: a escala fraccionaria el pixel art se embarra. */
+function speciesThumbStyle(id){
   const raw = SPECIES_RAW[id];
-  const tileW = raw.schema === 'indexed' ? raw.frameWidth : raw.tileWidth;
-  const tileH = raw.schema === 'indexed' ? raw.frameHeight : raw.tileHeight;
-  const fullW = raw.columns * tileW, fullH = raw.rows * tileH;
-  const frame = raw.schema === 'indexed' ? raw.frames[0] : raw.frames.normal;
-  const scale = boxPx / tileW;
+  const s = 2;
+  const f = raw.frames.normal;
   return [
-    `width:${boxPx}px`, `height:${Math.round(tileH*scale)}px`,
+    `width:${raw.tileWidth*s}px`, `height:${raw.tileHeight*s}px`,
     `background-image:url('${raw.image}')`,
-    `background-size:${Math.round(fullW*scale)}px ${Math.round(fullH*scale)}px`,
-    `background-position:-${Math.round(frame.x*scale)}px -${Math.round(frame.y*scale)}px`,
+    `background-size:${raw.columns*raw.tileWidth*s}px ${raw.rows*raw.tileHeight*s}px`,
+    `background-position:-${f.x*s}px -${f.y*s}px`,
     `image-rendering:pixelated`,
   ].join(';');
 }
 
 /* ===================== Reproductor de animación =====================
-   Recorre animations[nombre].steps sumando duraciones (cada paso puede durar
-   distinto, según venga de fps uniforme o de durations_ms a mano). El flag
-   "loop" decide si una animación de ánimo se repite sin fin (idle/walk/sad/
-   sick/sleep/dead) o si una acción (comer, mimo, limpiar...) se reproduce una
-   vez y vuelve sola al ánimo normal. */
+   Recorre animations[nombre].steps sumando duraciones. El flag "loop" decide si
+   una animación de ánimo se repite sin fin (idle/walk/sad/sick/sleep/dead) o si
+   una acción (comer, mimo, limpiar...) se reproduce una vez y vuelve sola al
+   ánimo normal. */
 
 function animTotalMs(species, name){
-  const anim = species.animations[name];
-  return anim.steps.reduce((sum, s) => sum + s.durationMs, 0);
+  return species.animations[name].steps.reduce((sum, s) => sum + s.durationMs, 0);
 }
 
 function frameAtElapsed(species, name, elapsedMs){
@@ -197,8 +112,7 @@ function frameAtElapsed(species, name, elapsedMs){
 let petAction = null; // { name, startedAt } — animación de una sola vez (comer, mimo, limpiar...)
 
 function triggerPetAction(name){
-  const species = speciesById(currentSpeciesId());
-  if (!species.animations[name]) return;
+  if (!speciesById(currentSpeciesId()).animations[name]) return;
   petAction = { name, startedAt: performance.now() };
 }
 
@@ -218,7 +132,7 @@ function pickAnimation(species, mood, walkFrame, now){
 }
 
 /* ===================== Huevo =====================
-   No vino arte para esta etapa en ninguna especie: un óvalo chico dibujado a mano. */
+   No vino arte para esta etapa: un óvalo chico dibujado a mano. */
 
 function drawEgg(ctx){
   const pal = PALETTES.egg;
@@ -236,18 +150,18 @@ function drawEgg(ctx){
 
 /* ===================== Render ===================== */
 
-/* Cuántos píxeles de canvas ocupa un píxel del arte. Siempre entero, y siempre
-   el mismo para todos los píxeles del frame — es lo único que mantiene el pixel
-   art nítido. Con el arte de 32px da 2 y con el de 64px da 1: en ambos casos el
-   sprite termina midiendo 64x64 y llenando el canvas. */
+/* Cuántos píxeles de canvas ocupa un píxel del arte. Siempre entero, y siempre el
+   mismo para todos los píxeles del frame — es lo único que mantiene el pixel art
+   nítido. Con el arte de 32px da 2, o sea 64x64: llena el canvas justo. */
 function pixelScale(frame){
   return Math.max(1, Math.floor(Math.min(CANVAS_W / frame.w, CANVAS_H / frame.h)));
 }
 
-/* La especie activa es la de la mascota guardada, salvo que el panel de
-   prueba la esté forzando para previsualizar las otras. */
+/* La especie activa es la de la mascota guardada, salvo que el panel de prueba
+   la esté forzando para previsualizar otra. */
 function currentSpeciesId(){
-  return (typeof debugForcedSpecies !== 'undefined' && debugForcedSpecies) || (state && state.species) || 'blip';
+  return (typeof debugForcedSpecies !== 'undefined' && debugForcedSpecies) ||
+         (state && state.species) || DEFAULT_SPECIES;
 }
 
 function drawSprite(ctx, stage, mood, walkFrame, noClear){
@@ -316,7 +230,7 @@ const walker = { x: 0.5, targetX: 0.5, dir: 1, pauseUntil: 0, frame: 0, lastFram
 function freshState(name, species){
   return {
     name: name || speciesById(species).name,
-    species: species || 'blip',
+    species: species || DEFAULT_SPECIES,
     bornAt: Date.now(),
     lastUpdate: Date.now(),
     ageHours: 0,
@@ -344,7 +258,7 @@ function loadState(){
     if (!s || typeof s !== 'object') return null;
     if (!s.selectedFood) s.selectedFood = 'simple';
     if (!s.unlockedFoods) s.unlockedFoods = ['simple'];
-    if (!s.species || !SPECIES[s.species]) s.species = 'blip'; // saves viejos, antes de sumar especies
+    if (!s.species || !SPECIES[s.species]) s.species = DEFAULT_SPECIES; // saves de especies que ya no existen
     return s;
   } catch (e) {
     return null;
@@ -1118,19 +1032,19 @@ function hideOverlay(){
   document.getElementById('overlay').classList.add('hidden');
 }
 
-let pickedSpecies = 'blip';
+let pickedSpecies = DEFAULT_SPECIES;
 
 function renderSpeciesPicker(){
   return SPECIES_IDS.map(id => `
     <div class="menu-item species-item ${pickedSpecies===id ? 'selected':''}" data-species="${id}">
-      <span class="species-thumb" style="${speciesThumbStyle(id, 34)}"></span>
+      <span class="species-thumb" style="${speciesThumbStyle(id)}"></span>
       <div class="info"><b>${SPECIES_RAW[id].name}</b></div>
     </div>
   `).join('');
 }
 
 function askName(){
-  pickedSpecies = 'blip';
+  pickedSpecies = DEFAULT_SPECIES;
   showOverlay(`
     <h3>🥚 Un nuevo Mimogoshi</h3>
     <p>¿Qué especie va a ser?</p>
