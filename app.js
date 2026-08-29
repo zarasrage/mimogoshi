@@ -436,8 +436,7 @@ function render(){
   document.getElementById('btnMed').disabled = !state.sick;
   document.getElementById('feedIcon').textContent = foodById(state.selectedFood).emoji;
 
-  const poopBadge = state.poop ? ' 💩' : '';
-  document.getElementById('btnClean').querySelector('.btn-label').textContent = 'Limpiar' + poopBadge;
+  document.getElementById('poopFx').classList.toggle('hidden', !state.poop);
 }
 
 let lastFrameT = 0;
@@ -573,6 +572,14 @@ function openGamesMenu(){
   document.getElementById('btnCloseGames').addEventListener('click', hideOverlay);
 }
 
+/* Ajusta la resolución interna del canvas del minijuego a su tamaño real en
+   pantalla (el contenedor es flexible), para que nada salga estirado/deforme. */
+function fitGameCanvas(gc){
+  const rect = gc.getBoundingClientRect();
+  gc.width = Math.max(200, Math.round(rect.width));
+  gc.height = Math.max(90, Math.round(rect.height));
+}
+
 /* ===================== Minijuego 1: atrapar estrellas ===================== */
 
 let sg = null;
@@ -583,6 +590,7 @@ function startStarsGame(){
   document.getElementById('creatureFloor').classList.add('hidden');
   const gc = document.getElementById('gameCanvas');
   gc.classList.remove('hidden');
+  fitGameCanvas(gc);
   const ctx = gc.getContext('2d');
   ctx.imageSmoothingEnabled = false;
 
@@ -709,15 +717,18 @@ const BB_DIFFICULTY = [
   { peak: 0.95, near: 0.80, speed: 1.5 },
 ];
 
-const BB_GROUND_Y = 120;
-const BB_MONO_X = 38;
-const BB_BALL_X = 56;
-const BB_BALL_TOP_Y = 40;
-const BB_BALL_BOTTOM_Y = 90;
-const BB_HOOP_X = 206;
-const BB_HOOP_Y = 44;
-const BB_FLIGHT_MS = 550;
-const BB_RESULT_MS = 900;
+/* Posiciones como fracción del tamaño real del canvas (se recalculan al empezar
+   cada partida con fitGameCanvas, así nunca queda estirado ni con huecos). */
+const BB_GROUND_FRAC = 0.86;
+const BB_BALL_TOP_FRAC = 0.20;
+const BB_BALL_BOTTOM_FRAC = 0.58;
+const BB_HOOP_X_FRAC = 0.80;
+const BB_HOOP_Y_FRAC = 0.24;
+const BB_MONO_X_FRAC = 0.15;
+const BB_BALL_X_FRAC = 0.23;
+const BB_FLIGHT_MS = 480;
+const BB_SETTLE_MS = 220;
+const BB_RESULT_MS = 800;
 
 let bb = null;
 
@@ -733,24 +744,41 @@ function startBasketballGame(){
   gc.classList.remove('hidden');
   const shootBtn = document.getElementById('btnShoot');
   shootBtn.classList.remove('hidden');
-  shootBtn.textContent = 'TIRAR';
+  fitGameCanvas(gc);
 
+  const w = gc.width, h = gc.height;
   bb = {
     ctx: gc.getContext('2d'),
-    gc,
+    gc, w, h,
+    groundY: h*BB_GROUND_FRAC,
+    ballTopY: h*BB_BALL_TOP_FRAC,
+    ballBottomY: h*BB_BALL_BOTTOM_FRAC,
+    hoopX: w*BB_HOOP_X_FRAC,
+    hoopY: h*BB_HOOP_Y_FRAC,
+    monoX: w*BB_MONO_X_FRAC,
+    ballX: w*BB_BALL_X_FRAC,
     shot: 0,
     score: 0,
     phase: 0,
-    state: 'aim',       // 'aim' | 'flight' | 'result'
+    state: 'aim',       // 'aim' | 'flight' | 'settle' | 'result'
     flightStart: 0,
     flightFrom: null,
-    flightWaypoints: null,
+    flightTo: null,
+    settleFrom: null,
+    settleTo: null,
     resultText: '',
     resultUntil: 0,
     raf: null,
     lastT: 0,
   };
   bb.ctx.imageSmoothingEnabled = false;
+
+  // Botón TIRAR: chico, cuadrado, pegado al suelo justo debajo del aro.
+  const gcRect = gc.getBoundingClientRect();
+  const screenRect = document.getElementById('screen').getBoundingClientRect();
+  const btnSize = 38;
+  shootBtn.style.left = Math.round(gcRect.left - screenRect.left + bb.hoopX - btnSize/2) + 'px';
+  shootBtn.style.top = Math.round(gcRect.top - screenRect.top + bb.groundY + 6) + 'px';
 
   bb.onShoot = () => resolveShot();
   shootBtn.addEventListener('click', bb.onShoot);
@@ -763,43 +791,47 @@ function resolveShot(){
   if (!bb || bb.state !== 'aim' || activeMinigame !== 'basketball') return;
   const diff = BB_DIFFICULTY[bb.shot];
   const h = bbBallHeight(bb.phase);
-  const aim = { x: BB_BALL_X, y: BB_BALL_BOTTOM_Y - h*(BB_BALL_BOTTOM_Y-BB_BALL_TOP_Y) };
+  const aim = { x: bb.ballX, y: bb.ballBottomY - h*(bb.ballBottomY-bb.ballTopY) };
 
-  let points = 0, text = '', fx = '', waypoints;
+  let points = 0, text = '', fx = '', flightTo, settleTo;
   if (h >= diff.peak){
     points = h >= (diff.peak + (1-diff.peak)*0.5) ? 3 : 2;
     text = points === 3 ? '¡SWISH!' : '¡ENCESTÓ!';
     fx = '🏀';
-    waypoints = [aim, { x: BB_HOOP_X, y: BB_HOOP_Y-14 }, { x: BB_HOOP_X, y: BB_HOOP_Y+16 }];
+    flightTo = { x: bb.hoopX, y: bb.hoopY-4 };
+    settleTo = { x: bb.hoopX, y: bb.hoopY+18 };
   } else if (h >= diff.near){
     points = 0;
     text = 'Rebota en el aro…';
     fx = '〰️';
-    waypoints = [aim, { x: BB_HOOP_X, y: BB_HOOP_Y-8 }, { x: BB_HOOP_X-28, y: BB_HOOP_Y+26 }];
+    flightTo = { x: bb.hoopX, y: bb.hoopY-2 };
+    settleTo = { x: bb.hoopX-30, y: bb.hoopY+26 };
   } else {
     points = 0;
     text = 'No alcanza';
     fx = '💨';
-    const shortX = BB_MONO_X + (BB_HOOP_X-BB_MONO_X) * (0.35 + h*0.25);
-    waypoints = [aim, { x: shortX, y: BB_GROUND_Y-26 }, { x: shortX+10, y: BB_GROUND_Y }];
+    const shortX = bb.monoX + (bb.hoopX-bb.monoX) * (0.35 + h*0.25);
+    flightTo = { x: shortX, y: bb.groundY-30 };
+    settleTo = { x: shortX+10, y: bb.groundY };
   }
 
   bb.score += points;
   bb.resultText = `${text} (+${points})`;
   bb.state = 'flight';
   bb.flightStart = performance.now();
-  bb.flightWaypoints = waypoints;
+  bb.flightFrom = aim;
+  bb.flightTo = flightTo;
+  bb.settleFrom = flightTo;
+  bb.settleTo = settleTo;
   floatFx(fx);
 }
 
-function bbFlightPos(t){
-  const [p0, p1, p2] = bb.flightWaypoints;
-  if (t <= 0.5){
-    const k = t/0.5;
-    return { x: p0.x+(p1.x-p0.x)*k, y: p0.y+(p1.y-p0.y)*k };
-  }
-  const k = (t-0.5)/0.5;
-  return { x: p1.x+(p2.x-p1.x)*k, y: p1.y+(p2.y-p1.y)*k };
+/* Arco parabólico real: interpola en línea recta entre p0 y p1, y le resta una
+   "joroba" que sube en el medio del recorrido y vuelve a 0 en los extremos. */
+function bbArcPos(p0, p1, t, arcHeight){
+  const x = p0.x + (p1.x-p0.x)*t;
+  const straightY = p0.y + (p1.y-p0.y)*t;
+  return { x, y: straightY - arcHeight*4*t*(1-t) };
 }
 
 function bbLoop(t){
@@ -813,6 +845,11 @@ function bbLoop(t){
     bb.phase += dt * 2.6 * diff.speed;
   } else if (bb.state === 'flight'){
     if (now - bb.flightStart >= BB_FLIGHT_MS){
+      bb.state = 'settle';
+      bb.settleStart = now;
+    }
+  } else if (bb.state === 'settle'){
+    if (now - bb.settleStart >= BB_SETTLE_MS){
       bb.state = 'result';
       bb.resultUntil = now + BB_RESULT_MS;
     }
@@ -832,6 +869,29 @@ function bbLoop(t){
   bb.raf = requestAnimationFrame(bbLoop);
 }
 
+function bbBallPos(){
+  if (bb.state === 'aim'){
+    const h = bbBallHeight(bb.phase);
+    return { x: bb.ballX, y: bb.ballBottomY - h*(bb.ballBottomY-bb.ballTopY) };
+  }
+  if (bb.state === 'flight'){
+    const t = Math.min(1, (performance.now()-bb.flightStart)/BB_FLIGHT_MS);
+    const dist = Math.abs(bb.flightTo.x - bb.flightFrom.x);
+    const midY = (bb.flightFrom.y + bb.flightTo.y) / 2;
+    const maxArc = Math.max(16, midY - 8); // que el pico nunca se salga por arriba del canvas
+    const arcHeight = Math.min(dist*0.4, maxArc);
+    return bbArcPos(bb.flightFrom, bb.flightTo, t, arcHeight);
+  }
+  if (bb.state === 'settle'){
+    const t = Math.min(1, (performance.now()-bb.settleStart)/BB_SETTLE_MS);
+    return {
+      x: bb.settleFrom.x + (bb.settleTo.x-bb.settleFrom.x)*t,
+      y: bb.settleFrom.y + (bb.settleTo.y-bb.settleFrom.y)*t,
+    };
+  }
+  return bb.settleTo;
+}
+
 function drawBasketball(){
   const { ctx, gc } = bb;
   ctx.clearRect(0,0,gc.width,gc.height);
@@ -845,57 +905,46 @@ function drawBasketball(){
 
   ctx.strokeStyle = 'rgba(200,242,194,.25)';
   ctx.beginPath();
-  ctx.moveTo(0, BB_GROUND_Y+2);
-  ctx.lineTo(gc.width, BB_GROUND_Y+2);
+  ctx.moveTo(0, bb.groundY+2);
+  ctx.lineTo(gc.width, bb.groundY+2);
   ctx.stroke();
 
   drawHoop(ctx);
 
   ctx.save();
-  ctx.translate(BB_MONO_X - 25, BB_GROUND_Y - 55);
-  ctx.scale(0.65, 0.65);
+  ctx.translate(bb.monoX - 26, bb.groundY - bb.h*0.42);
+  const monoScale = Math.min(0.85, bb.h/220);
+  ctx.scale(monoScale, monoScale);
   drawSprite(ctx, displayStage(), debugForcedMood || (state.sick ? 'sick' : 'happy'), 0, true);
   ctx.restore();
 
-  let ballPos;
-  if (bb.state === 'aim'){
-    const h = bbBallHeight(bb.phase);
-    ballPos = { x: BB_BALL_X, y: BB_BALL_BOTTOM_Y - h*(BB_BALL_BOTTOM_Y-BB_BALL_TOP_Y) };
-  } else if (bb.state === 'flight'){
-    const t = Math.min(1, (performance.now()-bb.flightStart)/BB_FLIGHT_MS);
-    ballPos = bbFlightPos(t);
-  } else {
-    ballPos = bb.flightWaypoints[2];
-  }
+  const ballPos = bbBallPos();
   ctx.font = '16px sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('🏀', ballPos.x, ballPos.y);
 
-  ctx.font = '13px monospace';
-  ctx.fillStyle = '#fff';
   if (bb.state === 'result'){
-    ctx.fillText(bb.resultText, gc.width/2, 108);
-  } else if (bb.state === 'aim'){
-    ctx.font = '10px monospace';
-    ctx.fillStyle = 'rgba(255,255,255,.6)';
-    ctx.fillText('TIRAR justo en el punto más alto', gc.width/2, 108);
+    ctx.font = '13px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.fillText(bb.resultText, gc.width/2, bb.hoopY + (bb.groundY-bb.hoopY)*0.55);
   }
 }
 
 function drawHoop(ctx){
+  const x = bb.hoopX, y = bb.hoopY;
   ctx.fillStyle = '#d8d8e0';
-  ctx.fillRect(BB_HOOP_X+16, BB_HOOP_Y-20, 6, 34);
+  ctx.fillRect(x+16, y-20, 6, 34);
   ctx.strokeStyle = '#ff8a3d';
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.ellipse(BB_HOOP_X, BB_HOOP_Y, 16, 5, 0, 0, Math.PI*2);
+  ctx.ellipse(x, y, 16, 5, 0, 0, Math.PI*2);
   ctx.stroke();
   ctx.strokeStyle = 'rgba(255,255,255,.35)';
   ctx.lineWidth = 1;
   for (let i=-1;i<=1;i++){
     ctx.beginPath();
-    ctx.moveTo(BB_HOOP_X+i*10, BB_HOOP_Y+2);
-    ctx.lineTo(BB_HOOP_X+i*6, BB_HOOP_Y+16);
+    ctx.moveTo(x+i*10, y+2);
+    ctx.lineTo(x+i*6, y+16);
     ctx.stroke();
   }
 }
