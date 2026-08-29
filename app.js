@@ -123,30 +123,32 @@ const GATO_BODY = [
   '...OOOO.OO',
 ];
 
-// --- Dino: cresta dorsal + cuerpo inclinado + cola larga ---
+// --- Dino: inclinado hacia adelante, cabeza chica a la izquierda, cola larga
+//     a la derecha — asimétrico a propósito, para no ser un óvalo con picos ---
 const DINO_BODY = [
   '..S.S.S...',
-  '.OAAAAO...',
-  'OAAAAAAO..',
+  '.OAAAO....',
+  'OAAAAAO...',
   'OAAAAAAAO.',
-  'OAAAAAAAAT',
+  'OAAAAAAAAO',
   '.OAAAAAATT',
-  '..OAAAAATT',
-  '..OAAAAO..',
+  '..OAAAATT.',
+  '...OAAO...',
   '..........',
 ];
 
-// --- Bloop (axolote): las 'G' son las branquias, suben o caen según el ánimo ---
+// --- Bloop (axolote): angosto arriba / ancho abajo (silueta "pera"), bien
+//     distinto del óvalo parejo del blob. Las 'G' (branquias) bajan según el ánimo. ---
 const AXOLOTE_BODY = [
   'GG......GG',
   '.GG....GG.',
-  '..OOOOOO..',
+  '...OOOO...',
+  '..OAAAAO..',
   '.OAAAAAAO.',
   'OAAAAAAAAO',
   'OAAAAAAAAO',
   '.OAAAAAAO.',
   '..OAAAAO..',
-  '..........',
 ];
 const AXOLOTE_GILLS_DROOP = ['..........', 'GG......GG'];              // triste: más abajo y juntas
 const AXOLOTE_GILLS_SICK  = ['..........', '.G......G.'];              // enfermo: casi caídas
@@ -157,22 +159,23 @@ function bloopBody(stage, mood){
   return rows;
 }
 
-// --- Sprig (planta): hojas integradas a la copa, se abren en flor si está feliz ---
+// --- Sprig (planta): copa ancha + cuello angosto + maceta — la "cintura" la
+//     separa de ser un óvalo más. Las hojas se abren en flor si está feliz. ---
 const PLANTA_BODY = [
-  '...LLL....',
-  '....L.....',
-  '..OOOOO...',
-  '.OAAAAAO..',
+  '..LLLLL...',
+  '.OAAAAAAO.',
   'OAAAAAAAAO',
   'OAAAAAAAAO',
   '.OAAAAAAO.',
-  '..OAAAAO..',
-  '..........',
+  '...OAAO...',
+  '...OAAO...',
+  '..OOAAOO..',
+  '..OOOOOO..',
 ];
-const PLANTA_FLOR = ['..LWWWL...', '....W.....'];
+const PLANTA_FLOR = '..LWWWL...';
 function sprigBody(stage, mood){
   const rows = [...PLANTA_BODY];
-  if (mood === 'happy'){ rows[0] = PLANTA_FLOR[0]; rows[1] = PLANTA_FLOR[1]; }
+  if (mood === 'happy') rows[0] = PLANTA_FLOR;
   return rows;
 }
 
