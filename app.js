@@ -165,6 +165,17 @@ let animFrame = null;
 let gameOver = false;
 let activeMinigame = null; // null | 'stars' | 'basketball'
 
+/* Modo prueba: no se guarda, vive solo en memoria de la sesión */
+let debugMode = false;
+let debugForcedStage = null; // null = usar la etapa real de la mascota
+let debugForcedMood = null;  // null = usar el ánimo calculado normalmente
+
+const ALL_STAGES = ['egg','baby','child','teen','adult_neutral','adult_good','adult_bad'];
+const ALL_MOODS = ['normal','happy','sad','sick','sleepy','dead'];
+
+function displayStage(){ return debugForcedStage || state.stage; }
+function displayMood(){ return debugForcedMood || currentMood(); }
+
 const walker = { x: 0.5, targetX: 0.5, dir: 1, pauseUntil: 0, frame: 0, lastFrameSwitch: 0 };
 
 function freshState(name){
@@ -225,6 +236,16 @@ function stageFor(ageHours, careScore){
 
 function applyDecay(hours){
   if (hours <= 0) return;
+
+  if (debugMode){
+    state.hunger = state.happiness = state.energy = state.hygiene = state.health = 100;
+    state.sick = false;
+    state.poop = false;
+    state.ageHours += hours;
+    if (!debugForcedStage) state.stage = stageFor(state.ageHours, state.careGood - state.careBad);
+    return;
+  }
+
   const sleepFactor = state.sleeping ? 0.25 : 1;
   state.hunger   = clamp(state.hunger   - hours * 4.2 * sleepFactor);
   state.happiness= clamp(state.happiness- hours * 3.0 * sleepFactor);
@@ -359,7 +380,9 @@ function updateLed(){
 
 function updateWalker(dt){
   if (activeMinigame) return;
-  if (gameOver || state.stage === 'egg' || state.sleeping){
+  const frozen = gameOver || displayStage() === 'egg' || state.sleeping ||
+    debugForcedMood === 'sleepy' || debugForcedMood === 'dead';
+  if (frozen){
     walker.frame = 0;
     return;
   }
@@ -386,6 +409,13 @@ function updateWalker(dt){
 
 function render(){
   if (!state) return;
+
+  if (debugMode){
+    state.hunger = state.happiness = state.energy = state.hygiene = state.health = 100;
+    state.sick = false;
+    state.poop = false;
+  }
+
   document.getElementById('petName').textContent = state.name;
   document.getElementById('petAge').textContent = `Día ${Math.floor(state.ageHours/24)+1}`;
 
@@ -399,7 +429,7 @@ function render(){
 
   const canvas = document.getElementById('petCanvas');
   const ctx = canvas.getContext('2d');
-  drawSprite(ctx, state.stage, currentMood(), walker.frame);
+  drawSprite(ctx, displayStage(), displayMood(), walker.frame);
   canvas.style.left = (walker.x*100) + '%';
   canvas.style.transform = `translateX(-50%) scaleX(${walker.dir})`;
 
@@ -824,7 +854,7 @@ function drawBasketball(){
   ctx.save();
   ctx.translate(BB_MONO_X - 25, BB_GROUND_Y - 55);
   ctx.scale(0.65, 0.65);
-  drawSprite(ctx, state.stage, state.sick ? 'sick' : 'happy', 0, true);
+  drawSprite(ctx, displayStage(), debugForcedMood || (state.sick ? 'sick' : 'happy'), 0, true);
   ctx.restore();
 
   let ballPos;
@@ -920,12 +950,108 @@ function askName(){
   input.focus();
 }
 
+/* ===================== Modo prueba (debug) ===================== */
+
+const STAGE_LABELS = {
+  egg:'🥚 Huevo', baby:'👶 Bebé', child:'🧒 Niño', teen:'🧑 Adolesc.',
+  adult_neutral:'😐 Adulto', adult_good:'✨ Adulto bueno', adult_bad:'😠 Adulto malo',
+};
+const MOOD_LABELS = {
+  normal:'😐 Normal', happy:'😄 Feliz', sad:'😢 Triste',
+  sick:'🤒 Enfermo', sleepy:'😴 Dormido', dead:'👻 Fantasma',
+};
+
+function updateDebugToggleIcon(){
+  document.getElementById('btnDebug').classList.toggle('active', debugMode);
+}
+
+function openDebugMenu(){
+  const stageBtns = ALL_STAGES.map(s => `
+    <button class="debug-btn ${debugForcedStage===s ? 'active':''}" data-stage="${s}">${STAGE_LABELS[s]}</button>
+  `).join('');
+  const moodBtns = ALL_MOODS.map(m => `
+    <button class="debug-btn ${debugForcedMood===m ? 'active':''}" data-mood="${m}">${MOOD_LABELS[m]}</button>
+  `).join('');
+
+  showOverlay(`
+    <h3>🧪 Modo prueba</h3>
+    <div class="debug-panel">
+      <div class="debug-section">
+        <button class="debug-btn wide ${debugMode ? 'active':''}" id="dbgToggleGod">
+          ${debugMode ? '✅ Stats al máximo: ON' : '⬜ Stats al máximo: OFF'}
+        </button>
+      </div>
+      <div class="debug-section">
+        <h4>Etapa del monito</h4>
+        <div class="debug-grid">
+          <button class="debug-btn ${!debugForcedStage ? 'active':''}" id="dbgStageAuto">🔄 Auto</button>
+          ${stageBtns}
+        </div>
+      </div>
+      <div class="debug-section">
+        <h4>Estado de ánimo</h4>
+        <div class="debug-grid">
+          <button class="debug-btn ${!debugForcedMood ? 'active':''}" id="dbgMoodAuto">🔄 Auto</button>
+          ${moodBtns}
+        </div>
+      </div>
+      <div class="debug-section">
+        <h4>Minijuegos</h4>
+        <div class="debug-grid">
+          <button class="debug-btn" id="dbgStars">⭐ Estrellas</button>
+          <button class="debug-btn" id="dbgBasketball">🏀 Baloncesto</button>
+        </div>
+      </div>
+      <div class="debug-section">
+        <h4>Otras pruebas</h4>
+        <div class="debug-grid">
+          <button class="debug-btn" id="dbgPoop">💩 Ensuciar</button>
+          <button class="debug-btn danger" id="dbgGameOver">💀 Game Over</button>
+        </div>
+      </div>
+      <button class="overlay-btn" id="btnCloseDebug">Cerrar</button>
+    </div>
+  `);
+
+  document.getElementById('dbgToggleGod').addEventListener('click', () => {
+    debugMode = !debugMode;
+    updateDebugToggleIcon();
+    openDebugMenu();
+  });
+  document.getElementById('dbgStageAuto').addEventListener('click', () => {
+    debugForcedStage = null; render(); openDebugMenu();
+  });
+  document.querySelectorAll('[data-stage]').forEach(el => {
+    el.addEventListener('click', () => { debugForcedStage = el.dataset.stage; render(); openDebugMenu(); });
+  });
+  document.getElementById('dbgMoodAuto').addEventListener('click', () => {
+    debugForcedMood = null; render(); openDebugMenu();
+  });
+  document.querySelectorAll('[data-mood]').forEach(el => {
+    el.addEventListener('click', () => { debugForcedMood = el.dataset.mood; render(); openDebugMenu(); });
+  });
+  document.getElementById('dbgStars').addEventListener('click', () => { hideOverlay(); startStarsGame(); });
+  document.getElementById('dbgBasketball').addEventListener('click', () => { hideOverlay(); startBasketballGame(); });
+  document.getElementById('dbgPoop').addEventListener('click', () => {
+    state.poop = true; saveState(); render(); openDebugMenu();
+  });
+  document.getElementById('dbgGameOver').addEventListener('click', () => {
+    hideOverlay();
+    debugMode = false;
+    updateDebugToggleIcon();
+    state.health = 0;
+    triggerGameOver();
+  });
+  document.getElementById('btnCloseDebug').addEventListener('click', hideOverlay);
+}
+
 function wireButtons(){
   document.getElementById('btnFeed').addEventListener('click', requireAlive(btnFeed));
   document.getElementById('btnPlay').addEventListener('click', requireAlive(openGamesMenu));
   document.getElementById('btnClean').addEventListener('click', requireAlive(btnClean));
   document.getElementById('btnFoodMenu').addEventListener('click', requireAlive(openFoodMenu));
   document.getElementById('btnMed').addEventListener('click', requireAlive(btnMed));
+  document.getElementById('btnDebug').addEventListener('click', requireAlive(openDebugMenu));
   document.getElementById('btnReset').addEventListener('click', () => {
     showOverlay(`
       <h3>¿Reiniciar?</h3>
