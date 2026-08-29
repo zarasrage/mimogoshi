@@ -1171,13 +1171,16 @@ function drawPixel(
   ctx.fillStyle =
     color;
 
+  /* Redondeado a píxeles enteros: los tamaños de la cara vienen en
+     fracciones de celda (0.18, 0.72, etc.) y sin esto el canvas los
+     dibuja con antialiasing en los bordes — se ven borrosos y
+     desalineados contra los bloques nítidos de 8px del cuerpo. */
+  const px = Math.round(x * CELL);
+  const py = Math.round(y * CELL);
+  const pw = Math.max(1, Math.round(w * CELL));
+  const ph = Math.max(1, Math.round(h * CELL));
 
-  ctx.fillRect(
-    x * CELL,
-    y * CELL,
-    w * CELL,
-    h * CELL
-  );
+  ctx.fillRect(px, py, pw, ph);
 
 }
 
