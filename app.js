@@ -9,8 +9,15 @@
    No hay más dibujo procedural que el huevo — para esa etapa no vino arte, así
    que se pinta a mano con un óvalo chico, igual para las 4 especies. */
 
-const CANVAS_W = 80;
-const CANVAS_H = 88;
+/* 64x64 a propósito: es múltiplo entero del tamaño nativo de los dos tipos de
+   arte que hay (32px en Mimo/Gato/Mushii → x2, 64px en Blip → x1), y el CSS
+   muestra el canvas 1:1 (64px), así que la única escala que queda es la del
+   dispositivo (2x/3x), que es entera. Con medidas que no calzan (antes: canvas
+   80x88, sprite dibujado a 72, mostrado a 50x55) unos píxeles del arte salían
+   de 2 y otros de 3, y en una cara de 32x32 eso junta los ojos con la boca en
+   un borrón — que es exactamente la "cara extra" que se veía. */
+const CANVAS_W = 64;
+const CANVAS_H = 64;
 
 const OUTLINE = '#20141c';
 
@@ -215,7 +222,8 @@ function pickAnimation(species, mood, walkFrame, now){
 
 function drawEgg(ctx){
   const pal = PALETTES.egg;
-  const cx = CANVAS_W/2, cy = CANVAS_H/2 + 6, rx = 16, ry = 20;
+  const rx = 16, ry = 20;
+  const cx = CANVAS_W/2, cy = CANVAS_H - ry - 2; // apoyado en el piso, igual que los sprites
   ctx.fillStyle = pal.O;
   ctx.beginPath();
   ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
@@ -228,9 +236,13 @@ function drawEgg(ctx){
 
 /* ===================== Render ===================== */
 
-const PET_DRAW_W = 72, PET_DRAW_H = 72;
-const PET_DRAW_X = (CANVAS_W - PET_DRAW_W) / 2;
-const PET_DRAW_Y = (CANVAS_H - PET_DRAW_H) / 2;
+/* Cuántos píxeles de canvas ocupa un píxel del arte. Siempre entero, y siempre
+   el mismo para todos los píxeles del frame — es lo único que mantiene el pixel
+   art nítido. Con el arte de 32px da 2 y con el de 64px da 1: en ambos casos el
+   sprite termina midiendo 64x64 y llenando el canvas. */
+function pixelScale(frame){
+  return Math.max(1, Math.floor(Math.min(CANVAS_W / frame.w, CANVAS_H / frame.h)));
+}
 
 /* La especie activa es la de la mascota guardada, salvo que el panel de
    prueba la esté forzando para previsualizar las otras. */
@@ -254,7 +266,12 @@ function drawSprite(ctx, stage, mood, walkFrame, noClear){
   const { name, startedAt } = pickAnimation(species, mood, walkFrame, now);
   const frame = frameAtElapsed(species, name, now - startedAt);
 
-  ctx.drawImage(species.image, frame.x, frame.y, frame.w, frame.h, PET_DRAW_X, PET_DRAW_Y, PET_DRAW_W, PET_DRAW_H);
+  const scale = pixelScale(frame);
+  const dw = frame.w * scale, dh = frame.h * scale;
+  const dx = Math.round((CANVAS_W - dw) / 2);
+  const dy = CANVAS_H - dh; // apoyado en el piso
+
+  ctx.drawImage(species.image, frame.x, frame.y, frame.w, frame.h, dx, dy, dw, dh);
 }
 
 /* ===================== Comida ===================== */
@@ -1032,11 +1049,10 @@ function drawBasketball(){
 
   drawHoop(ctx);
 
-  // Mismo tamaño (50x55) y mismo piso que la mascota fuera de los minijuegos.
-  const MONO_W = 50, MONO_H = 55;
+  // Mismo tamaño y mismo piso que la mascota fuera de los minijuegos. Sin
+  // ctx.scale(): se dibuja 1:1 para no reintroducir una escala fraccionaria.
   ctx.save();
-  ctx.translate(bb.monoX - MONO_W/2, bb.groundY - MONO_H);
-  ctx.scale(MONO_W/CANVAS_W, MONO_H/CANVAS_H);
+  ctx.translate(Math.round(bb.monoX - CANVAS_W/2), Math.round(bb.groundY - CANVAS_H));
   drawSprite(ctx, displayStage(), debugForcedMood || (state.sick ? 'sick' : 'happy'), 0, true);
   ctx.restore();
 

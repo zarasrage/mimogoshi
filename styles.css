@@ -222,8 +222,11 @@ body{
 
 #petCanvas{
   image-rendering:pixelated;
-  width:50px;
-  height:55px;
+  /* 1:1 con el backing store (64x64 en el HTML). Si acá se pone otro tamaño,
+     el navegador reescala por un factor fraccionario y el pixel art se embarra
+     — sobre todo la cara. Para agrandarlo, subir de a múltiplos: 128, 192. */
+  width:64px;
+  height:64px;
   position:absolute;
   bottom:4px;
   left:50%;
