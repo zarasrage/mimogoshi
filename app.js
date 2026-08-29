@@ -1,17 +1,23 @@
-/* ===================== Mimogoshi — Blip (sprite sheet real) =====================
-   Blip se dibuja recortando frames reales de blip_spritesheet.png, usando
-   las coordenadas y animaciones descritas en blip_spritesheet.json (el mismo
-   objeto va embebido acá abajo para no depender de un fetch()). No hay más
-   dibujo procedural que el huevo — para esa etapa no vino arte, así que se
-   pinta a mano con un óvalo chico. */
+/* ===================== Mimogoshi — especies (sprite sheets reales) =====================
+   Cada especie se dibuja recortando frames reales de su spritesheet PNG. Hay dos
+   formatos de JSON de origen (según quién los dibujó):
+   - "índices" (Blip): frames numerados 0..N + animations con {frames:[índices], fps, loop}.
+   - "nombrados" (Mimo/Gato/Mushii): frames con nombre ("normal","walk_1",...) +
+     animations con {frames:[nombres], durations_ms:[...]} (sin loop explícito).
+   normalizeSpecies() convierte ambos a un mismo runtime: frames indexables por
+   posición y animations con "steps" (lista de {frame, durationMs}) + loop.
+   No hay más dibujo procedural que el huevo — para esa etapa no vino arte, así
+   que se pinta a mano con un óvalo chico, igual para las 4 especies. */
 
 const CANVAS_W = 80;
 const CANVAS_H = 88;
 
 const OUTLINE = '#20141c';
 
-/* La etapa sigue tiñendo a Blip un poco (además del color nativo del arte).
-   child/adult_neutral quedan sin teñir porque el arte ya es de ese tono azul. */
+/* La etapa sigue tiñendo a la mascota un poco (además del color nativo del arte).
+   child/adult_neutral quedan sin teñir porque el arte de Blip ya es de ese tono azul;
+   para las otras especies el tinte es el mismo overlay, se ve más sutil o más fuerte
+   según el color base de cada una. */
 const PALETTES = {
   baby:          { A:'#ffd166', O:'#c9a24a' },
   child:         { A:'#7bdff2' },
@@ -22,11 +28,16 @@ const PALETTES = {
   egg:           { A:'#fff4d6', O:'#c9a24a' },
 };
 
-/* ===================== Sprite sheet (JSON) =====================
-   Mismo documento que blip_spritesheet.json en la raíz del repo. */
-const BLIP_SPRITESHEET = {
+/* Animaciones que representan un ánimo continuo (se repiten en loop). El resto
+   son acciones de una sola vez (comer, mimo, limpiar, medicina, celebrar). */
+const LOOPING_ANIMS = new Set(['idle', 'walk', 'sad', 'sick', 'sleep', 'dead']);
+
+/* ===================== Definiciones crudas (mismo documento que los .json en la raíz) ===== */
+
+const BLIP_RAW = {
   id: 'blip',
   name: 'Blip',
+  schema: 'indexed',
   image: 'blip_spritesheet.png',
   frameWidth: 64,
   frameHeight: 64,
@@ -56,43 +67,145 @@ const BLIP_SPRITESHEET = {
   },
 };
 
-const BLIP_IMAGE = new Image();
-let blipImageReady = false;
-BLIP_IMAGE.onload = () => { blipImageReady = true; };
-BLIP_IMAGE.src = BLIP_SPRITESHEET.image;
+const MIMO_RAW = {
+  id: 'mimo',
+  name: 'Mimo',
+  schema: 'named',
+  image: 'mimo_spritesheet.png',
+  tileWidth: 32, tileHeight: 32,
+  columns: 7, rows: 4,
+  frames: {normal:{index:0,x:0,y:0,w:32,h:32},blink:{index:1,x:32,y:0,w:32,h:32},idle_squash:{index:2,x:64,y:0,w:32,h:32},walk_1:{index:3,x:96,y:0,w:32,h:32},walk_2:{index:4,x:128,y:0,w:32,h:32},happy_1:{index:5,x:160,y:0,w:32,h:32},happy_2:{index:6,x:192,y:0,w:32,h:32},happy_3:{index:7,x:0,y:32,w:32,h:32},happy_4:{index:8,x:32,y:32,w:32,h:32},sad_1:{index:9,x:64,y:32,w:32,h:32},sad_2:{index:10,x:96,y:32,w:32,h:32},sick_1:{index:11,x:128,y:32,w:32,h:32},sick_2:{index:12,x:160,y:32,w:32,h:32},sleep_1:{index:13,x:192,y:32,w:32,h:32},sleep_2:{index:14,x:0,y:64,w:32,h:32},eat_1:{index:15,x:32,y:64,w:32,h:32},eat_2:{index:16,x:64,y:64,w:32,h:32},eat_3:{index:17,x:96,y:64,w:32,h:32},pet_1:{index:18,x:128,y:64,w:32,h:32},pet_2:{index:19,x:160,y:64,w:32,h:32},pet_3:{index:20,x:192,y:64,w:32,h:32},clean_1:{index:21,x:0,y:96,w:32,h:32},clean_2:{index:22,x:32,y:96,w:32,h:32},medicine_1:{index:23,x:64,y:96,w:32,h:32},medicine_2:{index:24,x:96,y:96,w:32,h:32},celebrate:{index:25,x:128,y:96,w:32,h:32},dead_1:{index:26,x:160,y:96,w:32,h:32},dead_2:{index:27,x:192,y:96,w:32,h:32}},
+  animations: {idle:{frames:["normal","idle_squash","normal","blink"],durations_ms:[780,780,2500,180]},walk:{frames:["walk_1","walk_2"],durations_ms:[220,220]},happy:{frames:["happy_1","happy_2","happy_3","happy_4","normal"],durations_ms:[150,150,200,150,1750]},sad:{frames:["sad_1","sad_2"],durations_ms:[900,900]},sick:{frames:["sick_1","sick_2"],durations_ms:[170,170]},sleep:{frames:["sleep_1","sleep_2"],durations_ms:[800,800]},eat:{frames:["eat_1","eat_2","eat_3"],durations_ms:[220,220,320]},pet:{frames:["pet_1","pet_2","pet_3","happy_4"],durations_ms:[150,150,180,420]},clean:{frames:["clean_1","clean_2","clean_1","clean_2"],durations_ms:[100,100,100,400]},medicine:{frames:["medicine_1","blink","medicine_2"],durations_ms:[220,220,410]},celebrate:{frames:["happy_1","happy_2","celebrate","happy_4"],durations_ms:[150,150,220,380]},dead:{frames:["dead_1","dead_2"],durations_ms:[520,520]}},
+};
+
+const GATO_RAW = {
+  id: 'gato',
+  name: 'Gato',
+  schema: 'named',
+  image: 'gato_spritesheet.png',
+  tileWidth: 32, tileHeight: 32,
+  columns: 7, rows: 4,
+  frames: {normal:{index:0,x:0,y:0,w:32,h:32},blink:{index:1,x:32,y:0,w:32,h:32},idle_squash:{index:2,x:64,y:0,w:32,h:32},walk_1:{index:3,x:96,y:0,w:32,h:32},walk_2:{index:4,x:128,y:0,w:32,h:32},happy_1:{index:5,x:160,y:0,w:32,h:32},happy_2:{index:6,x:192,y:0,w:32,h:32},happy_3:{index:7,x:0,y:32,w:32,h:32},happy_4:{index:8,x:32,y:32,w:32,h:32},sad_1:{index:9,x:64,y:32,w:32,h:32},sad_2:{index:10,x:96,y:32,w:32,h:32},sick_1:{index:11,x:128,y:32,w:32,h:32},sick_2:{index:12,x:160,y:32,w:32,h:32},sleep_1:{index:13,x:192,y:32,w:32,h:32},sleep_2:{index:14,x:0,y:64,w:32,h:32},eat_1:{index:15,x:32,y:64,w:32,h:32},eat_2:{index:16,x:64,y:64,w:32,h:32},eat_3:{index:17,x:96,y:64,w:32,h:32},pet_1:{index:18,x:128,y:64,w:32,h:32},pet_2:{index:19,x:160,y:64,w:32,h:32},pet_3:{index:20,x:192,y:64,w:32,h:32},clean_1:{index:21,x:0,y:96,w:32,h:32},clean_2:{index:22,x:32,y:96,w:32,h:32},medicine_1:{index:23,x:64,y:96,w:32,h:32},medicine_2:{index:24,x:96,y:96,w:32,h:32},celebrate:{index:25,x:128,y:96,w:32,h:32},dead_1:{index:26,x:160,y:96,w:32,h:32},dead_2:{index:27,x:192,y:96,w:32,h:32}},
+  animations: {idle:{frames:["normal","idle_squash","normal","blink"],durations_ms:[780,780,2500,180]},walk:{frames:["walk_1","walk_2"],durations_ms:[220,220]},happy:{frames:["happy_1","happy_2","happy_3","happy_4","normal"],durations_ms:[150,150,200,150,1750]},sad:{frames:["sad_1","sad_2"],durations_ms:[900,900]},sick:{frames:["sick_1","sick_2"],durations_ms:[170,170]},sleep:{frames:["sleep_1","sleep_2"],durations_ms:[800,800]},eat:{frames:["eat_1","eat_2","eat_3"],durations_ms:[220,220,320]},pet:{frames:["pet_1","pet_2","pet_3","happy_4"],durations_ms:[150,150,180,420]},clean:{frames:["clean_1","clean_2","clean_1","clean_2"],durations_ms:[100,100,100,400]},medicine:{frames:["medicine_1","blink","medicine_2"],durations_ms:[220,220,410]},celebrate:{frames:["happy_1","happy_2","celebrate","happy_4"],durations_ms:[150,150,220,380]},dead:{frames:["dead_1","dead_2"],durations_ms:[520,520]}},
+};
+
+const MUSHII_RAW = {
+  id: 'mushii',
+  name: 'Mushii',
+  schema: 'named',
+  image: 'mushii_spritesheet.png',
+  tileWidth: 32, tileHeight: 32,
+  columns: 7, rows: 4,
+  frames: {normal:{index:0,x:0,y:0,w:32,h:32},blink:{index:1,x:32,y:0,w:32,h:32},idle_squash:{index:2,x:64,y:0,w:32,h:32},walk_1:{index:3,x:96,y:0,w:32,h:32},walk_2:{index:4,x:128,y:0,w:32,h:32},happy_1:{index:5,x:160,y:0,w:32,h:32},happy_2:{index:6,x:192,y:0,w:32,h:32},happy_3:{index:7,x:0,y:32,w:32,h:32},happy_4:{index:8,x:32,y:32,w:32,h:32},sad_1:{index:9,x:64,y:32,w:32,h:32},sad_2:{index:10,x:96,y:32,w:32,h:32},sick_1:{index:11,x:128,y:32,w:32,h:32},sick_2:{index:12,x:160,y:32,w:32,h:32},sleep_1:{index:13,x:192,y:32,w:32,h:32},sleep_2:{index:14,x:0,y:64,w:32,h:32},eat_1:{index:15,x:32,y:64,w:32,h:32},eat_2:{index:16,x:64,y:64,w:32,h:32},eat_3:{index:17,x:96,y:64,w:32,h:32},pet_1:{index:18,x:128,y:64,w:32,h:32},pet_2:{index:19,x:160,y:64,w:32,h:32},pet_3:{index:20,x:192,y:64,w:32,h:32},clean_1:{index:21,x:0,y:96,w:32,h:32},clean_2:{index:22,x:32,y:96,w:32,h:32},medicine_1:{index:23,x:64,y:96,w:32,h:32},medicine_2:{index:24,x:96,y:96,w:32,h:32},celebrate:{index:25,x:128,y:96,w:32,h:32},dead_1:{index:26,x:160,y:96,w:32,h:32},dead_2:{index:27,x:192,y:96,w:32,h:32}},
+  animations: {idle:{frames:["normal","idle_squash","normal","blink"],durations_ms:[780,780,2500,180]},walk:{frames:["walk_1","walk_2"],durations_ms:[220,220]},happy:{frames:["happy_1","happy_2","happy_3","happy_4","normal"],durations_ms:[150,150,200,150,1750]},sad:{frames:["sad_1","sad_2"],durations_ms:[900,900]},sick:{frames:["sick_1","sick_2"],durations_ms:[170,170]},sleep:{frames:["sleep_1","sleep_2"],durations_ms:[800,800]},eat:{frames:["eat_1","eat_2","eat_3"],durations_ms:[220,220,320]},pet:{frames:["pet_1","pet_2","pet_3","happy_4"],durations_ms:[150,150,180,420]},clean:{frames:["clean_1","clean_2","clean_1","clean_2"],durations_ms:[100,100,100,400]},medicine:{frames:["medicine_1","blink","medicine_2"],durations_ms:[220,220,410]},celebrate:{frames:["happy_1","happy_2","celebrate","happy_4"],durations_ms:[150,150,220,380]},dead:{frames:["dead_1","dead_2"],durations_ms:[520,520]}},
+};
+
+/* ===================== Normalización a un runtime único =====================
+   Sea cual sea el esquema de origen, el resultado siempre tiene:
+   - frames: array indexable [ {x,y,w,h}, ... ]
+   - animations: { nombre: { steps:[{frameIndex,durationMs}], loop:bool } }
+   - image: HTMLImageElement, y `ready` que se pone en true cuando carga. */
+
+function normalizeSpecies(raw){
+  let frames, frameAt;
+
+  if (raw.schema === 'indexed'){
+    frames = raw.frames.map(f => ({ x:f.x, y:f.y, w:f.w, h:f.h }));
+    frameAt = (ref) => frames[ref];
+  } else {
+    const names = Object.keys(raw.frames).sort((a,b) => raw.frames[a].index - raw.frames[b].index);
+    frames = names.map(n => ({ x:raw.frames[n].x, y:raw.frames[n].y, w:raw.frames[n].w, h:raw.frames[n].h }));
+    const nameToIndex = {};
+    names.forEach((n, i) => { nameToIndex[n] = i; });
+    frameAt = (ref) => frames[nameToIndex[ref]];
+  }
+
+  const animations = {};
+  Object.keys(raw.animations).forEach(animName => {
+    const a = raw.animations[animName];
+    let steps;
+    if (raw.schema === 'indexed'){
+      const frameMs = 1000 / a.fps;
+      steps = a.frames.map(idx => ({ frame: frameAt(idx), durationMs: frameMs }));
+    } else {
+      steps = a.frames.map((name, i) => ({ frame: frameAt(name), durationMs: a.durations_ms[i] }));
+    }
+    const loop = (typeof a.loop === 'boolean') ? a.loop : LOOPING_ANIMS.has(animName);
+    animations[animName] = { steps, loop };
+  });
+
+  const image = new Image();
+  const runtime = { id: raw.id, name: raw.name, image, ready: false, animations };
+  image.onload = () => { runtime.ready = true; };
+  image.src = raw.image;
+  return runtime;
+}
+
+const SPECIES_RAW = { blip: BLIP_RAW, mimo: MIMO_RAW, gato: GATO_RAW, mushii: MUSHII_RAW };
+const SPECIES = {
+  blip:   normalizeSpecies(BLIP_RAW),
+  mimo:   normalizeSpecies(MIMO_RAW),
+  gato:   normalizeSpecies(GATO_RAW),
+  mushii: normalizeSpecies(MUSHII_RAW),
+};
+const SPECIES_IDS = ['blip', 'mimo', 'gato', 'mushii'];
+function speciesById(id){ return SPECIES[id] || SPECIES.blip; }
+
+/* Estilo inline para mostrar el primer frame ("normal"/idle) de una especie como
+   miniatura de tamaño fijo en el selector, recortando su spritesheet real vía
+   background-position en vez de tener que precortar archivos aparte. */
+function speciesThumbStyle(id, boxPx){
+  const raw = SPECIES_RAW[id];
+  const tileW = raw.schema === 'indexed' ? raw.frameWidth : raw.tileWidth;
+  const tileH = raw.schema === 'indexed' ? raw.frameHeight : raw.tileHeight;
+  const fullW = raw.columns * tileW, fullH = raw.rows * tileH;
+  const frame = raw.schema === 'indexed' ? raw.frames[0] : raw.frames.normal;
+  const scale = boxPx / tileW;
+  return [
+    `width:${boxPx}px`, `height:${Math.round(tileH*scale)}px`,
+    `background-image:url('${raw.image}')`,
+    `background-size:${Math.round(fullW*scale)}px ${Math.round(fullH*scale)}px`,
+    `background-position:-${Math.round(frame.x*scale)}px -${Math.round(frame.y*scale)}px`,
+    `image-rendering:pixelated`,
+  ].join(';');
+}
 
 /* ===================== Reproductor de animación =====================
-   Recorre animations[nombre].frames a "fps" cuadros por segundo. El flag
-   "loop" del JSON importa para decidir cuánto dura una acción (comer, mimo,
-   etc.) antes de volver al ánimo normal; mientras una animación de ánimo
-   está activa (idle/walk/happy/sad/sick/sleep/dead) siempre se repite, para
-   que Blip nunca se quede pegado en un cuadro mientras ese ánimo dure. */
+   Recorre animations[nombre].steps sumando duraciones (cada paso puede durar
+   distinto, según venga de fps uniforme o de durations_ms a mano). El flag
+   "loop" decide si una animación de ánimo se repite sin fin (idle/walk/sad/
+   sick/sleep/dead) o si una acción (comer, mimo, limpiar...) se reproduce una
+   vez y vuelve sola al ánimo normal. */
 
-function animFrameMs(name){ return 1000 / BLIP_SPRITESHEET.animations[name].fps; }
-function animDuration(name){
-  const anim = BLIP_SPRITESHEET.animations[name];
-  return anim.frames.length * animFrameMs(name);
-}
-function frameIndexAt(name, elapsed){
-  const anim = BLIP_SPRITESHEET.animations[name];
-  const frameMs = animFrameMs(name);
-  const t = elapsed % (anim.frames.length * frameMs);
-  const i = Math.min(anim.frames.length - 1, Math.floor(t / frameMs));
-  return anim.frames[i];
+function animTotalMs(species, name){
+  const anim = species.animations[name];
+  return anim.steps.reduce((sum, s) => sum + s.durationMs, 0);
 }
 
-let blipAction = null; // { name, startedAt } — animación de una sola vez (comer, mimo, limpiar...)
-
-function triggerBlipAction(name){
-  if (!BLIP_SPRITESHEET.animations[name]) return;
-  blipAction = { name, startedAt: performance.now() };
+function frameAtElapsed(species, name, elapsedMs){
+  const anim = species.animations[name];
+  const total = animTotalMs(species, name);
+  let t = anim.loop ? elapsedMs % total : Math.min(elapsedMs, total - 0.001);
+  for (const step of anim.steps){
+    if (t < step.durationMs) return step.frame;
+    t -= step.durationMs;
+  }
+  return anim.steps[anim.steps.length - 1].frame;
 }
 
-function pickAnimation(mood, walkFrame, now){
-  if (blipAction){
-    const elapsed = now - blipAction.startedAt;
-    if (elapsed < animDuration(blipAction.name)) return { name: blipAction.name, startedAt: blipAction.startedAt };
-    blipAction = null;
+let petAction = null; // { name, startedAt } — animación de una sola vez (comer, mimo, limpiar...)
+
+function triggerPetAction(name){
+  const species = speciesById(currentSpeciesId());
+  if (!species.animations[name]) return;
+  petAction = { name, startedAt: performance.now() };
+}
+
+function pickAnimation(species, mood, walkFrame, now){
+  if (petAction && species.animations[petAction.name]){
+    const elapsed = now - petAction.startedAt;
+    if (elapsed < animTotalMs(species, petAction.name)) return { name: petAction.name, startedAt: petAction.startedAt };
+    petAction = null;
   }
   if (mood === 'dead')    return { name:'dead',  startedAt:0 };
   if (mood === 'sleepy')  return { name:'sleep', startedAt:0 };
@@ -104,9 +217,9 @@ function pickAnimation(mood, walkFrame, now){
 }
 
 /* ===================== Huevo =====================
-   No vino arte para esta etapa: un óvalo chico dibujado a mano. */
+   No vino arte para esta etapa en ninguna especie: un óvalo chico dibujado a mano. */
 
-function drawBlipEgg(ctx, stage){
+function drawEgg(ctx, stage){
   const pal = PALETTES[stage] || PALETTES.egg;
   const cx = CANVAS_W/2, cy = CANVAS_H/2 + 6, rx = 16, ry = 20;
   ctx.fillStyle = pal.O || '#c9a24a';
@@ -121,27 +234,33 @@ function drawBlipEgg(ctx, stage){
 
 /* ===================== Render ===================== */
 
-const BLIP_DRAW_W = 72, BLIP_DRAW_H = 72;
-const BLIP_DRAW_X = (CANVAS_W - BLIP_DRAW_W) / 2;
-const BLIP_DRAW_Y = (CANVAS_H - BLIP_DRAW_H) / 2;
+const PET_DRAW_W = 72, PET_DRAW_H = 72;
+const PET_DRAW_X = (CANVAS_W - PET_DRAW_W) / 2;
+const PET_DRAW_Y = (CANVAS_H - PET_DRAW_H) / 2;
+
+/* La especie activa es la de la mascota guardada, salvo que el panel de
+   prueba la esté forzando para previsualizar las otras. */
+function currentSpeciesId(){
+  return (typeof debugForcedSpecies !== 'undefined' && debugForcedSpecies) || (state && state.species) || 'blip';
+}
 
 function drawSprite(ctx, stage, mood, walkFrame, noClear){
   if (!noClear) ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
   ctx.imageSmoothingEnabled = false;
 
   if (stage === 'egg'){
-    drawBlipEgg(ctx, stage);
+    drawEgg(ctx, stage);
     return;
   }
 
-  if (!blipImageReady) return; // la imagen carga async; el próximo frame ya la tiene
+  const species = speciesById(currentSpeciesId());
+  if (!species.ready) return; // la imagen carga async; el próximo frame ya la tiene
 
   const now = performance.now();
-  const { name, startedAt } = pickAnimation(mood, walkFrame, now);
-  const frameIndex = frameIndexAt(name, now - startedAt);
-  const frame = BLIP_SPRITESHEET.frames[frameIndex];
+  const { name, startedAt } = pickAnimation(species, mood, walkFrame, now);
+  const frame = frameAtElapsed(species, name, now - startedAt);
 
-  ctx.drawImage(BLIP_IMAGE, frame.x, frame.y, frame.w, frame.h, BLIP_DRAW_X, BLIP_DRAW_Y, BLIP_DRAW_W, BLIP_DRAW_H);
+  ctx.drawImage(species.image, frame.x, frame.y, frame.w, frame.h, PET_DRAW_X, PET_DRAW_Y, PET_DRAW_W, PET_DRAW_H);
 
   const tint = (PALETTES[stage] || {}).A;
   if (tint && stage !== 'child' && stage !== 'adult_neutral'){
@@ -149,10 +268,11 @@ function drawSprite(ctx, stage, mood, walkFrame, noClear){
     ctx.globalCompositeOperation = 'source-atop';
     ctx.globalAlpha = 0.4;
     ctx.fillStyle = tint;
-    ctx.fillRect(BLIP_DRAW_X, BLIP_DRAW_Y, BLIP_DRAW_W, BLIP_DRAW_H);
+    ctx.fillRect(PET_DRAW_X, PET_DRAW_Y, PET_DRAW_W, PET_DRAW_H);
     ctx.restore();
   }
 }
+
 /* ===================== Comida ===================== */
 
 const FOODS = [
@@ -180,8 +300,9 @@ let activeMinigame = null; // null | 'stars' | 'basketball'
 
 /* Modo prueba: no se guarda, vive solo en memoria de la sesión */
 let debugMode = false;
-let debugForcedStage = null; // null = usar la etapa real de la mascota
-let debugForcedMood = null;  // null = usar el ánimo calculado normalmente
+let debugForcedStage = null;   // null = usar la etapa real de la mascota
+let debugForcedMood = null;    // null = usar el ánimo calculado normalmente
+let debugForcedSpecies = null; // null = usar la especie real de la mascota
 
 const ALL_STAGES = ['egg','baby','child','teen','adult_neutral','adult_good','adult_bad'];
 const ALL_MOODS = ['normal','happy','sad','sick','sleepy','dead'];
@@ -191,9 +312,10 @@ function displayMood(){ return debugForcedMood || currentMood(); }
 
 const walker = { x: 0.5, targetX: 0.5, dir: 1, pauseUntil: 0, frame: 0, lastFrameSwitch: 0 };
 
-function freshState(name){
+function freshState(name, species){
   return {
-    name: name || 'Blip',
+    name: name || speciesById(species).name,
+    species: species || 'blip',
     bornAt: Date.now(),
     lastUpdate: Date.now(),
     ageHours: 0,
@@ -221,6 +343,7 @@ function loadState(){
     if (!s || typeof s !== 'object') return null;
     if (!s.selectedFood) s.selectedFood = 'simple';
     if (!s.unlockedFoods) s.unlockedFoods = ['simple'];
+    if (!s.species || !SPECIES[s.species]) s.species = 'blip'; // saves viejos, antes de sumar especies
     return s;
   } catch (e) {
     return null;
@@ -501,7 +624,7 @@ const btnFeed = () => {
   state.energy = clamp(state.energy + 4);
   floatFx(food.emoji);
   say('¡Ñam ñam!');
-  triggerBlipAction('eat');
+  triggerPetAction('eat');
   saveState(); render();
 };
 
@@ -512,7 +635,7 @@ const btnClean = () => {
   state.poop = false;
   floatFx('🫧');
   say(state.stage === 'egg' ? 'Huevo brillante' : '¡Ya quedó limpio!');
-  if (state.stage !== 'egg') triggerBlipAction('clean');
+  if (state.stage !== 'egg') triggerPetAction('clean');
   saveState(); render();
 };
 
@@ -523,7 +646,7 @@ const btnMed = () => {
   state.health = clamp(state.health + 20);
   floatFx('💊');
   say('Se siente mejor');
-  triggerBlipAction('medicine');
+  triggerPetAction('medicine');
   saveState(); render();
 };
 
@@ -716,7 +839,7 @@ function endStarsGame(){
   state.hygiene = clamp(state.hygiene - 5);
 
   say(score > 0 ? `¡${score} estrellas! +${happinessGain} felicidad` : 'Mmm, la próxima será');
-  if (happinessGain > 0) triggerBlipAction('celebrate');
+  if (happinessGain > 0) triggerPetAction('celebrate');
   activeMinigame = null;
   sg = null;
   saveState(); render();
@@ -977,7 +1100,7 @@ function endBasketballGame(){
   state.energy = clamp(state.energy - 16);
 
   say(`${score} puntos en baloncesto. +${happinessGain} felicidad`);
-  if (happinessGain > 0) triggerBlipAction('celebrate');
+  if (happinessGain > 0) triggerPetAction('celebrate');
   activeMinigame = null;
   bb = null;
   saveState(); render();
@@ -995,17 +1118,45 @@ function hideOverlay(){
   document.getElementById('overlay').classList.add('hidden');
 }
 
+let pickedSpecies = 'blip';
+
+function renderSpeciesPicker(){
+  return SPECIES_IDS.map(id => `
+    <div class="menu-item species-item ${pickedSpecies===id ? 'selected':''}" data-species="${id}">
+      <span class="species-thumb" style="${speciesThumbStyle(id, 34)}"></span>
+      <div class="info"><b>${SPECIES_RAW[id].name}</b></div>
+    </div>
+  `).join('');
+}
+
 function askName(){
+  pickedSpecies = 'blip';
   showOverlay(`
     <h3>🥚 Un nuevo Mimogoshi</h3>
+    <p>¿Qué especie va a ser?</p>
+    <div class="menu-list species-list" id="speciesList">${renderSpeciesPicker()}</div>
     <p>¿Cómo se va a llamar?</p>
     <div><input id="nameInput" maxlength="14" placeholder="Nombre" autofocus></div>
     <button class="overlay-btn" id="btnStart">Empezar</button>
   `);
   const input = document.getElementById('nameInput');
+  const refreshSpeciesList = () => {
+    document.getElementById('speciesList').innerHTML = renderSpeciesPicker();
+    wireSpeciesList();
+  };
+  const wireSpeciesList = () => {
+    document.querySelectorAll('#speciesList [data-species]').forEach(el => {
+      el.addEventListener('click', () => {
+        pickedSpecies = el.dataset.species;
+        if (!input.value.trim()) input.placeholder = SPECIES_RAW[pickedSpecies].name;
+        refreshSpeciesList();
+      });
+    });
+  };
+  wireSpeciesList();
   const start = () => {
-    const name = input.value.trim().slice(0,14) || 'Blip';
-    state = freshState(name);
+    const name = input.value.trim().slice(0,14) || SPECIES_RAW[pickedSpecies].name;
+    state = freshState(name, pickedSpecies);
     saveState();
     hideOverlay();
     boot();
@@ -1057,6 +1208,9 @@ function renderDebugPanel(){
   const moodBtns = ALL_MOODS.map(m => `
     <button class="debug-btn ${debugForcedMood===m ? 'active':''}" data-mood="${m}">${MOOD_LABELS[m]}</button>
   `).join('');
+  const speciesBtns = SPECIES_IDS.map(id => `
+    <button class="debug-btn ${debugForcedSpecies===id ? 'active':''}" data-species="${id}">${SPECIES_RAW[id].name}</button>
+  `).join('');
 
   document.getElementById('debugPanelBody').innerHTML = `
     <div class="debug-panel">
@@ -1080,7 +1234,14 @@ function renderDebugPanel(){
         </div>
       </div>
       <div class="debug-section">
-        <h4>Acciones de Blip</h4>
+        <h4>Especie</h4>
+        <div class="debug-grid">
+          <button class="debug-btn ${!debugForcedSpecies ? 'active':''}" id="dbgSpeciesAuto">🔄 Auto</button>
+          ${speciesBtns}
+        </div>
+      </div>
+      <div class="debug-section">
+        <h4>Acciones</h4>
         <div class="debug-grid">
           <button class="debug-btn" id="dbgActEat">🍬 Comer</button>
           <button class="debug-btn" id="dbgActPet">💗 Mimo</button>
@@ -1123,11 +1284,17 @@ function renderDebugPanel(){
   document.querySelectorAll('[data-mood]').forEach(el => {
     el.addEventListener('click', () => { debugForcedMood = el.dataset.mood; render(); renderDebugPanel(); });
   });
-  document.getElementById('dbgActEat').addEventListener('click', () => triggerBlipAction('eat'));
-  document.getElementById('dbgActPet').addEventListener('click', () => triggerBlipAction('pet'));
-  document.getElementById('dbgActClean').addEventListener('click', () => triggerBlipAction('clean'));
-  document.getElementById('dbgActMedicine').addEventListener('click', () => triggerBlipAction('medicine'));
-  document.getElementById('dbgActCelebrate').addEventListener('click', () => triggerBlipAction('celebrate'));
+  document.getElementById('dbgSpeciesAuto').addEventListener('click', () => {
+    debugForcedSpecies = null; render(); renderDebugPanel();
+  });
+  document.querySelectorAll('[data-species]').forEach(el => {
+    el.addEventListener('click', () => { debugForcedSpecies = el.dataset.species; render(); renderDebugPanel(); });
+  });
+  document.getElementById('dbgActEat').addEventListener('click', () => triggerPetAction('eat'));
+  document.getElementById('dbgActPet').addEventListener('click', () => triggerPetAction('pet'));
+  document.getElementById('dbgActClean').addEventListener('click', () => triggerPetAction('clean'));
+  document.getElementById('dbgActMedicine').addEventListener('click', () => triggerPetAction('medicine'));
+  document.getElementById('dbgActCelebrate').addEventListener('click', () => triggerPetAction('celebrate'));
   document.getElementById('dbgStars').addEventListener('click', () => { closeDebugPanel(); startStarsGame(); });
   document.getElementById('dbgBasketball').addEventListener('click', () => { closeDebugPanel(); startBasketballGame(); });
   document.getElementById('dbgPoop').addEventListener('click', () => {

@@ -424,6 +424,10 @@ body{
 .menu-item.locked{opacity:.4; cursor:not-allowed;}
 .menu-item:not(.locked):hover{background:rgba(255,255,255,.15);}
 
+.species-list{flex-direction:row; flex-wrap:wrap;}
+.species-list .species-item{flex:1 1 auto; justify-content:center; padding:8px;}
+.species-thumb{flex-shrink:0; background-repeat:no-repeat;}
+
 .debug-panel{width:100%;}
 .debug-section{margin-bottom:12px;}
 .debug-section h4{
