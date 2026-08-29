@@ -60,6 +60,82 @@ const ACCESSORY_ROWS = {
   adult_bad:     '..S....S..',
 };
 
+/* Colores de rasgos de especie, disponibles sin importar la paleta de la etapa actual
+   (la especie cambia la FORMA; la etapa sigue controlando el color base). */
+const SPECIES_COLORS = { E:'#e8a23c', T:'#c97a2e', S:'#3fae52', F:'#2a2a38' };
+
+function setChar(row, idx, ch){ return row.slice(0,idx) + ch + row.slice(idx+1); }
+
+/* Cuerpo base + una "colita" metida en la esquina inferior derecha, reutilizado
+   por gato y dino (ambos parten del mismo óvalo, solo cambian orejas/picos). */
+function withTail(bodyRows){
+  const rows = [...bodyRows];
+  rows[7] = setChar(rows[7], 9, 'T');
+  rows[8] = setChar(rows[8], 8, 'T');
+  rows[8] = setChar(rows[8], 9, 'T');
+  return rows;
+}
+
+const GATO_BODY = withTail(buildBlob(COLS, 9, 0.95));
+const DINO_BODY = withTail(buildBlob(COLS, 9, 0.9));
+
+function circleBool(w,h,cx,cy,rx,ry){
+  const m=[];
+  for(let r=0;r<h;r++){ m.push([]); for(let c=0;c<w;c++){ const dx=(c-cx)/rx, dy=(r-cy)/ry; m[r].push(dx*dx+dy*dy<=1); } }
+  return m;
+}
+function orBool(...ms){
+  const h=ms[0].length, w=ms[0][0].length;
+  const out=[]; for(let r=0;r<h;r++){ out.push([]); for(let c=0;c<w;c++) out[r].push(ms.some(m=>m[r][c])); }
+  return out;
+}
+function boolToRows(mask){
+  const h=mask.length, w=mask[0].length;
+  const rows=[];
+  for(let r=0;r<h;r++){
+    let row='';
+    for(let c=0;c<w;c++){
+      if(!mask[r][c]){ row+='.'; continue; }
+      const out=(rr,cc)=>rr<0||cc<0||rr>=h||cc>=w||!mask[rr][cc];
+      row += (out(r-1,c)||out(r+1,c)||out(r,c-1)||out(r,c+1)) ? 'O' : 'A';
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+const NUBE_BODY = boolToRows(orBool(
+  circleBool(COLS,9,2.5,4.5,2.6,2.6),
+  circleBool(COLS,9,5,2.8,3.0,2.6),
+  circleBool(COLS,9,7.5,4,2.7,2.6),
+  circleBool(COLS,9,4.8,6,4.3,2.6),
+));
+
+function rectRows(w,h,x0,y0,x1,y1){
+  const rows=[];
+  for(let r=0;r<h;r++){
+    let row='';
+    for(let c=0;c<w;c++){
+      const inside = c>=x0&&c<=x1&&r>=y0&&r<=y1;
+      if(!inside){ row+='.'; continue; }
+      row += (c===x0||c===x1||r===y0||r===y1) ? 'O' : 'A';
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+const ROBOT_BODY = rectRows(COLS, 9, 1, 1, 8, 7);
+
+/* Especies: cambian la FORMA del cuerpo. La paleta de color la sigue dando la
+   etapa (PALETTES), así que una misma especie se ve distinta según cuánto se
+   la cuidó. Modo prueba únicamente por ahora — ver panel 🧪. */
+const SPECIES = {
+  blob:  { body: BODY_ROWS, accessory: stage => ACCESSORY_ROWS[stage] || null, hasLegs: true },
+  gato:  { body: GATO_BODY, accessory: () => '.EE....EE.', hasLegs: true },
+  dino:  { body: DINO_BODY, accessory: () => '.S.S.S.S..', hasLegs: true },
+  nube:  { body: NUBE_BODY, accessory: () => null, hasLegs: false },
+  robot: { body: ROBOT_BODY, accessory: () => '...O......', hasLegs: true },
+};
+
 function spriteRows(bodyRows, accessoryRow, legsRow){
   return [accessoryRow || BLANK_ROW, ...bodyRows, legsRow || BLANK_ROW];
 }
@@ -70,9 +146,10 @@ function normalizeRow(row){
   return row.slice(0, COLS);
 }
 
-function drawSprite(ctx, stage, mood, walkFrame, noClear){
+function drawSprite(ctx, stage, mood, walkFrame, noClear, species){
   if (!noClear) ctx.clearRect(0,0,CANVAS_W,CANVAS_H);
   const pal = PALETTES[stage] || PALETTES.baby;
+  const sp = SPECIES[species] || SPECIES.blob;
 
   let rows;
   if (stage === 'egg'){
@@ -80,10 +157,11 @@ function drawSprite(ctx, stage, mood, walkFrame, noClear){
   } else if (mood === 'dead'){
     rows = spriteRows(GHOST_ROWS, null, null);
   } else if (mood === 'sleepy'){
-    rows = spriteRows(BODY_ROWS, null, null);
+    rows = spriteRows(sp.body, null, null);
   } else {
-    const legsRow = walkFrame === 1 ? LEGS_WALK_A : walkFrame === 2 ? LEGS_WALK_B : LEGS_STAND;
-    rows = spriteRows(BODY_ROWS, ACCESSORY_ROWS[stage], legsRow);
+    const legsRow = !sp.hasLegs ? null
+      : walkFrame === 1 ? LEGS_WALK_A : walkFrame === 2 ? LEGS_WALK_B : LEGS_STAND;
+    rows = spriteRows(sp.body, sp.accessory(stage), legsRow);
   }
 
   for (let r=0; r<ROWS; r++){
@@ -91,7 +169,7 @@ function drawSprite(ctx, stage, mood, walkFrame, noClear){
     for (let c=0; c<COLS; c++){
       const ch = row[c];
       if (ch === '.') continue;
-      ctx.fillStyle = pal[ch] || pal.A;
+      ctx.fillStyle = pal[ch] || SPECIES_COLORS[ch] || pal.A;
       ctx.fillRect(c*CELL, r*CELL, CELL, CELL);
     }
   }
@@ -169,12 +247,15 @@ let activeMinigame = null; // null | 'stars' | 'basketball'
 let debugMode = false;
 let debugForcedStage = null; // null = usar la etapa real de la mascota
 let debugForcedMood = null;  // null = usar el ánimo calculado normalmente
+let debugSpecies = 'blob';   // especie con la que se dibuja el sprite (solo modo prueba)
 
 const ALL_STAGES = ['egg','baby','child','teen','adult_neutral','adult_good','adult_bad'];
 const ALL_MOODS = ['normal','happy','sad','sick','sleepy','dead'];
+const ALL_SPECIES = ['blob','gato','dino','nube','robot'];
 
 function displayStage(){ return debugForcedStage || state.stage; }
 function displayMood(){ return debugForcedMood || currentMood(); }
+function displaySpecies(){ return debugSpecies; }
 
 const walker = { x: 0.5, targetX: 0.5, dir: 1, pauseUntil: 0, frame: 0, lastFrameSwitch: 0 };
 
@@ -429,7 +510,7 @@ function render(){
 
   const canvas = document.getElementById('petCanvas');
   const ctx = canvas.getContext('2d');
-  drawSprite(ctx, displayStage(), displayMood(), walker.frame);
+  drawSprite(ctx, displayStage(), displayMood(), walker.frame, false, displaySpecies());
   canvas.style.left = (walker.x*100) + '%';
   canvas.style.transform = `translateX(-50%) scaleX(${walker.dir})`;
 
@@ -913,7 +994,7 @@ function drawBasketball(){
   ctx.save();
   ctx.translate(bb.monoX - MONO_W/2, bb.groundY - MONO_H);
   ctx.scale(MONO_W/CANVAS_W, MONO_H/CANVAS_H);
-  drawSprite(ctx, displayStage(), debugForcedMood || (state.sick ? 'sick' : 'happy'), 0, true);
+  drawSprite(ctx, displayStage(), debugForcedMood || (state.sick ? 'sick' : 'happy'), 0, true, displaySpecies());
   ctx.restore();
 
   const ballPos = bbBallPos();
@@ -1007,6 +1088,9 @@ const MOOD_LABELS = {
   normal:'😐 Normal', happy:'😄 Feliz', sad:'😢 Triste',
   sick:'🤒 Enfermo', sleepy:'😴 Dormido', dead:'👻 Fantasma',
 };
+const SPECIES_LABELS = {
+  blob:'🔵 Blob', gato:'🐱 Gatuno', dino:'🦕 Dino', nube:'☁️ Nube', robot:'🤖 Robot',
+};
 
 function updateDebugToggleIcon(){
   document.getElementById('btnDebug').classList.toggle('active', debugMode);
@@ -1018,6 +1102,9 @@ function openDebugMenu(){
   `).join('');
   const moodBtns = ALL_MOODS.map(m => `
     <button class="debug-btn ${debugForcedMood===m ? 'active':''}" data-mood="${m}">${MOOD_LABELS[m]}</button>
+  `).join('');
+  const speciesBtns = ALL_SPECIES.map(s => `
+    <button class="debug-btn ${debugSpecies===s ? 'active':''}" data-species="${s}">${SPECIES_LABELS[s]}</button>
   `).join('');
 
   showOverlay(`
@@ -1041,6 +1128,10 @@ function openDebugMenu(){
           <button class="debug-btn ${!debugForcedMood ? 'active':''}" id="dbgMoodAuto">🔄 Auto</button>
           ${moodBtns}
         </div>
+      </div>
+      <div class="debug-section">
+        <h4>Especie (prueba)</h4>
+        <div class="debug-grid">${speciesBtns}</div>
       </div>
       <div class="debug-section">
         <h4>Minijuegos</h4>
@@ -1076,6 +1167,9 @@ function openDebugMenu(){
   });
   document.querySelectorAll('[data-mood]').forEach(el => {
     el.addEventListener('click', () => { debugForcedMood = el.dataset.mood; render(); openDebugMenu(); });
+  });
+  document.querySelectorAll('[data-species]').forEach(el => {
+    el.addEventListener('click', () => { debugSpecies = el.dataset.species; render(); openDebugMenu(); });
   });
   document.getElementById('dbgStars').addEventListener('click', () => { hideOverlay(); startStarsGame(); });
   document.getElementById('dbgBasketball').addEventListener('click', () => { hideOverlay(); startBasketballGame(); });
