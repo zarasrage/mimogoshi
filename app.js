@@ -1,12 +1,14 @@
 /* ===================== Mimogoshi — lógica del tamagotchi ===================== */
 
 const COLS = 10;
-const ROWS = 11;              // fila 0 = accesorios, filas 1-9 = cuerpo, fila 10 = piernas
+const ROWS = 11;              // fila 0 = accesorios, filas 1-9 = cuerpo, fila 10 = piernas/base
 const CELL = 8;
 const CANVAS_W = COLS * CELL;
 const CANVAS_H = ROWS * CELL;
 
-/* Paleta por etapa. 'O' = contorno (mismo tono oscuro para todas, da legibilidad al pixel art chico) */
+/* Paleta por etapa. 'O' = contorno (mismo tono oscuro para todas, da legibilidad al pixel art chico).
+   Esto sigue siendo lo que tiñe el color PRINCIPAL ('A') según cuánto se cuidó a la mascota;
+   las especies no tocan esto, solo cambian de FORMA (ver SPECIES más abajo). */
 const OUTLINE = '#20141c';
 const PALETTES = {
   baby:    { A:'#ffd166', O:OUTLINE },
@@ -19,77 +21,46 @@ const PALETTES = {
   ghost:   { A:'#dfeaff', O:'#93a9c9' },
 };
 
-/* Cuerpo ovalado 10x9 con contorno, generado por distancia al centro (garantiza una silueta
-   redonda y legible incluso a pocos píxeles, en vez de dibujar el pixel art a mano). */
-function buildBlob(w, h, squishY){
+/* Colores de rasgos de especie: existen sin importar la etapa/paleta actual (una cola,
+   una branquia o una antena se ven igual sin importar si la mascota está en su etapa
+   "buena" o "mala"). Resolución de color en drawSprite: paleta de etapa → estos → color 'A'. */
+const SPECIES_COLORS = {
+  E:'#e8a23c', T:'#c97a2e', S:'#3fae52',    // gato: orejas/cola · dino: picos (T compartido)
+  M:'#e8c39e',                              // mimo: bracitos
+  G:'#8a4fff',                              // bloop: branquias
+  Y:'#ffe066', N:'#cbd5f5',                 // puffi: sol / luna
+  L:'#65c466', P:'#ff8fd6',                 // sprig: hojas · mushii: puntos
+  F:'#2a2a38', D:'#7df9ff', X:'#ff4d4d',    // beep: pantalla / led normal / led alerta
+};
+
+/* ---------- Generadores geométricos ----------
+   Sirven para prototipar formas y para las siluetas más simples (huevo, fantasma).
+   Los personajes con más personalidad (ver más abajo) están retocados a mano sobre
+   esta base, tal como pide la silueta-reconocible-en-negro. */
+function buildBlob(w, h, squishY, taper=0){
   const cx=(w-1)/2, cy=(h-1)/2;
   const inside = [];
   for (let r=0;r<h;r++){
     inside.push([]);
     for (let c=0;c<w;c++){
-      const dx=(c-cx)/(w/2), dy=(r-cy)/((h/2)/squishY);
+      const t = 1 - taper*(1 - r/(h-1)); // angosta la parte de arriba si taper>0 (ej. axolote)
+      const dx=(c-cx)/((w/2)*t), dy=(r-cy)/((h/2)/squishY);
       inside[r].push(dx*dx+dy*dy <= 1);
     }
   }
-  const rows = [];
-  for (let r=0;r<h;r++){
-    let row = '';
-    for (let c=0;c<w;c++){
-      if (!inside[r][c]){ row += '.'; continue; }
-      const out = (rr,cc) => rr<0||cc<0||rr>=h||cc>=w||!inside[rr][cc];
-      row += (out(r-1,c)||out(r+1,c)||out(r,c-1)||out(r,c+1)) ? 'O' : 'A';
-    }
-    rows.push(row);
-  }
-  return rows;
+  return outlineRows(inside);
 }
-
-const BODY_ROWS = buildBlob(COLS, 9, 0.95);   // filas 1-9 del grid final
-const EGG_ROWS  = buildBlob(COLS, 9, 1.3);
-const GHOST_ROWS = [...BODY_ROWS.slice(0,8), '.A.A.A.A..'];
-
-const BLANK_ROW = '.'.repeat(COLS);
-const LEGS_STAND = '..O....O..';
-const LEGS_WALK_A = '.O......O.';
-const LEGS_WALK_B = '...O..O...';
-
-const ACCESSORY_ROWS = {
-  teen:          '..O....O..',
-  adult_neutral: '..O....O..',
-  adult_good:    '.C......C.',
-  adult_bad:     '..S....S..',
-};
-
-/* Colores de rasgos de especie, disponibles sin importar la paleta de la etapa actual
-   (la especie cambia la FORMA; la etapa sigue controlando el color base). */
-const SPECIES_COLORS = { E:'#e8a23c', T:'#c97a2e', S:'#3fae52', F:'#2a2a38' };
-
-function setChar(row, idx, ch){ return row.slice(0,idx) + ch + row.slice(idx+1); }
-
-/* Cuerpo base + una "colita" metida en la esquina inferior derecha, reutilizado
-   por gato y dino (ambos parten del mismo óvalo, solo cambian orejas/picos). */
-function withTail(bodyRows){
-  const rows = [...bodyRows];
-  rows[7] = setChar(rows[7], 9, 'T');
-  rows[8] = setChar(rows[8], 8, 'T');
-  rows[8] = setChar(rows[8], 9, 'T');
-  return rows;
-}
-
-const GATO_BODY = withTail(buildBlob(COLS, 9, 0.95));
-const DINO_BODY = withTail(buildBlob(COLS, 9, 0.9));
-
-function circleBool(w,h,cx,cy,rx,ry){
+function circleMask(w,h,cx,cy,rx,ry){
   const m=[];
   for(let r=0;r<h;r++){ m.push([]); for(let c=0;c<w;c++){ const dx=(c-cx)/rx, dy=(r-cy)/ry; m[r].push(dx*dx+dy*dy<=1); } }
   return m;
 }
-function orBool(...ms){
+function orMask(...ms){
   const h=ms[0].length, w=ms[0][0].length;
   const out=[]; for(let r=0;r<h;r++){ out.push([]); for(let c=0;c<w;c++) out[r].push(ms.some(m=>m[r][c])); }
   return out;
 }
-function boolToRows(mask){
+function outlineRows(mask){
   const h=mask.length, w=mask[0].length;
   const rows=[];
   for(let r=0;r<h;r++){
@@ -103,37 +74,104 @@ function boolToRows(mask){
   }
   return rows;
 }
-const NUBE_BODY = boolToRows(orBool(
-  circleBool(COLS,9,2.5,4.5,2.6,2.6),
-  circleBool(COLS,9,5,2.8,3.0,2.6),
-  circleBool(COLS,9,7.5,4,2.7,2.6),
-  circleBool(COLS,9,4.8,6,4.3,2.6),
-));
+function setChar(row, idx, ch){ return row.slice(0,idx) + ch + row.slice(idx+1); }
+function withRow(rows, idx, row){ const r = [...rows]; r[idx] = row; return r; }
 
-function rectRows(w,h,x0,y0,x1,y1){
-  const rows=[];
-  for(let r=0;r<h;r++){
-    let row='';
-    for(let c=0;c<w;c++){
-      const inside = c>=x0&&c<=x1&&r>=y0&&r<=y1;
-      if(!inside){ row+='.'; continue; }
-      row += (c===x0||c===x1||r===y0||r===y1) ? 'O' : 'A';
-    }
-    rows.push(row);
-  }
-  return rows;
+const BLANK_ROW = '.'.repeat(COLS);
+const LEGS_STAND = '..O....O..';
+const LEGS_WALK_A = '.O......O.';
+const LEGS_WALK_B = '...O..O...';
+
+const EGG_ROWS = buildBlob(COLS, 9, 1.3);
+const GHOST_ROWS = withRow(buildBlob(COLS, 9, 0.95), 8, '.A.A.A.A..');
+
+/* ===================== Especies =====================
+   Cada especie sólo aporta DATOS: forma del cuerpo (por etapa si evoluciona en silueta
+   distinta), una fila de accesorios, una fila "de piso" para las que no caminan, y
+   opcionalmente dónde va la cara. body/accessory/footer pueden ser un valor fijo o una
+   función (stage, mood) => valor, que es como una especie reacciona a la etapa (evolución
+   con silueta propia) o al ánimo (branquias, sol/lluvia, flor abierta, etc.) sin tocar
+   el motor de dibujo. Agregar una especie nueva = agregar una entrada acá, nada más. */
+
+// --- Mimo (blob): la criatura base, gelatinosa y redonda ---
+const MIMO_BASE = buildBlob(COLS, 9, 0.95);
+const MIMO_GOOD = withRow(MIMO_BASE, 1, setChar(setChar(MIMO_BASE[1], 0, 'M'), 9, 'M')); // bracitos
+const MIMO_BAD  = withRow(MIMO_BASE, 1, setChar(MIMO_BASE[1], 0, 'M'));                  // un brazo caído
+
+// --- Gato / Dino: mismo óvalo + colita, se diferencian por orejas vs. picos ---
+function withTail(bodyRows){
+  let r = withRow(bodyRows, 7, setChar(bodyRows[7], 9, 'T'));
+  r = withRow(r, 8, setChar(setChar(r[8], 8, 'T'), 9, 'T'));
+  return r;
 }
-const ROBOT_BODY = rectRows(COLS, 9, 1, 1, 8, 7);
+const GATO_BODY = withTail(buildBlob(COLS, 9, 0.95));
+const DINO_BODY = withTail(buildBlob(COLS, 9, 0.9));
 
-/* Especies: cambian la FORMA del cuerpo. La paleta de color la sigue dando la
-   etapa (PALETTES), así que una misma especie se ve distinta según cuánto se
-   la cuidó. Modo prueba únicamente por ahora — ver panel 🧪. */
+// --- Bloop (axolote): angosto arriba, ancho abajo — inconfundible incluso en silueta ---
+const BLOOP_BODY = buildBlob(COLS, 9, 0.85, 0.35);
+const BLOOP_GILLS = { normal:'.G......G.', happy:'G........G', sad:'..G....G..', sick:'...G..G...', sleepy:'.G......G.' };
+
+// --- Puffi (nube): varios círculos fusionados; sin patas, flota ---
+const PUFFI_BASE = outlineRows(orMask(
+  circleMask(COLS,9,2.5,4.5,2.6,2.6), circleMask(COLS,9,5,2.8,3.0,2.6),
+  circleMask(COLS,9,7.5,4,2.7,2.6),   circleMask(COLS,9,4.8,6,4.3,2.6),
+));
+const PUFFI_BAD = withRow(PUFFI_BASE, 8, '.O.O.O.O..'); // base quebrada = nube de tormenta
+
+// --- Sprig (planta): copa + tallo + maceta en vez de piernas ---
+const SPRIG_BASE = [...buildBlob(COLS, 7, 0.9), '...OAAO...', '..OOOOOO..'];
+
+// --- Mushii (hongo): sombrero + pie ---
+const MUSHII_BASE = [...buildBlob(COLS, 5, 1.0), '..OAAAAO..','..OAAAAO..','..OAAAAO..','..OOOOOO..'];
+
+// --- Beep (robot): pantalla propia con ojos LED, no usa la cara genérica ---
+const BEEP_EYES = {
+  normal:'OAFDFFDFAO', happy:'OAFDFFDFAO',
+  sad:'OAFDFFDFAO', sick:'OAFXFFXFAO', sleepy:'OAF.FF.FAO', dead:'OAF.FF.FAO',
+};
+function beepBody(stage, mood){
+  const eyes = BEEP_EYES[mood] || BEEP_EYES.normal;
+  return ['..........','.OOOOOOOO.','OAAAAAAAAO','OAFFFFFFAO', eyes, 'OAFFFFFFAO','OAAAAAAAAO','.OAAAAAAO.','.OO.OO.OO.'];
+}
+
 const SPECIES = {
-  blob:  { body: BODY_ROWS, accessory: stage => ACCESSORY_ROWS[stage] || null, hasLegs: true },
-  gato:  { body: GATO_BODY, accessory: () => '.EE....EE.', hasLegs: true },
-  dino:  { body: DINO_BODY, accessory: () => '.S.S.S.S..', hasLegs: true },
-  nube:  { body: NUBE_BODY, accessory: () => null, hasLegs: false },
-  robot: { body: ROBOT_BODY, accessory: () => '...O......', hasLegs: true },
+  blob: {
+    body: stage => stage==='adult_good' ? MIMO_GOOD : stage==='adult_bad' ? MIMO_BAD : MIMO_BASE,
+    accessory: stage => ({ teen:'..O....O..', adult_neutral:'..O....O..', adult_good:'.C......C.', adult_bad:'.S.S.S.S..' }[stage] || null),
+    hasLegs: true,
+  },
+  gato: { body: GATO_BODY, accessory: () => '.EE....EE.', hasLegs: true },
+  dino: { body: DINO_BODY, accessory: () => '.S.S.S.S..', hasLegs: true },
+  bloop: {
+    body: BLOOP_BODY,
+    accessory: (stage, mood) => BLOOP_GILLS[mood] || BLOOP_GILLS.normal,
+    hasLegs: true,
+  },
+  puffi: {
+    body: stage => stage === 'adult_bad' ? PUFFI_BAD : PUFFI_BASE,
+    accessory: (stage, mood) => mood==='happy' ? '.Y......Y.' : mood==='sleepy' ? '....N.....' : null,
+    footer: (stage, mood) => mood==='sad' ? 'R.R.R.R...' : null,
+    hasLegs: false,
+  },
+  sprig: {
+    body: SPRIG_BASE,
+    accessory: (stage, mood) => mood==='happy' ? '.F......F.' : '.L......L.',
+    footer: (stage, mood) => mood==='sad' ? '...L......' : null,
+    hasLegs: false,
+    face: { row: 3 },
+  },
+  mushii: {
+    body: MUSHII_BASE,
+    accessory: stage => stage==='adult_good' ? '.P......P.' : stage==='adult_bad' ? '.X......X.' : null,
+    hasLegs: true,
+    face: { row: 5 },
+  },
+  beep: {
+    body: beepBody,
+    accessory: () => '...O......',
+    hasLegs: true,
+    face: { skip: true },
+  },
 };
 
 function spriteRows(bodyRows, accessoryRow, legsRow){
@@ -156,12 +194,18 @@ function drawSprite(ctx, stage, mood, walkFrame, noClear, species){
     rows = spriteRows(EGG_ROWS, null, null);
   } else if (mood === 'dead'){
     rows = spriteRows(GHOST_ROWS, null, null);
-  } else if (mood === 'sleepy'){
-    rows = spriteRows(sp.body, null, null);
   } else {
-    const legsRow = !sp.hasLegs ? null
-      : walkFrame === 1 ? LEGS_WALK_A : walkFrame === 2 ? LEGS_WALK_B : LEGS_STAND;
-    rows = spriteRows(sp.body, sp.accessory(stage), legsRow);
+    const body = typeof sp.body === 'function' ? sp.body(stage, mood) : sp.body;
+    const accessory = sp.accessory ? sp.accessory(stage, mood) : null;
+    if (mood === 'sleepy'){
+      const footer = sp.footer ? sp.footer(stage, mood) : null;
+      rows = spriteRows(body, accessory, footer);
+    } else if (sp.hasLegs){
+      const legsRow = walkFrame === 1 ? LEGS_WALK_A : walkFrame === 2 ? LEGS_WALK_B : LEGS_STAND;
+      rows = spriteRows(body, accessory, legsRow);
+    } else {
+      rows = spriteRows(body, accessory, sp.footer ? sp.footer(stage, mood) : null);
+    }
   }
 
   for (let r=0; r<ROWS; r++){
@@ -174,13 +218,16 @@ function drawSprite(ctx, stage, mood, walkFrame, noClear, species){
     }
   }
 
-  drawFace(ctx, stage, mood);
+  if (stage !== 'egg' && !(sp.face && sp.face.skip)){
+    drawFace(ctx, stage, mood, sp.face);
+  }
 }
 
-function drawFace(ctx, stage, mood){
-  if (stage === 'egg') return;
-  const eyeY = 4*CELL;
-  const lx = 3*CELL, rx = 6*CELL;
+function drawFace(ctx, stage, mood, faceCfg){
+  const row = (faceCfg && faceCfg.row) || 4;
+  const eyeY = row*CELL;
+  const lx = ((faceCfg && faceCfg.left) || 3)*CELL;
+  const rx = ((faceCfg && faceCfg.right) || 6)*CELL;
   const es = CELL;
 
   ctx.fillStyle = OUTLINE;
@@ -251,7 +298,7 @@ let debugSpecies = 'blob';   // especie con la que se dibuja el sprite (solo mod
 
 const ALL_STAGES = ['egg','baby','child','teen','adult_neutral','adult_good','adult_bad'];
 const ALL_MOODS = ['normal','happy','sad','sick','sleepy','dead'];
-const ALL_SPECIES = ['blob','gato','dino','nube','robot'];
+const ALL_SPECIES = ['blob','gato','dino','bloop','sprig','puffi','mushii','beep'];
 
 function displayStage(){ return debugForcedStage || state.stage; }
 function displayMood(){ return debugForcedMood || currentMood(); }
@@ -1089,7 +1136,8 @@ const MOOD_LABELS = {
   sick:'🤒 Enfermo', sleepy:'😴 Dormido', dead:'👻 Fantasma',
 };
 const SPECIES_LABELS = {
-  blob:'🔵 Blob', gato:'🐱 Gatuno', dino:'🦕 Dino', nube:'☁️ Nube', robot:'🤖 Robot',
+  blob:'🔵 Mimo', gato:'🐱 Gatuno', dino:'🦕 Dino', bloop:'🌊 Bloop',
+  sprig:'🌱 Sprig', puffi:'☁️ Puffi', mushii:'🍄 Mushii', beep:'🤖 Beep',
 };
 
 function updateDebugToggleIcon(){
