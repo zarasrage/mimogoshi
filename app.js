@@ -11,26 +11,30 @@ const CANVAS_H = ROWS * CELL;
    las especies no tocan esto, solo cambian de FORMA (ver SPECIES más abajo). */
 const OUTLINE = '#20141c';
 const PALETTES = {
-  baby:    { A:'#ffd166', O:OUTLINE },
-  child:   { A:'#7bdff2', O:OUTLINE },
-  teen:    { A:'#a29bfe', O:OUTLINE },
-  adult_good:    { A:'#4ee08a', O:OUTLINE, C:'#ffe66d' },
-  adult_neutral: { A:'#7bdff2', O:OUTLINE },
-  adult_bad:     { A:'#ff8fa3', O:OUTLINE, S:'#8a2846' },
+  baby:    { A:'#ffd166', O:OUTLINE, M:'#c9ced6' },
+  child:   { A:'#7bdff2', O:OUTLINE, M:'#a8b6c9' },
+  teen:    { A:'#a29bfe', O:OUTLINE, M:'#9aa3d9' },
+  adult_good:    { A:'#4ee08a', O:OUTLINE, C:'#ffe66d', M:'#8fe0c0' },
+  adult_neutral: { A:'#7bdff2', O:OUTLINE, M:'#9ca7b8' },
+  adult_bad:     { A:'#ff8fa3', O:OUTLINE, S:'#8a2846', M:'#6b5a63' },
   egg:     { A:'#fff4d6', O:'#c9a24a' },
   ghost:   { A:'#dfeaff', O:'#93a9c9' },
 };
 
 /* Colores de rasgos de especie: existen sin importar la etapa/paleta actual (una cola,
    una branquia o una antena se ven igual sin importar si la mascota está en su etapa
-   "buena" o "mala"). Resolución de color en drawSprite: paleta de etapa → estos → color 'A'. */
+   "buena" o "mala"). 'M' (metal del robot) en cambio SÍ vive en PALETTES arriba, porque
+   ese sí queremos que seúa con el cuidado, igual que el color principal 'A'.
+   Resolución de color en drawSprite: paleta de etapa → estos → color 'A'. */
 const SPECIES_COLORS = {
-  E:'#e8a23c', T:'#c97a2e', S:'#3fae52',    // gato: orejas/cola · dino: picos (T compartido)
-  M:'#e8c39e',                              // mimo: bracitos
-  G:'#8a4fff',                              // bloop: branquias
-  Y:'#ffe066', N:'#cbd5f5',                 // puffi: sol / luna
-  L:'#65c466', P:'#ff8fd6',                 // sprig: hojas · mushii: puntos
-  F:'#2a2a38', D:'#7df9ff', X:'#ff4d4d',    // beep: pantalla / led normal / led alerta
+  T:'#c97a2e',               // dino: cola
+  S:'#3fae52',               // dino: picos del lomo
+  G:'#8a4fff',               // bloop: branquias
+  E:'#ffce4b',               // beep: punta de la antena
+  W:'#ff8fd6',               // sprig: flor cuando está feliz
+  Y:'#ffe066', N:'#cbd5f5',  // puffi: sol / luna
+  L:'#65c466',               // sprig: hojas
+  X:'#ff4d4d',               // beep: antena en alerta (mood sick)
 };
 
 /* ---------- Generadores geométricos ----------
@@ -94,22 +98,116 @@ const GHOST_ROWS = withRow(buildBlob(COLS, 9, 0.95), 8, '.A.A.A.A..');
    el motor de dibujo. Agregar una especie nueva = agregar una entrada acá, nada más. */
 
 // --- Mimo (blob): la criatura base, gelatinosa y redonda ---
-const MIMO_BASE = buildBlob(COLS, 9, 0.95);
-const MIMO_GOOD = withRow(MIMO_BASE, 1, setChar(setChar(MIMO_BASE[1], 0, 'M'), 9, 'M')); // bracitos
-const MIMO_BAD  = withRow(MIMO_BASE, 1, setChar(MIMO_BASE[1], 0, 'M'));                  // un brazo caído
+const BLOB_BODY = [
+  '...OOOO...',
+  '..OAAAAO..',
+  '.OAAAAAAO.',
+  'OAAAAAAAAO',
+  'OAAAAAAAAO',
+  '.OAAAAAAO.',
+  '..OAAAAO..',
+  '..OAAAAO..',
+  '..........',
+];
 
-// --- Gato / Dino: mismo óvalo + colita, se diferencian por orejas vs. picos ---
-function withTail(bodyRows){
-  let r = withRow(bodyRows, 7, setChar(bodyRows[7], 9, 'T'));
-  r = withRow(r, 8, setChar(setChar(r[8], 8, 'T'), 9, 'T'));
-  return r;
+// --- Gato: orejas y cola integradas a la silueta, no son un accesorio aparte ---
+const GATO_BODY = [
+  '.OO....OO.',
+  'OAO....OAO',
+  'OAAAAAAAAO',
+  'OAAAAAAAAO',
+  'OAAAAAAAAO',
+  '.OAAAAAAO.',
+  '..OAAAAOO.',
+  '..OAAAAOAO',
+  '...OOOO.OO',
+];
+
+// --- Dino: cresta dorsal + cuerpo inclinado + cola larga ---
+const DINO_BODY = [
+  '..S.S.S...',
+  '.OAAAAO...',
+  'OAAAAAAO..',
+  'OAAAAAAAO.',
+  'OAAAAAAAAT',
+  '.OAAAAAATT',
+  '..OAAAAATT',
+  '..OAAAAO..',
+  '..........',
+];
+
+// --- Bloop (axolote): las 'G' son las branquias, suben o caen según el ánimo ---
+const AXOLOTE_BODY = [
+  'GG......GG',
+  '.GG....GG.',
+  '..OOOOOO..',
+  '.OAAAAAAO.',
+  'OAAAAAAAAO',
+  'OAAAAAAAAO',
+  '.OAAAAAAO.',
+  '..OAAAAO..',
+  '..........',
+];
+const AXOLOTE_GILLS_DROOP = ['..........', 'GG......GG'];              // triste: más abajo y juntas
+const AXOLOTE_GILLS_SICK  = ['..........', '.G......G.'];              // enfermo: casi caídas
+function bloopBody(stage, mood){
+  const rows = [...AXOLOTE_BODY];
+  if (mood === 'sad'){ rows[0] = AXOLOTE_GILLS_DROOP[0]; rows[1] = AXOLOTE_GILLS_DROOP[1]; }
+  else if (mood === 'sick'){ rows[0] = AXOLOTE_GILLS_SICK[0]; rows[1] = AXOLOTE_GILLS_SICK[1]; }
+  return rows;
 }
-const GATO_BODY = withTail(buildBlob(COLS, 9, 0.95));
-const DINO_BODY = withTail(buildBlob(COLS, 9, 0.9));
 
-// --- Bloop (axolote): angosto arriba, ancho abajo — inconfundible incluso en silueta ---
-const BLOOP_BODY = buildBlob(COLS, 9, 0.85, 0.35);
-const BLOOP_GILLS = { normal:'.G......G.', happy:'G........G', sad:'..G....G..', sick:'...G..G...', sleepy:'.G......G.' };
+// --- Sprig (planta): hojas integradas a la copa, se abren en flor si está feliz ---
+const PLANTA_BODY = [
+  '...LLL....',
+  '....L.....',
+  '..OOOOO...',
+  '.OAAAAAO..',
+  'OAAAAAAAAO',
+  'OAAAAAAAAO',
+  '.OAAAAAAO.',
+  '..OAAAAO..',
+  '..........',
+];
+const PLANTA_FLOR = ['..LWWWL...', '....W.....'];
+function sprigBody(stage, mood){
+  const rows = [...PLANTA_BODY];
+  if (mood === 'happy'){ rows[0] = PLANTA_FLOR[0]; rows[1] = PLANTA_FLOR[1]; }
+  return rows;
+}
+
+// --- Mushii (hongo): sombrero ancho + pie angosto ---
+const HONGO_BODY = [
+  '...OOOO...',
+  '.OOAAAAOO.',
+  'OAAAAAAAAO',
+  'OOOOOOOOOO',
+  '..OAAAAO..',
+  '..OAAAAO..',
+  '..OAAAAO..',
+  '...OAAO...',
+  '..........',
+];
+
+// --- Beep (robot): antena y "brazos" incluidos en la silueta; la punta de la
+//     antena hace de LED y cambia con el ánimo ---
+const ROBOT_BODY = [
+  '....E.....',
+  '....O.....',
+  '..OOOOOO..',
+  '.OMMMMMMO.',
+  'OOMMMMMMOO',
+  'OOMMMMMMOO',
+  '.OMMMMMMO.',
+  '..O....O..',
+  '..........',
+];
+function beepBody(stage, mood){
+  const rows = [...ROBOT_BODY];
+  const tip = mood === 'sick' ? 'X' : (mood === 'sleepy' || mood === 'dead') ? '.' : 'E';
+  rows[0] = setChar(rows[0], 4, tip);
+  return rows;
+}
 
 // --- Puffi (nube): varios círculos fusionados; sin patas, flota ---
 const PUFFI_BASE = outlineRows(orMask(
@@ -118,59 +216,23 @@ const PUFFI_BASE = outlineRows(orMask(
 ));
 const PUFFI_BAD = withRow(PUFFI_BASE, 8, '.O.O.O.O..'); // base quebrada = nube de tormenta
 
-// --- Sprig (planta): copa + tallo + maceta en vez de piernas ---
-const SPRIG_BASE = [...buildBlob(COLS, 7, 0.9), '...OAAO...', '..OOOOOO..'];
-
-// --- Mushii (hongo): sombrero + pie ---
-const MUSHII_BASE = [...buildBlob(COLS, 5, 1.0), '..OAAAAO..','..OAAAAO..','..OAAAAO..','..OOOOOO..'];
-
-// --- Beep (robot): pantalla propia con ojos LED, no usa la cara genérica ---
-const BEEP_EYES = {
-  normal:'OAFDFFDFAO', happy:'OAFDFFDFAO',
-  sad:'OAFDFFDFAO', sick:'OAFXFFXFAO', sleepy:'OAF.FF.FAO', dead:'OAF.FF.FAO',
-};
-function beepBody(stage, mood){
-  const eyes = BEEP_EYES[mood] || BEEP_EYES.normal;
-  return ['..........','.OOOOOOOO.','OAAAAAAAAO','OAFFFFFFAO', eyes, 'OAFFFFFFAO','OAAAAAAAAO','.OAAAAAAO.','.OO.OO.OO.'];
-}
-
 const SPECIES = {
   blob: {
-    body: stage => stage==='adult_good' ? MIMO_GOOD : stage==='adult_bad' ? MIMO_BAD : MIMO_BASE,
+    body: BLOB_BODY,
     accessory: stage => ({ teen:'..O....O..', adult_neutral:'..O....O..', adult_good:'.C......C.', adult_bad:'.S.S.S.S..' }[stage] || null),
     hasLegs: true,
   },
-  gato: { body: GATO_BODY, accessory: () => '.EE....EE.', hasLegs: true },
-  dino: { body: DINO_BODY, accessory: () => '.S.S.S.S..', hasLegs: true },
-  bloop: {
-    body: BLOOP_BODY,
-    accessory: (stage, mood) => BLOOP_GILLS[mood] || BLOOP_GILLS.normal,
-    hasLegs: true,
-  },
+  gato: { body: GATO_BODY, hasLegs: true },
+  dino: { body: DINO_BODY, hasLegs: true },
+  bloop: { body: bloopBody, hasLegs: true },
+  sprig: { body: sprigBody, hasLegs: true },
+  mushii: { body: HONGO_BODY, hasLegs: true, face: { row: 5 } },
+  beep: { body: beepBody, hasLegs: true },
   puffi: {
     body: stage => stage === 'adult_bad' ? PUFFI_BAD : PUFFI_BASE,
     accessory: (stage, mood) => mood==='happy' ? '.Y......Y.' : mood==='sleepy' ? '....N.....' : null,
     footer: (stage, mood) => mood==='sad' ? 'R.R.R.R...' : null,
     hasLegs: false,
-  },
-  sprig: {
-    body: SPRIG_BASE,
-    accessory: (stage, mood) => mood==='happy' ? '.F......F.' : '.L......L.',
-    footer: (stage, mood) => mood==='sad' ? '...L......' : null,
-    hasLegs: false,
-    face: { row: 3 },
-  },
-  mushii: {
-    body: MUSHII_BASE,
-    accessory: stage => stage==='adult_good' ? '.P......P.' : stage==='adult_bad' ? '.X......X.' : null,
-    hasLegs: true,
-    face: { row: 5 },
-  },
-  beep: {
-    body: beepBody,
-    accessory: () => '...O......',
-    hasLegs: true,
-    face: { skip: true },
   },
 };
 
