@@ -719,7 +719,6 @@ const BB_DIFFICULTY = [
 
 /* Posiciones como fracción del tamaño real del canvas (se recalculan al empezar
    cada partida con fitGameCanvas, así nunca queda estirado ni con huecos). */
-const BB_GROUND_FRAC = 0.86;
 const BB_BALL_TOP_FRAC = 0.20;
 const BB_BALL_BOTTOM_FRAC = 0.58;
 const BB_HOOP_X_FRAC = 0.80;
@@ -750,7 +749,7 @@ function startBasketballGame(){
   bb = {
     ctx: gc.getContext('2d'),
     gc, w, h,
-    groundY: h*BB_GROUND_FRAC,
+    groundY: h - 4, // mismo margen que el piso normal (petCanvas usa bottom:4px)
     ballTopY: h*BB_BALL_TOP_FRAC,
     ballBottomY: h*BB_BALL_BOTTOM_FRAC,
     hoopX: w*BB_HOOP_X_FRAC,
@@ -877,9 +876,7 @@ function bbBallPos(){
   if (bb.state === 'flight'){
     const t = Math.min(1, (performance.now()-bb.flightStart)/BB_FLIGHT_MS);
     const dist = Math.abs(bb.flightTo.x - bb.flightFrom.x);
-    const midY = (bb.flightFrom.y + bb.flightTo.y) / 2;
-    const maxArc = Math.max(16, midY - 8); // que el pico nunca se salga por arriba del canvas
-    const arcHeight = Math.min(dist*0.4, maxArc);
+    const arcHeight = Math.max(24, dist*0.42); // puede salirse por arriba del canvas, no pasa nada
     return bbArcPos(bb.flightFrom, bb.flightTo, t, arcHeight);
   }
   if (bb.state === 'settle'){
@@ -911,10 +908,11 @@ function drawBasketball(){
 
   drawHoop(ctx);
 
+  // Mismo tamaño (50x55) y mismo piso que la mascota fuera de los minijuegos.
+  const MONO_W = 50, MONO_H = 55;
   ctx.save();
-  ctx.translate(bb.monoX - 26, bb.groundY - bb.h*0.42);
-  const monoScale = Math.min(0.85, bb.h/220);
-  ctx.scale(monoScale, monoScale);
+  ctx.translate(bb.monoX - MONO_W/2, bb.groundY - MONO_H);
+  ctx.scale(MONO_W/CANVAS_W, MONO_H/CANVAS_H);
   drawSprite(ctx, displayStage(), debugForcedMood || (state.sick ? 'sick' : 'happy'), 0, true);
   ctx.restore();
 
