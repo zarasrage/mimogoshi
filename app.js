@@ -1,172 +1,91 @@
 /* ===================== Mimogoshi — lógica del tamagotchi ===================== */
 
-const GRID = 16;
-const CELL = 256 / GRID;
+const GRID = 8;               // grid chico y de pocos píxeles, look retro-LCD
+const CANVAS_SIZE = 64;
+const CELL = CANVAS_SIZE / GRID;
 
-/* Paleta compartida por todos los sprites */
+/* Paleta por etapa */
 const PALETTES = {
-  baby:    { A:'#ffd166', B:'#e8a83a', D:'#fff4d6' },
-  child:   { A:'#7bdff2', B:'#4bb7d4', D:'#e7fbff' },
-  teen:    { A:'#a29bfe', B:'#7a6ff0', D:'#ece9ff' },
-  adult_good:    { A:'#4ee08a', B:'#2fb56a', D:'#e5fff0', C:'#ffe66d' },
-  adult_neutral: { A:'#7bdff2', B:'#4bb7d4', D:'#e7fbff' },
-  adult_bad:     { A:'#ff8fa3', B:'#e0526f', D:'#ffe3e9', S:'#8a2846' },
-  egg:     { A:'#fff4d6', B:'#e8cf94', D:'#ffce4b' },
-  ghost:   { A:'#dfeaff', B:'#a9bfe0', D:'#ffffff' },
+  baby:    { A:'#ffd166', B:'#e8a83a' },
+  child:   { A:'#7bdff2', B:'#4bb7d4' },
+  teen:    { A:'#a29bfe', B:'#7a6ff0' },
+  adult_good:    { A:'#4ee08a', B:'#2fb56a', C:'#ffe66d' },
+  adult_neutral: { A:'#7bdff2', B:'#4bb7d4' },
+  adult_bad:     { A:'#ff8fa3', B:'#e0526f', S:'#8a2846' },
+  egg:     { A:'#fff4d6', D:'#ffce4b' },
+  ghost:   { A:'#dfeaff' },
 };
 
-/* Matrices 16x16. '.' = vacío, cualquier otra letra = color de PALETTES[stage][letra] */
-const SPRITES = {
-  egg: [
-    "................",
-    "................",
-    ".....AAAA.......",
-    "....AAAAAA......",
-    "...AAAAAAAA.....",
-    "..AAAAAAAAAA....",
-    "..AAAAAAAAAA....",
-    "..AAAADAAAAA....",
-    "..AAAAAAAAAA....",
-    "..AAAADAAAAA....",
-    "..AAAAAAAAAA....",
-    "...AAAAAAAA.....",
-    "....AAAAAA......",
-    ".....AAAA.......",
-    "................",
-    "................",
-  ],
-  baby: [
-    "................",
-    "................",
-    "......AAAA......",
-    ".....AAAAAA.....",
-    "....AAAAAAAA....",
-    "...AAAAAAAAAA...",
-    "...AAAAAAAAAA...",
-    "...AAAAAAAAAA...",
-    "...AAAAAAAAAA...",
-    "...AAAAAAAAAA...",
-    "....AAAAAAAA....",
-    ".....AAAAAA.....",
-    "......AAAA......",
-    "................",
-    "................",
-    "................",
-  ],
-  child: [
-    "................",
-    ".....AAAA.......",
-    "....AAAAAA......",
-    "...AAAAAAAA.....",
-    "..AAAAAAAAAA....",
-    "..AAAAAAAAAA....",
-    "..AAAAAAAAAA....",
-    "..AAAAAAAAAA....",
-    "..AAAAAAAAAA....",
-    "..AAAAAAAAAA....",
-    "...AAAAAAAA.....",
-    "...AAAAAAAA.....",
-    "...AA....AA.....",
-    "...AA....AA.....",
-    "................",
-    "................",
-  ],
-  teen: [
-    "..AA........AA.",
-    ".AAAA......AAAA",
-    "..AAAAAAAAAAAA.",
-    "..AAAAAAAAAAAA.",
-    ".AAAAAAAAAAAAAA",
-    ".AAAAAAAAAAAAAA",
-    ".AAAAAAAAAAAAAA",
-    ".AAAAAAAAAAAAAA",
-    ".AAAAAAAAAAAAAA",
-    ".AAAAAAAAAAAAAA",
-    "..AAAAAAAAAAAA.",
-    "..AAAAAAAAAAAA.",
-    "...AAAAAAAAAA..",
-    "...AA......AA..",
-    "...AA......AA..",
-    "................",
-  ],
-  adult_good: [
-    "..CC........CC.",
-    ".AACC......CCAA",
-    "CAAAAAAAAAAAAAAC",
-    ".AAAAAAAAAAAAAA.",
-    "AAAAAAAAAAAAAAAA",
-    "AAAAAAAAAAAAAAAA",
-    "AAAAAAAAAAAAAAAA",
-    "AAAAAAAAAAAAAAAA",
-    "AAAAAAAAAAAAAAAA",
-    "AAAAAAAAAAAAAAAA",
-    ".AAAAAAAAAAAAAA.",
-    "..AAAAAAAAAAAA..",
-    "...AAAAAAAAAA...",
-    "...AA......AA...",
-    "...AA......AA...",
-    "................",
-  ],
-  adult_neutral: [
-    "................",
-    "..AA........AA.",
-    ".AAAAAAAAAAAAAA.",
-    "AAAAAAAAAAAAAAAA",
-    "AAAAAAAAAAAAAAAA",
-    "AAAAAAAAAAAAAAAA",
-    "AAAAAAAAAAAAAAAA",
-    "AAAAAAAAAAAAAAAA",
-    "AAAAAAAAAAAAAAAA",
-    "AAAAAAAAAAAAAAAA",
-    ".AAAAAAAAAAAAAA.",
-    "..AAAAAAAAAAAA..",
-    "...AAAAAAAAAA...",
-    "...AA......AA...",
-    "...AA......AA...",
-    "................",
-  ],
-  adult_bad: [
-    "..S........S...",
-    ".SAA......AAS..",
-    "SAAAAAAAAAAAAAAS",
-    ".AAAAAAAAAAAAAA.",
-    "AAAAAAAAAAAAAAAA",
-    "AAAAAAAAAAAAAAAA",
-    "AAAAAAAAAAAAAAAA",
-    "AAAAAAAAAAAAAAAA",
-    "AAAAAAAAAAAAAAAA",
-    "AAAAAAAAAAAAAAAA",
-    ".AAAAAAAAAAAAAA.",
-    "..AAAAAAAAAAAA..",
-    "...AAAAAAAAAA...",
-    "...AA......AA...",
-    "...AA......AA...",
-    "................",
-  ],
-  ghost: [
-    "................",
-    "................",
-    "......AAAA......",
-    ".....AAAAAA.....",
-    "....AAAAAAAA....",
-    "...AAAAAAAAAA...",
-    "...AAAAAAAAAA...",
-    "...AAAAAAAAAA...",
-    "...AAAAAAAAAA...",
-    "...AAAAAAAAAA...",
-    "...AAAAAAAAAA...",
-    "...AA.AA.AA.AA..",
-    "................",
-    "................",
-    "................",
-    "................",
-  ],
-};
+/* Cuerpo genérico 8x8, dos frames de caminata (piernas alternadas) */
+const BODY_STAND = [
+  "........",
+  "..AAAA..",
+  ".AAAAAA.",
+  "AAAAAAAA",
+  "AAAAAAAA",
+  "AAAAAAAA",
+  ".AAAAAA.",
+  "..A..A..",
+];
+const BODY_WALK_A = [
+  "........",
+  "..AAAA..",
+  ".AAAAAA.",
+  "AAAAAAAA",
+  "AAAAAAAA",
+  "AAAAAAAA",
+  ".AAAAAA.",
+  ".A....A.",
+];
+const BODY_WALK_B = [
+  "........",
+  "..AAAA..",
+  ".AAAAAA.",
+  "AAAAAAAA",
+  "AAAAAAAA",
+  "AAAAAAAA",
+  ".AAAAAA.",
+  "..AA.A..",
+];
+const BODY_SLEEP = [
+  "........",
+  "........",
+  "..AAAA..",
+  ".AAAAAA.",
+  ".AAAAAA.",
+  ".AAAAAA.",
+  "..AAAA..",
+  "........",
+];
 
-/* Ancla de la "zona de cara" por etapa: fila donde empiezan los ojos */
-const FACE_ROW = {
-  egg: 6, baby: 6, child: 5, teen: 5,
-  adult_good: 5, adult_neutral: 5, adult_bad: 5, ghost: 6,
+const EGG_SHAPE = [
+  "........",
+  "..AAAA..",
+  ".AAAAAA.",
+  "AAAAAAAA",
+  "AAAADAAA",
+  "AAAAAAAA",
+  ".AAAAAA.",
+  "..AAAA..",
+];
+
+const GHOST_SHAPE = [
+  "........",
+  "..AAAA..",
+  ".AAAAAA.",
+  "AAAAAAAA",
+  "AAAAAAAA",
+  "AAAAAAAA",
+  "AAAAAAAA",
+  ".A.A.A.A",
+];
+
+/* Accesorios por etapa: coordenadas [row,col,letra] dibujadas sobre el cuerpo */
+const ACCESSORIES = {
+  teen:          [[0,2,'B'],[0,5,'B']],
+  adult_neutral: [[0,2,'B'],[0,5,'B']],
+  adult_good:    [[0,1,'C'],[0,6,'C']],
+  adult_bad:     [[0,2,'S'],[0,5,'S']],
 };
 
 function normalizeRow(row){
@@ -175,99 +94,103 @@ function normalizeRow(row){
   return row.slice(0, GRID);
 }
 
-function drawSprite(ctx, stage, mood, bounce){
-  ctx.clearRect(0,0,256,256);
-  const rows = SPRITES[stage] || SPRITES.baby;
+function drawSprite(ctx, stage, mood, walkFrame){
+  ctx.clearRect(0,0,CANVAS_SIZE,CANVAS_SIZE);
   const pal = PALETTES[stage] || PALETTES.baby;
-  const bob = bounce ? Math.round(Math.sin(Date.now()/260)*3) : 0;
 
-  ctx.save();
-  ctx.translate(0, bob);
+  let rows;
+  if (stage === 'egg') rows = EGG_SHAPE;
+  else if (mood === 'dead') rows = GHOST_SHAPE;
+  else if (mood === 'sleepy') rows = BODY_SLEEP;
+  else rows = walkFrame === 0 ? BODY_STAND : (walkFrame === 1 ? BODY_WALK_A : BODY_WALK_B);
 
   for (let r=0; r<GRID; r++){
     const row = normalizeRow(rows[r]);
     for (let c=0; c<GRID; c++){
       const ch = row[c];
       if (ch === '.') continue;
-      const color = pal[ch] || pal.A;
-      ctx.fillStyle = color;
-      ctx.fillRect(c*CELL, r*CELL, CELL+0.5, CELL+0.5);
+      ctx.fillStyle = pal[ch] || pal.A;
+      ctx.fillRect(c*CELL, r*CELL, CELL, CELL);
     }
+  }
+
+  const accessories = ACCESSORIES[stage];
+  if (accessories && stage !== 'egg' && mood !== 'dead' && mood !== 'sleepy'){
+    accessories.forEach(([r,c,ch]) => {
+      ctx.fillStyle = pal[ch] || pal.A;
+      ctx.fillRect(c*CELL, r*CELL, CELL, CELL);
+    });
   }
 
   drawFace(ctx, stage, mood);
-  ctx.restore();
 }
 
 function drawFace(ctx, stage, mood){
-  if (mood === 'egg') return;
-  const faceRow = FACE_ROW[stage] ?? 5;
-  const eyeY = faceRow * CELL;
-  const leftX = 5.5 * CELL;
-  const rightX = 9.5 * CELL;
-  const eyeSize = CELL * 0.9;
-
+  if (stage === 'egg') return;
   ctx.fillStyle = '#20141c';
+  const eyeY = 3*CELL;
+  const lx = 2.4*CELL, rx = 4.6*CELL;
+  const es = CELL*0.9;
+
+  if (mood === 'sleepy'){
+    ctx.fillRect(lx, eyeY+es*0.3, es, es*0.25);
+    ctx.fillRect(rx, eyeY+es*0.3, es, es*0.25);
+    return;
+  }
+  if (mood === 'dead'){
+    ctx.fillRect(lx, eyeY, es*0.5, es*0.5);
+    ctx.fillRect(rx, eyeY+es*0.3, es*0.5, es*0.5);
+    return;
+  }
 
   const drawEye = (x) => {
-    switch (mood){
-      case 'happy':
-        ctx.fillRect(x, eyeY+eyeSize*0.4, eyeSize, eyeSize*0.35);
-        break;
-      case 'sad':
-        ctx.fillRect(x, eyeY+eyeSize*0.1, eyeSize, eyeSize*0.55);
-        ctx.fillRect(x - eyeSize*0.15, eyeY, eyeSize*0.3, eyeSize*0.2);
-        break;
-      case 'sick':
-        ctx.fillRect(x, eyeY, eyeSize*0.4, eyeSize*0.4);
-        ctx.fillRect(x+eyeSize*0.5, eyeY+eyeSize*0.5, eyeSize*0.4, eyeSize*0.4);
-        break;
-      case 'sleepy':
-        ctx.fillRect(x-2, eyeY+eyeSize*0.5, eyeSize+4, eyeSize*0.25);
-        break;
-      case 'dead':
-        ctx.fillRect(x, eyeY, eyeSize*0.4, eyeSize*0.4);
-        ctx.fillRect(x+eyeSize*0.5, eyeY+eyeSize*0.4, eyeSize*0.4, eyeSize*0.4);
-        ctx.fillRect(x, eyeY+eyeSize*0.4, eyeSize*0.4, eyeSize*0.4);
-        ctx.fillRect(x+eyeSize*0.5, eyeY, eyeSize*0.4, eyeSize*0.4);
-        break;
-      default:
-        ctx.fillRect(x, eyeY+eyeSize*0.15, eyeSize*0.55, eyeSize*0.7);
+    if (mood === 'sad'){
+      ctx.fillRect(x, eyeY, es*0.7, es*0.5);
+    } else if (mood === 'sick'){
+      ctx.fillRect(x, eyeY, es*0.4, es*0.4);
+      ctx.fillRect(x+es*0.4, eyeY+es*0.3, es*0.4, es*0.4);
+    } else if (mood === 'happy'){
+      ctx.fillRect(x, eyeY+es*0.35, es*0.7, es*0.3);
+    } else {
+      ctx.fillRect(x, eyeY, es*0.6, es*0.6);
     }
   };
-  drawEye(leftX);
-  drawEye(rightX);
+  drawEye(lx); drawEye(rx);
 
-  const mouthY = eyeY + CELL*2.1;
-  const mouthX = 6.5*CELL;
-  ctx.fillStyle = '#20141c';
-  if (mood === 'happy'){
-    ctx.fillRect(mouthX, mouthY, CELL*3, CELL*0.7);
-  } else if (mood === 'sad'){
-    ctx.fillRect(mouthX+CELL*0.4, mouthY, CELL*2.2, CELL*0.4);
-  } else if (mood === 'sick'){
-    ctx.fillRect(mouthX, mouthY, CELL*0.7, CELL*0.4);
-    ctx.fillRect(mouthX+CELL*1.1, mouthY+CELL*0.3, CELL*0.7, CELL*0.4);
-    ctx.fillRect(mouthX+CELL*2.2, mouthY, CELL*0.7, CELL*0.4);
-  } else if (mood === 'sleepy'){
-    ctx.fillRect(mouthX+CELL*0.8, mouthY, CELL*1.4, CELL*0.35);
-  } else {
-    ctx.fillRect(mouthX+CELL*0.5, mouthY, CELL*2, CELL*0.4);
-  }
+  const mouthY = eyeY + CELL*1.4;
+  const mx = 2.6*CELL;
+  if (mood === 'happy') ctx.fillRect(mx, mouthY, CELL*2.8, CELL*0.6);
+  else if (mood === 'sad') ctx.fillRect(mx+CELL*0.3, mouthY, CELL*2, CELL*0.35);
+  else if (mood === 'sick') ctx.fillRect(mx+CELL*0.6, mouthY, CELL*1.4, CELL*0.35);
+  else ctx.fillRect(mx+CELL*0.4, mouthY, CELL*2, CELL*0.35);
 }
+
+/* ===================== Comida ===================== */
+
+const FOODS = [
+  { id:'simple',   name:'Bocadillo simple', emoji:'🍬', restore:15 },
+  { id:'rica',     name:'Comida rica',      emoji:'🍗', restore:30 },
+  { id:'especial', name:'Comida especial',  emoji:'🍰', restore:50 },
+];
+
+function foodById(id){ return FOODS.find(f => f.id === id) || FOODS[0]; }
 
 /* ===================== Estado del juego ===================== */
 
-const SAVE_KEY = 'mimogoshi.save.v1';
-const TICK_MS = 4000;             // un "paso" de simulación
-const MS_PER_GAME_HOUR = 45000;   // 45s reales = 1 hora de mascota (ajustable)
-const STAGE_HOURS = { baby: 3, child: 8, teen: 16 }; // horas de vida hasta la siguiente etapa
+const SAVE_KEY = 'mimogoshi.save.v2';
+const TICK_MS = 4000;
+const MS_PER_GAME_HOUR = 45000;
+const STAGE_HOURS = { baby: 3, child: 8, teen: 16 };
+const SLEEPY_THRESHOLD = 35;   // bajo esto puede quedarse dormido solo
+const RED_ZONE = 25;           // bajo esto, ni alimentarlo/jugar lo despierta
 
 let state = null;
 let tickTimer = null;
 let animFrame = null;
-let sleeping = false;
 let gameOver = false;
+let activeMinigame = null; // null | 'stars' | 'basketball'
+
+const walker = { x: 0.5, targetX: 0.5, dir: 1, pauseUntil: 0, frame: 0, lastFrameSwitch: 0 };
 
 function freshState(name){
   return {
@@ -286,6 +209,8 @@ function freshState(name){
     sleeping: false,
     poop: false,
     stage: 'egg',
+    selectedFood: 'simple',
+    unlockedFoods: ['simple'],
   };
 }
 
@@ -295,6 +220,8 @@ function loadState(){
     if (!raw) return null;
     const s = JSON.parse(raw);
     if (!s || typeof s !== 'object') return null;
+    if (!s.selectedFood) s.selectedFood = 'simple';
+    if (!s.unlockedFoods) s.unlockedFoods = ['simple'];
     return s;
   } catch (e) {
     return null;
@@ -358,17 +285,29 @@ function applyDecay(hours){
 function catchUp(){
   const now = Date.now();
   const elapsedMs = Math.max(0, now - state.lastUpdate);
-  const cappedMs = Math.min(elapsedMs, MS_PER_GAME_HOUR * 24 * 3); // tope: 3 días de mascota
+  const cappedMs = Math.min(elapsedMs, MS_PER_GAME_HOUR * 24 * 3);
   const hours = cappedMs / MS_PER_GAME_HOUR;
   applyDecay(hours);
   state.lastUpdate = now;
 }
 
+function maybeAutoSleep(){
+  if (gameOver || state.stage === 'egg') return;
+  if (state.sleeping){
+    if (state.energy >= 90) state.sleeping = false;
+    return;
+  }
+  if (state.energy < SLEEPY_THRESHOLD){
+    const chance = (SLEEPY_THRESHOLD - state.energy) / SLEEPY_THRESHOLD * 0.22;
+    if (Math.random() < chance) state.sleeping = true;
+  }
+}
+
 function tick(){
   if (gameOver) return;
   catchUp();
+  maybeAutoSleep();
   saveState();
-  render();
 }
 
 function triggerGameOver(){
@@ -383,6 +322,18 @@ function triggerGameOver(){
     localStorage.removeItem(SAVE_KEY);
     location.reload();
   });
+}
+
+/* Devuelve true si la acción puede proceder (y despierta a la mascota si corresponde) */
+function tryWake(){
+  if (!state.sleeping) return true;
+  if (state.energy < RED_ZONE){
+    say('Está profundamente dormido…');
+    return false;
+  }
+  state.sleeping = false;
+  say('¡Buenos días!');
+  return true;
 }
 
 /* ===================== Mood / UI ===================== */
@@ -410,6 +361,35 @@ function updateLed(){
   else if (state.hunger < 35 || state.happiness < 35 || state.hygiene < 35) led.classList.add('warn');
 }
 
+/* ===================== Movimiento pasivo ===================== */
+
+function updateWalker(dt){
+  if (activeMinigame) return;
+  if (gameOver || state.stage === 'egg' || state.sleeping){
+    walker.frame = 0;
+    return;
+  }
+  const now = performance.now();
+  if (now < walker.pauseUntil){
+    walker.frame = 0;
+    return;
+  }
+  const dist = walker.targetX - walker.x;
+  if (Math.abs(dist) < 0.01){
+    walker.pauseUntil = now + 1200 + Math.random()*2200;
+    walker.targetX = 0.12 + Math.random()*0.76;
+    walker.dir = walker.targetX > walker.x ? 1 : -1;
+    return;
+  }
+  walker.dir = dist > 0 ? 1 : -1;
+  walker.x += walker.dir * dt * 0.09;
+
+  if (now - walker.lastFrameSwitch > 220){
+    walker.lastFrameSwitch = now;
+    walker.frame = walker.frame === 1 ? 2 : 1;
+  }
+}
+
 function render(){
   if (!state) return;
   document.getElementById('petName').textContent = state.name;
@@ -425,19 +405,22 @@ function render(){
 
   const canvas = document.getElementById('petCanvas');
   const ctx = canvas.getContext('2d');
-  drawSprite(ctx, state.stage, currentMood(), true);
+  drawSprite(ctx, state.stage, currentMood(), walker.frame);
+  canvas.style.left = (walker.x*100) + '%';
+  canvas.style.transform = `translateX(-50%) scaleX(${walker.dir})`;
 
   document.getElementById('btnMed').disabled = !state.sick;
-  document.getElementById('btnSleep').textContent = '';
-  document.getElementById('btnSleep').innerHTML = state.sleeping
-    ? '<span class="btn-icon">☀️</span><span class="btn-label">Despertar</span>'
-    : '<span class="btn-icon">💤</span><span class="btn-label">Dormir</span>';
+  document.getElementById('feedIcon').textContent = foodById(state.selectedFood).emoji;
 
   const poopBadge = state.poop ? ' 💩' : '';
   document.getElementById('btnClean').querySelector('.btn-label').textContent = 'Limpiar' + poopBadge;
 }
 
-function loopRender(){
+let lastFrameT = 0;
+function loopRender(t){
+  const dt = Math.min(0.05, (t - (lastFrameT || t)) / 1000);
+  lastFrameT = t;
+  updateWalker(dt);
   render();
   animFrame = requestAnimationFrame(loopRender);
 }
@@ -470,20 +453,23 @@ function escapeHtml(s){
 /* ===================== Acciones ===================== */
 
 function requireAlive(fn){
-  return (...args) => { if (!gameOver && !minigameActive) fn(...args); };
+  return (...args) => { if (!gameOver && !activeMinigame) fn(...args); };
 }
 
 const btnFeed = () => {
   if (state.stage === 'egg') { say('Todavía es un huevo…'); return; }
+  if (!tryWake()) return;
   catchUp();
-  state.hunger = clamp(state.hunger + 28);
+  const food = foodById(state.selectedFood);
+  state.hunger = clamp(state.hunger + food.restore);
   state.energy = clamp(state.energy + 4);
-  floatFx('🍖');
+  floatFx(food.emoji);
   say('¡Ñam ñam!');
   saveState(); render();
 };
 
 const btnClean = () => {
+  if (!tryWake()) return;
   catchUp();
   state.hygiene = clamp(state.hygiene + 35);
   state.poop = false;
@@ -502,32 +488,81 @@ const btnMed = () => {
   saveState(); render();
 };
 
-const btnSleep = () => {
-  catchUp();
-  state.sleeping = !state.sleeping;
-  say(state.sleeping ? 'Zzz…' : '¡Buenos días!');
-  saveState(); render();
-};
+/* ===================== Menú de comida ===================== */
 
-/* ===================== Minijuego (atrapar estrellas) ===================== */
+function openFoodMenu(){
+  const rows = FOODS.map(f => {
+    const unlocked = state.unlockedFoods.includes(f.id);
+    const selected = state.selectedFood === f.id;
+    return `
+      <div class="menu-item ${unlocked ? '' : 'locked'} ${selected ? 'selected' : ''}" data-food="${f.id}">
+        <span class="emoji">${unlocked ? f.emoji : '🔒'}</span>
+        <div class="info">
+          <b>${escapeHtml(f.name)}</b>
+          <small>${unlocked ? `Recupera ${f.restore} de hambre` : 'Todavía no la consigues'}</small>
+        </div>
+      </div>`;
+  }).join('');
 
-let minigameActive = false;
-let mg = null;
+  showOverlay(`
+    <h3>🍽️ Elegir comida</h3>
+    <div class="menu-list">${rows}</div>
+    <button class="overlay-btn" id="btnCloseMenu">Cerrar</button>
+  `);
 
-function startMinigame(){
+  document.querySelectorAll('.menu-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.food;
+      if (!state.unlockedFoods.includes(id)) return;
+      state.selectedFood = id;
+      saveState(); render();
+      hideOverlay();
+    });
+  });
+  document.getElementById('btnCloseMenu').addEventListener('click', hideOverlay);
+}
+
+/* ===================== Menú de minijuegos ===================== */
+
+function openGamesMenu(){
   if (state.stage === 'egg'){ say('Todavía es un huevo…'); return; }
   if (state.energy < 12){ say('Está muy cansado para jugar'); return; }
-  if (state.sleeping){ say('Está durmiendo…'); return; }
+  if (!tryWake()) return;
 
+  showOverlay(`
+    <h3>🎮 Elegir juego</h3>
+    <div class="menu-list">
+      <div class="menu-item" id="pickStars">
+        <span class="emoji">⭐</span>
+        <div class="info"><b>Atrapa estrellas</b><small>Mueve la canasta, evita la caca</small></div>
+      </div>
+      <div class="menu-item" id="pickBasketball">
+        <span class="emoji">🏀</span>
+        <div class="info"><b>Baloncesto</b><small>Aprieta TIRAR en el momento justo</small></div>
+      </div>
+    </div>
+    <button class="overlay-btn" id="btnCloseGames">Cancelar</button>
+  `);
+
+  document.getElementById('pickStars').addEventListener('click', () => { hideOverlay(); startStarsGame(); });
+  document.getElementById('pickBasketball').addEventListener('click', () => { hideOverlay(); startBasketballGame(); });
+  document.getElementById('btnCloseGames').addEventListener('click', hideOverlay);
+}
+
+/* ===================== Minijuego 1: atrapar estrellas ===================== */
+
+let sg = null;
+
+function startStarsGame(){
   catchUp();
-  minigameActive = true;
-  document.getElementById('petCanvas').classList.add('hidden');
+  activeMinigame = 'stars';
+  document.getElementById('creatureFloor').classList.add('hidden');
   const gc = document.getElementById('gameCanvas');
   gc.classList.remove('hidden');
   const ctx = gc.getContext('2d');
   ctx.imageSmoothingEnabled = false;
 
-  mg = {
+  sg = {
     ctx, gc,
     basketX: gc.width/2,
     items: [],
@@ -536,59 +571,58 @@ function startMinigame(){
     lastSpawn: 0,
     keys: {left:false, right:false},
     raf: null,
-    startedAt: performance.now(),
   };
 
   const onKey = (down) => (e) => {
-    if (e.key === 'ArrowLeft' || e.key === 'a') mg.keys.left = down;
-    if (e.key === 'ArrowRight' || e.key === 'd') mg.keys.right = down;
+    if (e.key === 'ArrowLeft' || e.key === 'a') sg.keys.left = down;
+    if (e.key === 'ArrowRight' || e.key === 'd') sg.keys.right = down;
   };
-  mg.onKeyDown = onKey(true);
-  mg.onKeyUp = onKey(false);
-  window.addEventListener('keydown', mg.onKeyDown);
-  window.addEventListener('keyup', mg.onKeyUp);
+  sg.onKeyDown = onKey(true);
+  sg.onKeyUp = onKey(false);
+  window.addEventListener('keydown', sg.onKeyDown);
+  window.addEventListener('keyup', sg.onKeyUp);
 
-  mg.onMove = (e) => {
+  sg.onMove = (e) => {
     const rect = gc.getBoundingClientRect();
     const clientX = (e.touches ? e.touches[0].clientX : e.clientX);
     const relX = (clientX - rect.left) / rect.width * gc.width;
-    mg.basketX = Math.max(14, Math.min(gc.width-14, relX));
+    sg.basketX = Math.max(14, Math.min(gc.width-14, relX));
   };
-  gc.addEventListener('pointermove', mg.onMove);
+  gc.addEventListener('pointermove', sg.onMove);
 
   say('¡Atrapa las estrellas!');
-  mgLoop(performance.now());
+  sgLoop(performance.now());
 }
 
-function mgLoop(t){
-  if (!minigameActive || !mg) return;
-  const dt = Math.min(0.05, (t - (mg.lastT || t)) / 1000);
-  mg.lastT = t;
-  mg.timeLeft -= dt;
+function sgLoop(t){
+  if (activeMinigame !== 'stars' || !sg) return;
+  const dt = Math.min(0.05, (t - (sg.lastT || t)) / 1000);
+  sg.lastT = t;
+  sg.timeLeft -= dt;
 
-  if (mg.keys.left) mg.basketX = Math.max(14, mg.basketX - 220*dt);
-  if (mg.keys.right) mg.basketX = Math.min(mg.gc.width-14, mg.basketX + 220*dt);
+  if (sg.keys.left) sg.basketX = Math.max(14, sg.basketX - 220*dt);
+  if (sg.keys.right) sg.basketX = Math.min(sg.gc.width-14, sg.basketX + 220*dt);
 
-  mg.lastSpawn -= dt;
-  if (mg.lastSpawn <= 0){
-    mg.lastSpawn = 0.55 + Math.random()*0.4;
-    mg.items.push({ x: 16+Math.random()*(mg.gc.width-32), y: -10, vy: 70+Math.random()*50, star: Math.random() > 0.2 });
+  sg.lastSpawn -= dt;
+  if (sg.lastSpawn <= 0){
+    sg.lastSpawn = 0.55 + Math.random()*0.4;
+    sg.items.push({ x: 16+Math.random()*(sg.gc.width-32), y: -10, vy: 70+Math.random()*50, star: Math.random() > 0.2 });
   }
 
-  const ctx = mg.ctx, gc = mg.gc;
+  const ctx = sg.ctx, gc = sg.gc;
   ctx.clearRect(0,0,gc.width, gc.height);
   ctx.fillStyle = 'rgba(255,255,255,.06)';
   for (let i=0;i<gc.width;i+=16) ctx.fillRect(i,0,1,gc.height);
 
-  mg.items.forEach(it => { it.y += it.vy * dt; });
+  sg.items.forEach(it => { it.y += it.vy * dt; });
 
-  for (let i=mg.items.length-1; i>=0; i--){
-    const it = mg.items[i];
-    if (it.y > gc.height + 12){ mg.items.splice(i,1); continue; }
-    const caught = it.y > gc.height-26 && Math.abs(it.x - mg.basketX) < 18;
+  for (let i=sg.items.length-1; i>=0; i--){
+    const it = sg.items[i];
+    if (it.y > gc.height + 12){ sg.items.splice(i,1); continue; }
+    const caught = it.y > gc.height-26 && Math.abs(it.x - sg.basketX) < 18;
     if (caught){
-      mg.score += it.star ? 1 : -1;
-      mg.items.splice(i,1);
+      sg.score += it.star ? 1 : -1;
+      sg.items.splice(i,1);
       floatFx(it.star ? '⭐' : '💩');
       continue;
     }
@@ -599,34 +633,34 @@ function mgLoop(t){
 
   ctx.fillStyle = '#ffe66d';
   ctx.beginPath();
-  ctx.moveTo(mg.basketX-16, gc.height-6);
-  ctx.lineTo(mg.basketX+16, gc.height-6);
-  ctx.lineTo(mg.basketX, gc.height-26);
+  ctx.moveTo(sg.basketX-16, gc.height-6);
+  ctx.lineTo(sg.basketX+16, gc.height-6);
+  ctx.lineTo(sg.basketX, gc.height-26);
   ctx.closePath();
   ctx.fill();
 
   ctx.textAlign = 'left';
   ctx.fillStyle = '#fff';
   ctx.font = '11px monospace';
-  ctx.fillText('⭐ ' + mg.score, 8, 16);
-  ctx.fillText(Math.max(0, mg.timeLeft).toFixed(1) + 's', gc.width-46, 16);
+  ctx.fillText('⭐ ' + sg.score, 8, 16);
+  ctx.fillText(Math.max(0, sg.timeLeft).toFixed(1) + 's', gc.width-46, 16);
 
-  if (mg.timeLeft <= 0){
-    endMinigame();
+  if (sg.timeLeft <= 0){
+    endStarsGame();
     return;
   }
-  mg.raf = requestAnimationFrame(mgLoop);
+  sg.raf = requestAnimationFrame(sgLoop);
 }
 
-function endMinigame(){
-  const score = mg ? mg.score : 0;
-  window.removeEventListener('keydown', mg.onKeyDown);
-  window.removeEventListener('keyup', mg.onKeyUp);
-  mg.gc.removeEventListener('pointermove', mg.onMove);
-  if (mg.raf) cancelAnimationFrame(mg.raf);
+function endStarsGame(){
+  const score = sg ? sg.score : 0;
+  window.removeEventListener('keydown', sg.onKeyDown);
+  window.removeEventListener('keyup', sg.onKeyUp);
+  sg.gc.removeEventListener('pointermove', sg.onMove);
+  if (sg.raf) cancelAnimationFrame(sg.raf);
 
   document.getElementById('gameCanvas').classList.add('hidden');
-  document.getElementById('petCanvas').classList.remove('hidden');
+  document.getElementById('creatureFloor').classList.remove('hidden');
 
   const happinessGain = clamp(score * 6, -10, 45);
   state.happiness = clamp(state.happiness + happinessGain);
@@ -634,8 +668,166 @@ function endMinigame(){
   state.hygiene = clamp(state.hygiene - 5);
 
   say(score > 0 ? `¡${score} estrellas! +${happinessGain} felicidad` : 'Mmm, la próxima será');
-  minigameActive = false;
-  mg = null;
+  activeMinigame = null;
+  sg = null;
+  saveState(); render();
+}
+
+/* ===================== Minijuego 2: baloncesto (timing) ===================== */
+
+const BB_TOTAL_SHOTS = 3;
+/* Ancho de la zona verde/amarilla por tiro (se achica y se pone más difícil) */
+const BB_DIFFICULTY = [
+  { green: 0.20, yellow: 0.10, speed: 0.9 },
+  { green: 0.15, yellow: 0.09, speed: 1.15 },
+  { green: 0.10, yellow: 0.08, speed: 1.4 },
+];
+
+let bb = null;
+
+function startBasketballGame(){
+  catchUp();
+  activeMinigame = 'basketball';
+  document.getElementById('creatureFloor').classList.add('hidden');
+  const gc = document.getElementById('gameCanvas');
+  gc.classList.remove('hidden');
+  const shootBtn = document.getElementById('btnShoot');
+  shootBtn.classList.remove('hidden');
+  shootBtn.textContent = 'TIRAR';
+
+  bb = {
+    ctx: gc.getContext('2d'),
+    gc,
+    shot: 0,
+    score: 0,
+    marker: 0,
+    dir: 1,
+    resultUntil: 0,
+    resultText: '',
+    raf: null,
+    locked: false,
+  };
+  bb.ctx.imageSmoothingEnabled = false;
+
+  bb.onShoot = () => resolveShot();
+  shootBtn.addEventListener('click', bb.onShoot);
+
+  say('¡Encesta en el momento justo!');
+  bbLoop(performance.now());
+}
+
+function resolveShot(){
+  if (!bb || bb.locked || activeMinigame !== 'basketball') return;
+  const diff = BB_DIFFICULTY[bb.shot];
+  const dist = Math.abs(bb.marker - 0.5);
+  bb.locked = true;
+
+  let points = 0, text = '', fx = '';
+  if (dist <= diff.green/2){
+    points = dist <= diff.green/6 ? 3 : 2;
+    text = points === 3 ? '¡SWISH!' : '¡ENCESTÓ!';
+    fx = '🏀';
+  } else if (dist <= diff.green/2 + diff.yellow){
+    points = 0;
+    text = 'Rebota en el aro…';
+    fx = '〰️';
+  } else {
+    points = 0;
+    text = 'No alcanza';
+    fx = '💨';
+  }
+
+  bb.score += points;
+  bb.resultText = `${text} (+${points})`;
+  bb.resultUntil = performance.now() + 900;
+  floatFx(fx);
+}
+
+function bbLoop(t){
+  if (activeMinigame !== 'basketball' || !bb) return;
+  const dt = Math.min(0.05, (t - (bb.lastT || t)) / 1000);
+  bb.lastT = t;
+
+  if (!bb.locked){
+    const diff = BB_DIFFICULTY[bb.shot];
+    bb.marker += bb.dir * dt * 0.55 * diff.speed;
+    if (bb.marker >= 1){ bb.marker = 1; bb.dir = -1; }
+    if (bb.marker <= 0){ bb.marker = 0; bb.dir = 1; }
+  } else if (performance.now() > bb.resultUntil){
+    bb.shot += 1;
+    if (bb.shot >= BB_TOTAL_SHOTS){
+      endBasketballGame();
+      return;
+    }
+    bb.locked = false;
+    bb.marker = 0;
+    bb.dir = 1;
+  }
+
+  drawBasketball();
+  bb.raf = requestAnimationFrame(bbLoop);
+}
+
+function drawBasketball(){
+  const { ctx, gc } = bb;
+  ctx.clearRect(0,0,gc.width,gc.height);
+
+  ctx.fillStyle = 'rgba(255,255,255,.85)';
+  ctx.font = '12px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Tiro ${Math.min(bb.shot+1, BB_TOTAL_SHOTS)}/${BB_TOTAL_SHOTS}`, 8, 16);
+  ctx.textAlign = 'right';
+  ctx.fillText(`🏀 ${bb.score}`, gc.width-8, 16);
+
+  ctx.font = '30px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('🧺', gc.width/2, 42);
+
+  const diff = BB_DIFFICULTY[bb.shot] || BB_DIFFICULTY[BB_DIFFICULTY.length-1];
+  const barX = 20, barW = gc.width-40, barY = 70, barH = 18;
+
+  ctx.fillStyle = 'rgba(255,255,255,.15)';
+  ctx.fillRect(barX, barY, barW, barH);
+
+  const centerX = barX + barW*0.5;
+  const greenW = barW*diff.green;
+  const yellowW = barW*diff.yellow;
+
+  ctx.fillStyle = 'rgba(255,206,75,.55)';
+  ctx.fillRect(centerX - greenW/2 - yellowW, barY, greenW+yellowW*2, barH);
+  ctx.fillStyle = 'rgba(78,224,138,.85)';
+  ctx.fillRect(centerX - greenW/2, barY, greenW, barH);
+
+  const markerX = barX + bb.marker*barW;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(markerX-2, barY-4, 4, barH+8);
+
+  ctx.font = '16px monospace';
+  ctx.fillStyle = '#fff';
+  if (bb.locked){
+    ctx.fillText(bb.resultText, gc.width/2, barY+50);
+  } else {
+    ctx.font = '11px monospace';
+    ctx.fillStyle = 'rgba(255,255,255,.6)';
+    ctx.fillText('Presiona TIRAR en el momento justo', gc.width/2, barY+46);
+  }
+}
+
+function endBasketballGame(){
+  const score = bb ? bb.score : 0;
+  document.getElementById('btnShoot').removeEventListener('click', bb.onShoot);
+  document.getElementById('btnShoot').classList.add('hidden');
+  document.getElementById('gameCanvas').classList.add('hidden');
+  document.getElementById('creatureFloor').classList.remove('hidden');
+  if (bb && bb.raf) cancelAnimationFrame(bb.raf);
+
+  const happinessGain = clamp(score * 8, 0, 45);
+  state.happiness = clamp(state.happiness + happinessGain);
+  state.energy = clamp(state.energy - 16);
+
+  say(`${score} puntos en baloncesto. +${happinessGain} felicidad`);
+  activeMinigame = null;
+  bb = null;
   saveState(); render();
 }
 
@@ -673,9 +865,9 @@ function askName(){
 
 function wireButtons(){
   document.getElementById('btnFeed').addEventListener('click', requireAlive(btnFeed));
-  document.getElementById('btnPlay').addEventListener('click', requireAlive(startMinigame));
+  document.getElementById('btnPlay').addEventListener('click', requireAlive(openGamesMenu));
   document.getElementById('btnClean').addEventListener('click', requireAlive(btnClean));
-  document.getElementById('btnSleep').addEventListener('click', requireAlive(btnSleep));
+  document.getElementById('btnFoodMenu').addEventListener('click', requireAlive(openFoodMenu));
   document.getElementById('btnMed').addEventListener('click', requireAlive(btnMed));
   document.getElementById('btnReset').addEventListener('click', () => {
     showOverlay(`
@@ -690,19 +882,18 @@ function wireButtons(){
   });
 
   document.getElementById('screen').addEventListener('click', (e) => {
-    if (e.target.closest('.overlay') || e.target.closest('#gameCanvas')) return;
+    if (e.target.closest('.overlay') || e.target.closest('#gameCanvas') || e.target.closest('#btnShoot')) return;
     if (state.poop) { btnClean(); return; }
   });
 }
 
 function boot(){
   gameOver = false;
-  sleeping = state.sleeping;
   catchUp();
   saveState();
   wireButtons();
   render();
-  if (!animFrame) loopRender();
+  if (!animFrame) animFrame = requestAnimationFrame(loopRender);
   if (!tickTimer) tickTimer = setInterval(tick, TICK_MS);
 }
 

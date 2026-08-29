@@ -28,11 +28,14 @@
           <div class="pet-age" id="petAge">Día 0</div>
         </div>
 
-        <canvas id="petCanvas" width="256" height="256"></canvas>
+        <div class="creature-floor" id="creatureFloor">
+          <canvas id="petCanvas" width="64" height="64"></canvas>
+        </div>
 
         <div class="bubble" id="bubble"></div>
 
-        <canvas id="gameCanvas" width="256" height="180" class="hidden"></canvas>
+        <canvas id="gameCanvas" width="256" height="150" class="hidden"></canvas>
+        <button class="shoot-btn hidden" id="btnShoot">TIRAR</button>
 
         <div class="stats" id="stats">
           <div class="stat" data-stat="hunger">
@@ -65,7 +68,7 @@
 
     <div class="controls">
       <button class="btn" id="btnFeed" title="Alimentar">
-        <span class="btn-icon">🍖</span><span class="btn-label">Comer</span>
+        <span class="btn-icon" id="feedIcon">🍬</span><span class="btn-label">Comer</span>
       </button>
       <button class="btn" id="btnPlay" title="Jugar">
         <span class="btn-icon">🎮</span><span class="btn-label">Jugar</span>
@@ -73,8 +76,8 @@
       <button class="btn" id="btnClean" title="Limpiar">
         <span class="btn-icon">🧹</span><span class="btn-label">Limpiar</span>
       </button>
-      <button class="btn" id="btnSleep" title="Dormir">
-        <span class="btn-icon">💤</span><span class="btn-label">Dormir</span>
+      <button class="btn" id="btnFoodMenu" title="Elegir comida">
+        <span class="btn-icon">🍽️</span><span class="btn-label">Menú</span>
       </button>
       <button class="btn" id="btnMed" title="Medicina">
         <span class="btn-icon">💊</span><span class="btn-label">Medicina</span>
