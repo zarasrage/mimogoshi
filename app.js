@@ -1144,7 +1144,28 @@ function updateDebugToggleIcon(){
   document.getElementById('btnDebug').classList.toggle('active', debugMode);
 }
 
-function openDebugMenu(){
+/* El panel de prueba vive en su propio contenedor (#debugPanel), no en el overlay
+   genérico: en pantallas anchas queda fijo al lado del dispositivo (CSS lo pone en
+   .layout-row) para poder ver a la mascota mientras se cambian etapa/ánimo/especie;
+   en celular esa misma CSS lo vuelve un modal a pantalla completa (ver styles.css). */
+function isDebugPanelOpen(){
+  return !document.getElementById('debugPanel').classList.contains('hidden');
+}
+
+function openDebugPanel(){
+  document.getElementById('debugPanel').classList.remove('hidden');
+  renderDebugPanel();
+}
+
+function closeDebugPanel(){
+  document.getElementById('debugPanel').classList.add('hidden');
+}
+
+function toggleDebugPanel(){
+  if (isDebugPanelOpen()) closeDebugPanel(); else openDebugPanel();
+}
+
+function renderDebugPanel(){
   const stageBtns = ALL_STAGES.map(s => `
     <button class="debug-btn ${debugForcedStage===s ? 'active':''}" data-stage="${s}">${STAGE_LABELS[s]}</button>
   `).join('');
@@ -1155,8 +1176,7 @@ function openDebugMenu(){
     <button class="debug-btn ${debugSpecies===s ? 'active':''}" data-species="${s}">${SPECIES_LABELS[s]}</button>
   `).join('');
 
-  showOverlay(`
-    <h3>🧪 Modo prueba</h3>
+  document.getElementById('debugPanelBody').innerHTML = `
     <div class="debug-panel">
       <div class="debug-section">
         <button class="debug-btn wide ${debugMode ? 'active':''}" id="dbgToggleGod">
@@ -1195,43 +1215,41 @@ function openDebugMenu(){
           <button class="debug-btn danger" id="dbgGameOver">💀 Game Over</button>
         </div>
       </div>
-      <button class="overlay-btn" id="btnCloseDebug">Cerrar</button>
     </div>
-  `);
+  `;
 
   document.getElementById('dbgToggleGod').addEventListener('click', () => {
     debugMode = !debugMode;
     updateDebugToggleIcon();
-    openDebugMenu();
+    renderDebugPanel();
   });
   document.getElementById('dbgStageAuto').addEventListener('click', () => {
-    debugForcedStage = null; render(); openDebugMenu();
+    debugForcedStage = null; render(); renderDebugPanel();
   });
   document.querySelectorAll('[data-stage]').forEach(el => {
-    el.addEventListener('click', () => { debugForcedStage = el.dataset.stage; render(); openDebugMenu(); });
+    el.addEventListener('click', () => { debugForcedStage = el.dataset.stage; render(); renderDebugPanel(); });
   });
   document.getElementById('dbgMoodAuto').addEventListener('click', () => {
-    debugForcedMood = null; render(); openDebugMenu();
+    debugForcedMood = null; render(); renderDebugPanel();
   });
   document.querySelectorAll('[data-mood]').forEach(el => {
-    el.addEventListener('click', () => { debugForcedMood = el.dataset.mood; render(); openDebugMenu(); });
+    el.addEventListener('click', () => { debugForcedMood = el.dataset.mood; render(); renderDebugPanel(); });
   });
   document.querySelectorAll('[data-species]').forEach(el => {
-    el.addEventListener('click', () => { debugSpecies = el.dataset.species; render(); openDebugMenu(); });
+    el.addEventListener('click', () => { debugSpecies = el.dataset.species; render(); renderDebugPanel(); });
   });
-  document.getElementById('dbgStars').addEventListener('click', () => { hideOverlay(); startStarsGame(); });
-  document.getElementById('dbgBasketball').addEventListener('click', () => { hideOverlay(); startBasketballGame(); });
+  document.getElementById('dbgStars').addEventListener('click', () => { closeDebugPanel(); startStarsGame(); });
+  document.getElementById('dbgBasketball').addEventListener('click', () => { closeDebugPanel(); startBasketballGame(); });
   document.getElementById('dbgPoop').addEventListener('click', () => {
-    state.poop = true; saveState(); render(); openDebugMenu();
+    state.poop = true; saveState(); render(); renderDebugPanel();
   });
   document.getElementById('dbgGameOver').addEventListener('click', () => {
-    hideOverlay();
+    closeDebugPanel();
     debugMode = false;
     updateDebugToggleIcon();
     state.health = 0;
     triggerGameOver();
   });
-  document.getElementById('btnCloseDebug').addEventListener('click', hideOverlay);
 }
 
 function wireButtons(){
@@ -1240,7 +1258,8 @@ function wireButtons(){
   document.getElementById('btnClean').addEventListener('click', requireAlive(btnClean));
   document.getElementById('btnFoodMenu').addEventListener('click', requireAlive(openFoodMenu));
   document.getElementById('btnMed').addEventListener('click', requireAlive(btnMed));
-  document.getElementById('btnDebug').addEventListener('click', requireAlive(openDebugMenu));
+  document.getElementById('btnDebug').addEventListener('click', requireAlive(toggleDebugPanel));
+  document.getElementById('btnCloseDebugSide').addEventListener('click', closeDebugPanel);
   document.getElementById('btnReset').addEventListener('click', () => {
     showOverlay(`
       <h3>¿Reiniciar?</h3>

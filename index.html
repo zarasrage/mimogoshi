@@ -13,6 +13,7 @@
 
 <div id="stage">
 
+  <div class="layout-row">
   <div class="device" id="device">
     <div class="device-top">
       <span class="brand">MIMOGOSHI</span>
@@ -94,6 +95,15 @@
     <div class="speaker">
       <span></span><span></span><span></span><span></span><span></span>
     </div>
+  </div>
+
+  <aside class="debug-side hidden" id="debugPanel">
+    <div class="debug-side-head">
+      <span>🧪 Modo prueba</span>
+      <button class="debug-close" id="btnCloseDebugSide" title="Cerrar">✕</button>
+    </div>
+    <div id="debugPanelBody"></div>
+  </aside>
   </div>
 
   <p class="footnote">Cuídalo bien. No hay servidor: todo vive en tu navegador (localStorage).</p>
