@@ -1,112 +1,94 @@
 /* ===================== Mimogoshi — lógica del tamagotchi ===================== */
 
-const GRID = 8;               // grid chico y de pocos píxeles, look retro-LCD
-const CANVAS_SIZE = 64;
-const CELL = CANVAS_SIZE / GRID;
+const COLS = 10;
+const ROWS = 11;              // fila 0 = accesorios, filas 1-9 = cuerpo, fila 10 = piernas
+const CELL = 8;
+const CANVAS_W = COLS * CELL;
+const CANVAS_H = ROWS * CELL;
 
-/* Paleta por etapa */
+/* Paleta por etapa. 'O' = contorno (mismo tono oscuro para todas, da legibilidad al pixel art chico) */
+const OUTLINE = '#20141c';
 const PALETTES = {
-  baby:    { A:'#ffd166', B:'#e8a83a' },
-  child:   { A:'#7bdff2', B:'#4bb7d4' },
-  teen:    { A:'#a29bfe', B:'#7a6ff0' },
-  adult_good:    { A:'#4ee08a', B:'#2fb56a', C:'#ffe66d' },
-  adult_neutral: { A:'#7bdff2', B:'#4bb7d4' },
-  adult_bad:     { A:'#ff8fa3', B:'#e0526f', S:'#8a2846' },
-  egg:     { A:'#fff4d6', D:'#ffce4b' },
-  ghost:   { A:'#dfeaff' },
+  baby:    { A:'#ffd166', O:OUTLINE },
+  child:   { A:'#7bdff2', O:OUTLINE },
+  teen:    { A:'#a29bfe', O:OUTLINE },
+  adult_good:    { A:'#4ee08a', O:OUTLINE, C:'#ffe66d' },
+  adult_neutral: { A:'#7bdff2', O:OUTLINE },
+  adult_bad:     { A:'#ff8fa3', O:OUTLINE, S:'#8a2846' },
+  egg:     { A:'#fff4d6', O:'#c9a24a' },
+  ghost:   { A:'#dfeaff', O:'#93a9c9' },
 };
 
-/* Cuerpo genérico 8x8, dos frames de caminata (piernas alternadas) */
-const BODY_STAND = [
-  "........",
-  "..AAAA..",
-  ".AAAAAA.",
-  "AAAAAAAA",
-  "AAAAAAAA",
-  "AAAAAAAA",
-  ".AAAAAA.",
-  "..A..A..",
-];
-const BODY_WALK_A = [
-  "........",
-  "..AAAA..",
-  ".AAAAAA.",
-  "AAAAAAAA",
-  "AAAAAAAA",
-  "AAAAAAAA",
-  ".AAAAAA.",
-  ".A....A.",
-];
-const BODY_WALK_B = [
-  "........",
-  "..AAAA..",
-  ".AAAAAA.",
-  "AAAAAAAA",
-  "AAAAAAAA",
-  "AAAAAAAA",
-  ".AAAAAA.",
-  "..AA.A..",
-];
-const BODY_SLEEP = [
-  "........",
-  "........",
-  "..AAAA..",
-  ".AAAAAA.",
-  ".AAAAAA.",
-  ".AAAAAA.",
-  "..AAAA..",
-  "........",
-];
+/* Cuerpo ovalado 10x9 con contorno, generado por distancia al centro (garantiza una silueta
+   redonda y legible incluso a pocos píxeles, en vez de dibujar el pixel art a mano). */
+function buildBlob(w, h, squishY){
+  const cx=(w-1)/2, cy=(h-1)/2;
+  const inside = [];
+  for (let r=0;r<h;r++){
+    inside.push([]);
+    for (let c=0;c<w;c++){
+      const dx=(c-cx)/(w/2), dy=(r-cy)/((h/2)/squishY);
+      inside[r].push(dx*dx+dy*dy <= 1);
+    }
+  }
+  const rows = [];
+  for (let r=0;r<h;r++){
+    let row = '';
+    for (let c=0;c<w;c++){
+      if (!inside[r][c]){ row += '.'; continue; }
+      const out = (rr,cc) => rr<0||cc<0||rr>=h||cc>=w||!inside[rr][cc];
+      row += (out(r-1,c)||out(r+1,c)||out(r,c-1)||out(r,c+1)) ? 'O' : 'A';
+    }
+    rows.push(row);
+  }
+  return rows;
+}
 
-const EGG_SHAPE = [
-  "........",
-  "..AAAA..",
-  ".AAAAAA.",
-  "AAAAAAAA",
-  "AAAADAAA",
-  "AAAAAAAA",
-  ".AAAAAA.",
-  "..AAAA..",
-];
+const BODY_ROWS = buildBlob(COLS, 9, 0.95);   // filas 1-9 del grid final
+const EGG_ROWS  = buildBlob(COLS, 9, 1.3);
+const GHOST_ROWS = [...BODY_ROWS.slice(0,8), '.A.A.A.A..'];
 
-const GHOST_SHAPE = [
-  "........",
-  "..AAAA..",
-  ".AAAAAA.",
-  "AAAAAAAA",
-  "AAAAAAAA",
-  "AAAAAAAA",
-  "AAAAAAAA",
-  ".A.A.A.A",
-];
+const BLANK_ROW = '.'.repeat(COLS);
+const LEGS_STAND = '..O....O..';
+const LEGS_WALK_A = '.O......O.';
+const LEGS_WALK_B = '...O..O...';
 
-/* Accesorios por etapa: coordenadas [row,col,letra] dibujadas sobre el cuerpo */
-const ACCESSORIES = {
-  teen:          [[0,2,'B'],[0,5,'B']],
-  adult_neutral: [[0,2,'B'],[0,5,'B']],
-  adult_good:    [[0,1,'C'],[0,6,'C']],
-  adult_bad:     [[0,2,'S'],[0,5,'S']],
+const ACCESSORY_ROWS = {
+  teen:          '..O....O..',
+  adult_neutral: '..O....O..',
+  adult_good:    '.C......C.',
+  adult_bad:     '..S....S..',
 };
+
+function spriteRows(bodyRows, accessoryRow, legsRow){
+  return [accessoryRow || BLANK_ROW, ...bodyRows, legsRow || BLANK_ROW];
+}
 
 function normalizeRow(row){
   row = row || '';
-  if (row.length < GRID) row = row + '.'.repeat(GRID - row.length);
-  return row.slice(0, GRID);
+  if (row.length < COLS) row = row + '.'.repeat(COLS - row.length);
+  return row.slice(0, COLS);
 }
 
 function drawSprite(ctx, stage, mood, walkFrame){
-  ctx.clearRect(0,0,CANVAS_SIZE,CANVAS_SIZE);
+  ctx.clearRect(0,0,CANVAS_W,CANVAS_H);
   const pal = PALETTES[stage] || PALETTES.baby;
 
   let rows;
-  if (stage === 'egg') rows = EGG_SHAPE;
-  else if (mood === 'dead') rows = GHOST_SHAPE;
-  else if (mood === 'sleepy') rows = BODY_SLEEP;
-  else rows = walkFrame === 0 ? BODY_STAND : (walkFrame === 1 ? BODY_WALK_A : BODY_WALK_B);
+  if (stage === 'egg'){
+    rows = spriteRows(EGG_ROWS, null, null);
+  } else if (mood === 'dead'){
+    rows = spriteRows(GHOST_ROWS, null, null);
+  } else if (mood === 'sleepy'){
+    rows = spriteRows(BODY_ROWS, null, null);
+  } else {
+    const legsRow = walkFrame === 1 ? LEGS_WALK_A : walkFrame === 2 ? LEGS_WALK_B : LEGS_STAND;
+    rows = spriteRows(BODY_ROWS, ACCESSORY_ROWS[stage], legsRow);
+  }
 
-  for (let r=0; r<GRID; r++){
+  for (let r=0; r<ROWS; r++){
     const row = normalizeRow(rows[r]);
-    for (let c=0; c<GRID; c++){
+    for (let c=0; c<COLS; c++){
       const ch = row[c];
       if (ch === '.') continue;
       ctx.fillStyle = pal[ch] || pal.A;
@@ -114,55 +96,48 @@ function drawSprite(ctx, stage, mood, walkFrame){
     }
   }
 
-  const accessories = ACCESSORIES[stage];
-  if (accessories && stage !== 'egg' && mood !== 'dead' && mood !== 'sleepy'){
-    accessories.forEach(([r,c,ch]) => {
-      ctx.fillStyle = pal[ch] || pal.A;
-      ctx.fillRect(c*CELL, r*CELL, CELL, CELL);
-    });
-  }
-
   drawFace(ctx, stage, mood);
 }
 
 function drawFace(ctx, stage, mood){
   if (stage === 'egg') return;
-  ctx.fillStyle = '#20141c';
-  const eyeY = 3*CELL;
-  const lx = 2.4*CELL, rx = 4.6*CELL;
-  const es = CELL*0.9;
+  const eyeY = 4*CELL;
+  const lx = 3*CELL, rx = 6*CELL;
+  const es = CELL;
+
+  ctx.fillStyle = OUTLINE;
 
   if (mood === 'sleepy'){
-    ctx.fillRect(lx, eyeY+es*0.3, es, es*0.25);
-    ctx.fillRect(rx, eyeY+es*0.3, es, es*0.25);
+    ctx.fillRect(lx, eyeY+es*0.4, es, es*0.2);
+    ctx.fillRect(rx, eyeY+es*0.4, es, es*0.2);
     return;
   }
   if (mood === 'dead'){
-    ctx.fillRect(lx, eyeY, es*0.5, es*0.5);
-    ctx.fillRect(rx, eyeY+es*0.3, es*0.5, es*0.5);
+    ctx.fillRect(lx, eyeY, es*0.55, es*0.55);
+    ctx.fillRect(rx, eyeY+es*0.3, es*0.55, es*0.55);
     return;
   }
 
   const drawEye = (x) => {
     if (mood === 'sad'){
-      ctx.fillRect(x, eyeY, es*0.7, es*0.5);
+      ctx.fillRect(x, eyeY, es*0.8, es*0.55);
     } else if (mood === 'sick'){
       ctx.fillRect(x, eyeY, es*0.4, es*0.4);
-      ctx.fillRect(x+es*0.4, eyeY+es*0.3, es*0.4, es*0.4);
+      ctx.fillRect(x+es*0.45, eyeY+es*0.3, es*0.4, es*0.4);
     } else if (mood === 'happy'){
-      ctx.fillRect(x, eyeY+es*0.35, es*0.7, es*0.3);
+      ctx.fillRect(x, eyeY+es*0.4, es*0.8, es*0.3);
     } else {
-      ctx.fillRect(x, eyeY, es*0.6, es*0.6);
+      ctx.fillRect(x, eyeY, es*0.7, es*0.7);
     }
   };
   drawEye(lx); drawEye(rx);
 
-  const mouthY = eyeY + CELL*1.4;
-  const mx = 2.6*CELL;
-  if (mood === 'happy') ctx.fillRect(mx, mouthY, CELL*2.8, CELL*0.6);
+  const mouthY = eyeY + CELL*1.6;
+  const mx = 3.5*CELL;
+  if (mood === 'happy') ctx.fillRect(mx, mouthY, CELL*3, CELL*0.55);
   else if (mood === 'sad') ctx.fillRect(mx+CELL*0.3, mouthY, CELL*2, CELL*0.35);
-  else if (mood === 'sick') ctx.fillRect(mx+CELL*0.6, mouthY, CELL*1.4, CELL*0.35);
-  else ctx.fillRect(mx+CELL*0.4, mouthY, CELL*2, CELL*0.35);
+  else if (mood === 'sick') ctx.fillRect(mx+CELL*0.6, mouthY, CELL*1.5, CELL*0.35);
+  else ctx.fillRect(mx+CELL*0.4, mouthY, CELL*2.2, CELL*0.35);
 }
 
 /* ===================== Comida ===================== */
@@ -313,6 +288,7 @@ function tick(){
 function triggerGameOver(){
   gameOver = true;
   clearInterval(tickTimer);
+  forceCloseMinigames();
   showOverlay(`
     <h3>💫 ${escapeHtml(state.name)} se fue a las estrellas</h3>
     <p>Vivió ${Math.floor(state.ageHours)} horas de mascota. Gracias por cuidarlo.</p>
@@ -322,6 +298,24 @@ function triggerGameOver(){
     localStorage.removeItem(SAVE_KEY);
     location.reload();
   });
+}
+
+/* Cierra cualquier minijuego en curso a la fuerza (ej. si la mascota muere a mitad de partida) */
+function forceCloseMinigames(){
+  if (sg && sg.raf) cancelAnimationFrame(sg.raf);
+  if (sg){
+    window.removeEventListener('keydown', sg.onKeyDown);
+    window.removeEventListener('keyup', sg.onKeyUp);
+    sg.gc.removeEventListener('pointermove', sg.onMove);
+  }
+  if (bb && bb.raf) cancelAnimationFrame(bb.raf);
+  if (bb && bb.onShoot) document.getElementById('btnShoot').removeEventListener('click', bb.onShoot);
+  sg = null;
+  bb = null;
+  activeMinigame = null;
+  document.getElementById('gameCanvas').classList.add('hidden');
+  document.getElementById('btnShoot').classList.add('hidden');
+  document.getElementById('creatureFloor').classList.remove('hidden');
 }
 
 /* Devuelve true si la acción puede proceder (y despierta a la mascota si corresponde) */
