@@ -14,18 +14,12 @@ const CANVAS_H = 88;
 
 const OUTLINE = '#20141c';
 
-/* La etapa sigue tiñendo a la mascota un poco (además del color nativo del arte).
-   child/adult_neutral quedan sin teñir porque el arte de Blip ya es de ese tono azul;
-   para las otras especies el tinte es el mismo overlay, se ve más sutil o más fuerte
-   según el color base de cada una. */
+/* Solo se usa para el huevo (no tiene arte propio). El resto de las etapas
+   usan el sprite real tal cual viene del PNG — los spritesheets ya son la
+   ilustración completa (cara incluida), así que no se les aplica ningún
+   tinte/recoloreo encima. */
 const PALETTES = {
-  baby:          { A:'#ffd166', O:'#c9a24a' },
-  child:         { A:'#7bdff2' },
-  teen:          { A:'#a29bfe' },
-  adult_good:    { A:'#4ee08a' },
-  adult_neutral: { A:'#7bdff2' },
-  adult_bad:     { A:'#ff8fa3' },
-  egg:           { A:'#fff4d6', O:'#c9a24a' },
+  egg: { A:'#fff4d6', O:'#c9a24a' },
 };
 
 /* Animaciones que representan un ánimo continuo (se repiten en loop). El resto
@@ -219,10 +213,10 @@ function pickAnimation(species, mood, walkFrame, now){
 /* ===================== Huevo =====================
    No vino arte para esta etapa en ninguna especie: un óvalo chico dibujado a mano. */
 
-function drawEgg(ctx, stage){
-  const pal = PALETTES[stage] || PALETTES.egg;
+function drawEgg(ctx){
+  const pal = PALETTES.egg;
   const cx = CANVAS_W/2, cy = CANVAS_H/2 + 6, rx = 16, ry = 20;
-  ctx.fillStyle = pal.O || '#c9a24a';
+  ctx.fillStyle = pal.O;
   ctx.beginPath();
   ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
   ctx.fill();
@@ -249,7 +243,7 @@ function drawSprite(ctx, stage, mood, walkFrame, noClear){
   ctx.imageSmoothingEnabled = false;
 
   if (stage === 'egg'){
-    drawEgg(ctx, stage);
+    drawEgg(ctx);
     return;
   }
 
@@ -261,16 +255,6 @@ function drawSprite(ctx, stage, mood, walkFrame, noClear){
   const frame = frameAtElapsed(species, name, now - startedAt);
 
   ctx.drawImage(species.image, frame.x, frame.y, frame.w, frame.h, PET_DRAW_X, PET_DRAW_Y, PET_DRAW_W, PET_DRAW_H);
-
-  const tint = (PALETTES[stage] || {}).A;
-  if (tint && stage !== 'child' && stage !== 'adult_neutral'){
-    ctx.save();
-    ctx.globalCompositeOperation = 'source-atop';
-    ctx.globalAlpha = 0.4;
-    ctx.fillStyle = tint;
-    ctx.fillRect(PET_DRAW_X, PET_DRAW_Y, PET_DRAW_W, PET_DRAW_H);
-    ctx.restore();
-  }
 }
 
 /* ===================== Comida ===================== */
