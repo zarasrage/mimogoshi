@@ -1,199 +1,390 @@
-/* ===================== Mimogoshi — lógica del tamagotchi ===================== */
+/* ===================== Mimogoshi — sprites visualmente mejorados =====================
+   Objetivo de esta versión:
+   - mantener el grid 10x11 y la API drawSprite(...) actual;
+   - mejorar SOLO apariencia: siluetas, caras, patas y personalidad visual;
+   - sin introducir todavía lógica de evoluciones nuevas.
+*/
 
 const COLS = 10;
-const ROWS = 11;              // fila 0 = accesorios, filas 1-9 = cuerpo, fila 10 = piernas/base
+const ROWS = 11;              // fila 0 = accesorio; filas 1-9 = cuerpo; fila 10 = patas/base
 const CELL = 8;
 const CANVAS_W = COLS * CELL;
 const CANVAS_H = ROWS * CELL;
 
-/* Paleta por etapa. 'O' = contorno (mismo tono oscuro para todas, da legibilidad al pixel art chico).
-   Esto sigue siendo lo que tiñe el color PRINCIPAL ('A') según cuánto se cuidó a la mascota;
-   las especies no tocan esto, solo cambian de FORMA (ver SPECIES más abajo). */
 const OUTLINE = '#20141c';
+const FACE_HIGHLIGHT = '#fffaf2';
+const BLUSH = '#ff9fb3';
+
+/* La etapa sigue definiendo el color principal. */
 const PALETTES = {
-  baby:    { A:'#ffd166', O:OUTLINE, M:'#c9ced6' },
-  child:   { A:'#7bdff2', O:OUTLINE, M:'#a8b6c9' },
-  teen:    { A:'#a29bfe', O:OUTLINE, M:'#9aa3d9' },
-  adult_good:    { A:'#4ee08a', O:OUTLINE, C:'#ffe66d', M:'#8fe0c0' },
-  adult_neutral: { A:'#7bdff2', O:OUTLINE, M:'#9ca7b8' },
-  adult_bad:     { A:'#ff8fa3', O:OUTLINE, S:'#8a2846', M:'#6b5a63' },
-  egg:     { A:'#fff4d6', O:'#c9a24a' },
-  ghost:   { A:'#dfeaff', O:'#93a9c9' },
+  baby:           { A:'#ffd166', O:OUTLINE, M:'#c9ced6' },
+  child:          { A:'#7bdff2', O:OUTLINE, M:'#a8b6c9' },
+  teen:           { A:'#a29bfe', O:OUTLINE, M:'#9aa3d9' },
+  adult_good:     { A:'#4ee08a', O:OUTLINE, C:'#ffe66d', M:'#8fe0c0' },
+  adult_neutral:  { A:'#7bdff2', O:OUTLINE, M:'#9ca7b8' },
+  adult_bad:      { A:'#ff8fa3', O:OUTLINE, C:'#8a2846', M:'#6b5a63' },
+  egg:            { A:'#fff4d6', O:'#c9a24a' },
+  ghost:          { A:'#dfeaff', O:'#93a9c9' },
 };
 
-/* Colores de rasgos de especie: existen sin importar la etapa/paleta actual (una cola,
-   una branquia o una antena se ven igual sin importar si la mascota está en su etapa
-   "buena" o "mala"). 'M' (metal del robot) en cambio SÍ vive en PALETTES arriba, porque
-   ese sí queremos que seúa con el cuidado, igual que el color principal 'A'.
-   Resolución de color en drawSprite: paleta de etapa → estos → color 'A'. */
-const SPECIES_COLORS = {
-  T:'#c97a2e',               // dino: cola
-  S:'#3fae52',               // dino: picos del lomo
-  G:'#8a4fff',               // bloop: branquias
-  E:'#ffce4b',               // beep: punta de la antena
-  W:'#ff8fd6',               // sprig: flor cuando está feliz
-  Y:'#ffe066', N:'#cbd5f5',  // puffi: sol / luna
-  L:'#65c466',               // sprig: hojas
-  X:'#ff4d4d',               // beep: antena en alerta (mood sick)
+/* Fallbacks globales. Los colores particulares viven preferentemente en cada especie. */
+const FEATURE_COLORS = {
+  G:'#8a4fff',   // gills
+  L:'#65c466',   // leaves
+  F:'#ff8fd6',   // flower
+  E:'#ffce4b',   // antenna LED
+  X:'#ff4d4d',   // alert LED
+  Y:'#ffe066',   // sun
+  N:'#cbd5f5',   // moon
+  R:'#72b7ff',   // rain
+  P:'#f39aae',   // inner ear
+  Q:'#fff0a6',   // mushroom spot
+  D:'#4d9d55',   // dino spikes
 };
 
-/* ---------- Generadores geométricos ----------
-   Sirven para prototipar formas y para las siluetas más simples (huevo, fantasma).
-   Los personajes con más personalidad (ver más abajo) están retocados a mano sobre
-   esta base, tal como pide la silueta-reconocible-en-negro. */
-function buildBlob(w, h, squishY, taper=0){
-  const cx=(w-1)/2, cy=(h-1)/2;
+/* ---------- Helpers geométricos: huevo/fantasma ---------- */
+
+function buildBlob(w, h, squishY){
+  const cx = (w - 1) / 2;
+  const cy = (h - 1) / 2;
+
   const inside = [];
-  for (let r=0;r<h;r++){
+
+  for(let r = 0; r < h; r++){
     inside.push([]);
-    for (let c=0;c<w;c++){
-      const t = 1 - taper*(1 - r/(h-1)); // angosta la parte de arriba si taper>0 (ej. axolote)
-      const dx=(c-cx)/((w/2)*t), dy=(r-cy)/((h/2)/squishY);
-      inside[r].push(dx*dx+dy*dy <= 1);
+
+    for(let c = 0; c < w; c++){
+      const dx = (c - cx) / (w / 2);
+      const dy = (r - cy) / ((h / 2) / squishY);
+
+      inside[r].push(
+        dx * dx + dy * dy <= 1
+      );
     }
   }
+
   return outlineRows(inside);
 }
-function circleMask(w,h,cx,cy,rx,ry){
-  const m=[];
-  for(let r=0;r<h;r++){ m.push([]); for(let c=0;c<w;c++){ const dx=(c-cx)/rx, dy=(r-cy)/ry; m[r].push(dx*dx+dy*dy<=1); } }
-  return m;
-}
-function orMask(...ms){
-  const h=ms[0].length, w=ms[0][0].length;
-  const out=[]; for(let r=0;r<h;r++){ out.push([]); for(let c=0;c<w;c++) out[r].push(ms.some(m=>m[r][c])); }
-  return out;
-}
+
+
 function outlineRows(mask){
-  const h=mask.length, w=mask[0].length;
-  const rows=[];
-  for(let r=0;r<h;r++){
-    let row='';
-    for(let c=0;c<w;c++){
-      if(!mask[r][c]){ row+='.'; continue; }
-      const out=(rr,cc)=>rr<0||cc<0||rr>=h||cc>=w||!mask[rr][cc];
-      row += (out(r-1,c)||out(r+1,c)||out(r,c-1)||out(r,c+1)) ? 'O' : 'A';
+  const h = mask.length;
+  const w = mask[0].length;
+
+  const rows = [];
+
+  for(let r = 0; r < h; r++){
+
+    let row = '';
+
+    for(let c = 0; c < w; c++){
+
+      if(!mask[r][c]){
+        row += '.';
+        continue;
+      }
+
+      const out = (rr, cc) =>
+        rr < 0 ||
+        cc < 0 ||
+        rr >= h ||
+        cc >= w ||
+        !mask[rr][cc];
+
+      row += (
+        out(r - 1, c) ||
+        out(r + 1, c) ||
+        out(r, c - 1) ||
+        out(r, c + 1)
+      )
+        ? 'O'
+        : 'A';
     }
+
     rows.push(row);
   }
+
   return rows;
 }
-function setChar(row, idx, ch){ return row.slice(0,idx) + ch + row.slice(idx+1); }
-function withRow(rows, idx, row){ const r = [...rows]; r[idx] = row; return r; }
+
+
+function setChar(row, idx, ch){
+  return (
+    row.slice(0, idx) +
+    ch +
+    row.slice(idx + 1)
+  );
+}
+
+
+function withRow(rows, idx, row){
+  const copy = [...rows];
+
+  copy[idx] = row;
+
+  return copy;
+}
+
 
 const BLANK_ROW = '.'.repeat(COLS);
-const LEGS_STAND = '..O....O..';
-const LEGS_WALK_A = '.O......O.';
-const LEGS_WALK_B = '...O..O...';
 
-const EGG_ROWS = buildBlob(COLS, 9, 1.3);
-const GHOST_ROWS = withRow(buildBlob(COLS, 9, 0.95), 8, '.A.A.A.A..');
+const EGG_ROWS =
+  buildBlob(COLS, 9, 1.3);
 
-/* ===================== Especies =====================
-   Cada especie sólo aporta DATOS: forma del cuerpo (por etapa si evoluciona en silueta
-   distinta), una fila de accesorios, una fila "de piso" para las que no caminan, y
-   opcionalmente dónde va la cara. body/accessory/footer pueden ser un valor fijo o una
-   función (stage, mood) => valor, que es como una especie reacciona a la etapa (evolución
-   con silueta propia) o al ánimo (branquias, sol/lluvia, flor abierta, etc.) sin tocar
-   el motor de dibujo. Agregar una especie nueva = agregar una entrada acá, nada más. */
+const GHOST_ROWS =
+  withRow(
+    buildBlob(COLS, 9, 0.95),
+    8,
+    '.A.A.A.A..'
+  );
 
-// --- Mimo (blob): la criatura base, gelatinosa y redonda ---
+
+/* ===================== PATAS =====================
+   Cada especie camina de manera distinta.
+*/
+
+const LEGS = {
+
+  blob: {
+    stand:  '..O....O..',
+    walk1:  '.O......O.',
+    walk2:  '...O..O...',
+    sleep:  '...O..O...',
+  },
+
+
+  gato: {
+    stand:  '..OO..OO..',
+    walk1:  '.OO....OO.',
+    walk2:  '...OO..OO.',
+    sleep:  '...OO.OO..',
+  },
+
+
+  dino: {
+    stand:  '..OO...OO.',
+    walk1:  '.OO.....OO',
+    walk2:  '...OO.OO..',
+    sleep:  '...OO..O..',
+  },
+
+
+  bloop: {
+    stand:  '..O....O..',
+    walk1:  '..OO..O...',
+    walk2:  '...O..OO..',
+    sleep:  '...O..O...',
+  },
+
+
+  sprig: {
+    stand:  '...O..O...',
+    walk1:  '..O....O..',
+    walk2:  '....OO....',
+    sleep:  '....OO....',
+  },
+
+
+  mushii: {
+    stand:  '..OO..OO..',
+    walk1:  '.OO....OO.',
+    walk2:  '...OO..OO.',
+    sleep:  '...OO.OO..',
+  },
+
+
+  beep: {
+    stand:  '..OO..OO..',
+    walk1:  '..OO...OO.',
+    walk2:  '.OO...OO..',
+    sleep:  '...O..O...',
+  },
+
+};
+
+
+/* ===================== SILUETAS =====================
+   9 filas x 10 columnas.
+*/
+
+
+/* ---------- MIMO ----------
+   Blob redondo, simple y gomoso.
+*/
+
 const BLOB_BODY = [
   '...OOOO...',
   '..OAAAAO..',
   '.OAAAAAAO.',
   'OAAAAAAAAO',
   'OAAAAAAAAO',
+  'OAAAAAAAAO',
   '.OAAAAAAO.',
   '..OAAAAO..',
-  '..OAAAAO..',
-  '..........',
+  '...OAAO...',
 ];
 
-// --- Gato: orejas y cola integradas a la silueta, no son un accesorio aparte ---
+
+/* ---------- GATO ----------
+   Orejas claras y cola integrada.
+*/
+
 const GATO_BODY = [
   '.OO....OO.',
-  'OAO....OAO',
-  'OAAAAAAAAO',
+  'OPO....OPO',
   'OAAAAAAAAO',
   'OAAAAAAAAO',
   '.OAAAAAAO.',
-  '..OAAAAOO.',
+  '.OAAAAAAOO',
   '..OAAAAOAO',
-  '...OOOO.OO',
-];
-
-// --- Dino: inclinado hacia adelante, cabeza chica a la izquierda, cola larga
-//     a la derecha — asimétrico a propósito, para no ser un óvalo con picos ---
-const DINO_BODY = [
-  '..S.S.S...',
-  '.OAAAO....',
-  'OAAAAAO...',
-  'OAAAAAAAO.',
-  'OAAAAAAAAO',
-  '.OAAAAAATT',
-  '..OAAAATT.',
-  '...OAAO...',
+  '...OAAO.OO',
   '..........',
 ];
 
-// --- Bloop (axolote): angosto arriba / ancho abajo (silueta "pera"), bien
-//     distinto del óvalo parejo del blob. Las 'G' (branquias) bajan según el ánimo. ---
+
+/* ---------- DINO ----------
+   Perfil lateral.
+   Cabeza a la izquierda.
+   Cola a la derecha.
+*/
+
+const DINO_BODY = [
+  '..D.D.....',
+  '.OAAOO....',
+  'OAAAAAO...',
+  'OAAAAAAO..',
+  '.OAAAAAAOT',
+  '..OAAAAATT',
+  '...OAAATT.',
+  '...O.OO...',
+  '..........',
+];
+
+
+/* ---------- BLOOP ----------
+   Axolote.
+*/
+
 const AXOLOTE_BODY = [
   'GG......GG',
   '.GG....GG.',
-  '...OOOO...',
-  '..OAAAAO..',
+  '..OOOOOO..',
   '.OAAAAAAO.',
   'OAAAAAAAAO',
   'OAAAAAAAAO',
   '.OAAAAAAO.',
   '..OAAAAO..',
+  '...OAAO...',
 ];
-const AXOLOTE_GILLS_DROOP = ['..........', 'GG......GG'];              // triste: más abajo y juntas
-const AXOLOTE_GILLS_SICK  = ['..........', '.G......G.'];              // enfermo: casi caídas
+
+
+const AXOLOTE_GILLS_SAD = [
+  '..........',
+  'GG......GG',
+];
+
+
+const AXOLOTE_GILLS_SICK = [
+  '..........',
+  '.G......G.',
+];
+
+
 function bloopBody(stage, mood){
+
   const rows = [...AXOLOTE_BODY];
-  if (mood === 'sad'){ rows[0] = AXOLOTE_GILLS_DROOP[0]; rows[1] = AXOLOTE_GILLS_DROOP[1]; }
-  else if (mood === 'sick'){ rows[0] = AXOLOTE_GILLS_SICK[0]; rows[1] = AXOLOTE_GILLS_SICK[1]; }
+
+  if(mood === 'sad'){
+
+    rows[0] =
+      AXOLOTE_GILLS_SAD[0];
+
+    rows[1] =
+      AXOLOTE_GILLS_SAD[1];
+
+  }
+
+  else if(mood === 'sick'){
+
+    rows[0] =
+      AXOLOTE_GILLS_SICK[0];
+
+    rows[1] =
+      AXOLOTE_GILLS_SICK[1];
+
+  }
+
   return rows;
 }
 
-// --- Sprig (planta): copa ancha + cuello angosto + maceta — la "cintura" la
-//     separa de ser un óvalo más. Las hojas se abren en flor si está feliz. ---
+
+/* ---------- SPRIG ----------
+   Planta.
+*/
+
 const PLANTA_BODY = [
-  '..LLLLL...',
+  '...LLL....',
+  '..L.L.L...',
+  '...OOOO...',
+  '..OAAAAO..',
   '.OAAAAAAO.',
-  'OAAAAAAAAO',
-  'OAAAAAAAAO',
   '.OAAAAAAO.',
   '...OAAO...',
-  '...OAAO...',
-  '..OOAAOO..',
+  '..OAAAAO..',
   '..OOOOOO..',
 ];
-const PLANTA_FLOR = '..LWWWL...';
+
+
 function sprigBody(stage, mood){
-  const rows = [...PLANTA_BODY];
-  if (mood === 'happy') rows[0] = PLANTA_FLOR;
+
+  const rows =
+    [...PLANTA_BODY];
+
+  if(mood === 'happy'){
+
+    rows[0] =
+      '..LFFFL...';
+
+    rows[1] =
+      '...L.L....';
+
+  }
+
+  else if(mood === 'sad'){
+
+    rows[0] =
+      '..........';
+
+    rows[1] =
+      '..L...L...';
+
+  }
+
   return rows;
 }
 
-// --- Mushii (hongo): sombrero ancho + pie angosto ---
+
+/* ---------- MUSHII ----------
+   Hongo.
+*/
+
 const HONGO_BODY = [
-  '...OOOO...',
-  '.OOAAAAOO.',
+  '..OOOOOO..',
+  '.OAAQAAAO.',
   'OAAAAAAAAO',
   'OOOOOOOOOO',
-  '..OAAAAO..',
-  '..OAAAAO..',
-  '..OAAAAO..',
   '...OAAO...',
+  '...OAAO...',
+  '...OAAO...',
+  '..OAAAAO..',
   '..........',
 ];
 
-// --- Beep (robot): antena y "brazos" incluidos en la silueta; la punta de la
-//     antena hace de LED y cambia con el ánimo ---
+
+/* ---------- BEEP ----------
+   Robot.
+*/
+
 const ROBOT_BODY = [
   '....E.....',
   '....O.....',
@@ -202,134 +393,1583 @@ const ROBOT_BODY = [
   'OOMMMMMMOO',
   'OOMMMMMMOO',
   '.OMMMMMMO.',
-  '..O....O..',
-  '..........',
+  '..OMMMMO..',
+  '...OOOO...',
 ];
+
+
 function beepBody(stage, mood){
-  const rows = [...ROBOT_BODY];
-  const tip = mood === 'sick' ? 'X' : (mood === 'sleepy' || mood === 'dead') ? '.' : 'E';
-  rows[0] = setChar(rows[0], 4, tip);
+
+  const rows =
+    [...ROBOT_BODY];
+
+  const tip =
+    mood === 'sick'
+      ? 'X'
+      : mood === 'sleepy'
+        ? '.'
+        : 'E';
+
+  rows[0] =
+    setChar(
+      rows[0],
+      4,
+      tip
+    );
+
   return rows;
 }
 
-// --- Puffi (nube): varios círculos fusionados; sin patas, flota ---
-const PUFFI_BASE = outlineRows(orMask(
-  circleMask(COLS,9,2.5,4.5,2.6,2.6), circleMask(COLS,9,5,2.8,3.0,2.6),
-  circleMask(COLS,9,7.5,4,2.7,2.6),   circleMask(COLS,9,4.8,6,4.3,2.6),
-));
-const PUFFI_BAD = withRow(PUFFI_BASE, 8, '.O.O.O.O..'); // base quebrada = nube de tormenta
+
+/* ---------- PUFFI ----------
+   Nube.
+*/
+
+const PUFFI_BODY = [
+  '....OO....',
+  '..OOAAOO..',
+  '.OAAAAAAO.',
+  'OOAAAAAAAO',
+  'OAAAAAAAAO',
+  'OAAAAAAAAO',
+  '.OAAAAAAO.',
+  'OOO.OO.OOO',
+  '..........',
+];
+
+
+/* ===================== ESPECIES =====================
+   Coordenadas de cara sobre el grid COMPLETO 10x11.
+   Pueden utilizar decimales.
+*/
 
 const SPECIES = {
+
+  /* ---------- MIMO ---------- */
+
   blob: {
+
     body: BLOB_BODY,
-    accessory: stage => ({ teen:'..O....O..', adult_neutral:'..O....O..', adult_good:'.C......C.', adult_bad:'.S.S.S.S..' }[stage] || null),
-    hasLegs: true,
+
+    legs: LEGS.blob,
+
+    accessory: stage => ({
+
+      teen:
+        '..O....O..',
+
+      adult_neutral:
+        '..O....O..',
+
+      adult_good:
+        '.C......C.',
+
+      adult_bad:
+        '.C.C.C.C..',
+
+    }[stage] || null),
+
+
+    face: {
+
+      eyes: [
+        [3.0, 4.15],
+        [6.15, 4.15]
+      ],
+
+      mouth:
+        [4.05, 5.85],
+
+      eyeStyle:
+        'cute',
+
+      mouthStyle:
+        'cute',
+
+      blush:
+        true,
+
+    },
+
   },
-  gato: { body: GATO_BODY, hasLegs: true },
-  dino: { body: DINO_BODY, hasLegs: true },
-  bloop: { body: bloopBody, hasLegs: true },
-  sprig: { body: sprigBody, hasLegs: true },
-  mushii: { body: HONGO_BODY, hasLegs: true, face: { row: 5 } },
-  beep: { body: beepBody, hasLegs: true },
+
+
+  /* ---------- GATO ---------- */
+
+  gato: {
+
+    body:
+      GATO_BODY,
+
+    legs:
+      LEGS.gato,
+
+    colors: {
+      P:'#f3a4b8'
+    },
+
+    face: {
+
+      eyes: [
+        [3.0, 3.75],
+        [6.15, 3.75]
+      ],
+
+      mouth:
+        [4.45, 5.15],
+
+      eyeStyle:
+        'cat',
+
+      mouthStyle:
+        'cat',
+
+      blush:
+        true,
+
+    },
+
+  },
+
+
+  /* ---------- DINO ---------- */
+
+  dino: {
+
+    body:
+      DINO_BODY,
+
+    legs:
+      LEGS.dino,
+
+    colors: {
+      D:'#4d9d55'
+    },
+
+    face: {
+
+      /*
+       El dino está de perfil,
+       por eso tiene un solo ojo.
+      */
+
+      eyes: [
+        [2.25, 3.9]
+      ],
+
+      mouth:
+        [1.25, 5.05],
+
+      eyeStyle:
+        'dino',
+
+      mouthStyle:
+        'dino',
+
+      blush:
+        false,
+
+    },
+
+  },
+
+
+  /* ---------- BLOOP ---------- */
+
+  bloop: {
+
+    body:
+      bloopBody,
+
+    legs:
+      LEGS.bloop,
+
+    colors: {
+      G:'#8a4fff'
+    },
+
+    face: {
+
+      eyes: [
+        [3.0, 5.0],
+        [6.15, 5.0]
+      ],
+
+      mouth:
+        [4.15, 6.35],
+
+      eyeStyle:
+        'dot',
+
+      mouthStyle:
+        'tiny',
+
+      blush:
+        true,
+
+    },
+
+  },
+
+
+  /* ---------- SPRIG ---------- */
+
+  sprig: {
+
+    body:
+      sprigBody,
+
+    legs:
+      LEGS.sprig,
+
+    colors: {
+      L:'#65c466',
+      F:'#ff8fd6'
+    },
+
+    face: {
+
+      eyes: [
+        [3.25, 5.1],
+        [5.95, 5.1]
+      ],
+
+      mouth:
+        [4.15, 6.25],
+
+      eyeStyle:
+        'cute',
+
+      mouthStyle:
+        'tiny',
+
+      blush:
+        true,
+
+    },
+
+  },
+
+
+  /* ---------- MUSHII ---------- */
+
+  mushii: {
+
+    body:
+      HONGO_BODY,
+
+    legs:
+      LEGS.mushii,
+
+    colors: {
+      Q:'#fff0a6'
+    },
+
+    face: {
+
+      /*
+       La cara vive en el tallo,
+       no en el sombrero.
+      */
+
+      eyes: [
+        [4.0, 6.15],
+        [5.4, 6.15]
+      ],
+
+      mouth:
+        [4.35, 7.25],
+
+      eyeStyle:
+        'small',
+
+      mouthStyle:
+        'tiny',
+
+      blush:
+        false,
+
+    },
+
+  },
+
+
+  /* ---------- BEEP ---------- */
+
+  beep: {
+
+    body:
+      beepBody,
+
+    legs:
+      LEGS.beep,
+
+    colors: {
+      E:'#ffce4b',
+      X:'#ff4d4d'
+    },
+
+    face: {
+
+      eyes: [
+        [3.0, 4.55],
+        [6.1, 4.55]
+      ],
+
+      mouth:
+        [3.9, 6.0],
+
+      eyeStyle:
+        'led',
+
+      mouthStyle:
+        'robot',
+
+      blush:
+        false,
+
+    },
+
+  },
+
+
+  /* ---------- PUFFI ---------- */
+
   puffi: {
-    body: stage => stage === 'adult_bad' ? PUFFI_BAD : PUFFI_BASE,
-    accessory: (stage, mood) => mood==='happy' ? '.Y......Y.' : mood==='sleepy' ? '....N.....' : null,
-    footer: (stage, mood) => mood==='sad' ? 'R.R.R.R...' : null,
-    hasLegs: false,
+
+    body:
+      PUFFI_BODY,
+
+    legs:
+      null,
+
+    colors: {
+      Y:'#ffe066',
+      N:'#cbd5f5',
+      R:'#72b7ff'
+    },
+
+    accessory:
+      (stage, mood) => {
+
+        if(mood === 'happy')
+          return 'Y.........';
+
+        if(mood === 'sleepy')
+          return '....N.....';
+
+        return null;
+
+      },
+
+
+    footer:
+      (stage, mood) => {
+
+        if(mood === 'sad')
+          return '.R.R.R.R..';
+
+        return null;
+
+      },
+
+
+    face: {
+
+      eyes: [
+        [3.05, 5.0],
+        [6.1, 5.0]
+      ],
+
+      mouth:
+        [4.1, 6.3],
+
+      eyeStyle:
+        'soft',
+
+      mouthStyle:
+        'soft',
+
+      blush:
+        true,
+
+    },
+
   },
+
 };
 
-function spriteRows(bodyRows, accessoryRow, legsRow){
-  return [accessoryRow || BLANK_ROW, ...bodyRows, legsRow || BLANK_ROW];
+
+/* ===================== FANTASMA ===================== */
+
+const GHOST_FACE = {
+
+  eyes: [
+    [3.0, 4.2],
+    [6.1, 4.2]
+  ],
+
+  mouth:
+    [4.15, 6.0],
+
+  eyeStyle:
+    'dead',
+
+  mouthStyle:
+    'tiny',
+
+  blush:
+    false,
+
+};
+
+
+/* ===================== RENDER ===================== */
+
+function spriteRows(
+  bodyRows,
+  accessoryRow,
+  footerRow
+){
+
+  return [
+
+    accessoryRow ||
+      BLANK_ROW,
+
+    ...bodyRows,
+
+    footerRow ||
+      BLANK_ROW
+
+  ];
+
 }
+
 
 function normalizeRow(row){
-  row = row || '';
-  if (row.length < COLS) row = row + '.'.repeat(COLS - row.length);
-  return row.slice(0, COLS);
+
+  row =
+    row || '';
+
+  if(row.length < COLS){
+
+    row +=
+      '.'.repeat(
+        COLS - row.length
+      );
+
+  }
+
+  return row.slice(
+    0,
+    COLS
+  );
+
 }
 
-function drawSprite(ctx, stage, mood, walkFrame, noClear, species){
-  if (!noClear) ctx.clearRect(0,0,CANVAS_W,CANVAS_H);
-  const pal = PALETTES[stage] || PALETTES.baby;
-  const sp = SPECIES[species] || SPECIES.blob;
+
+/*
+ Orden de resolución:
+
+ 1. A / T = color principal
+ 2. O = outline
+ 3. color específico de la especie
+ 4. paleta de etapa
+ 5. fallback global
+ 6. color principal
+*/
+
+function resolveColor(
+  ch,
+  pal,
+  sp
+){
+
+  if(
+    ch === 'A' ||
+    ch === 'T'
+  ){
+    return pal.A;
+  }
+
+  if(ch === 'O'){
+    return (
+      pal.O ||
+      OUTLINE
+    );
+  }
+
+  if(
+    sp.colors &&
+    sp.colors[ch]
+  ){
+    return sp.colors[ch];
+  }
+
+  if(pal[ch]){
+    return pal[ch];
+  }
+
+  if(FEATURE_COLORS[ch]){
+    return FEATURE_COLORS[ch];
+  }
+
+  return pal.A;
+
+}
+
+
+/* ===================== PATAS ===================== */
+
+function getLegRow(
+  sp,
+  mood,
+  walkFrame
+){
+
+  if(!sp.legs){
+
+    return sp.footer
+      ? sp.footer(null, mood)
+      : null;
+
+  }
+
+
+  if(mood === 'sleepy'){
+
+    return (
+      sp.legs.sleep ||
+      sp.legs.stand ||
+      null
+    );
+
+  }
+
+
+  if(walkFrame === 1){
+
+    return (
+      sp.legs.walk1 ||
+      sp.legs.stand ||
+      null
+    );
+
+  }
+
+
+  if(walkFrame === 2){
+
+    return (
+      sp.legs.walk2 ||
+      sp.legs.stand ||
+      null
+    );
+
+  }
+
+
+  return (
+    sp.legs.stand ||
+    null
+  );
+
+}
+
+
+/* ===================== DRAW SPRITE ===================== */
+
+function drawSprite(
+  ctx,
+  stage,
+  mood,
+  walkFrame,
+  noClear,
+  species
+){
+
+  if(!noClear){
+
+    ctx.clearRect(
+      0,
+      0,
+      CANVAS_W,
+      CANVAS_H
+    );
+
+  }
+
+
+  const pal =
+    PALETTES[stage] ||
+    PALETTES.baby;
+
+
+  const sp =
+    SPECIES[species] ||
+    SPECIES.blob;
+
 
   let rows;
-  if (stage === 'egg'){
-    rows = spriteRows(EGG_ROWS, null, null);
-  } else if (mood === 'dead'){
-    rows = spriteRows(GHOST_ROWS, null, null);
-  } else {
-    const body = typeof sp.body === 'function' ? sp.body(stage, mood) : sp.body;
-    const accessory = sp.accessory ? sp.accessory(stage, mood) : null;
-    if (mood === 'sleepy'){
-      const footer = sp.footer ? sp.footer(stage, mood) : null;
-      rows = spriteRows(body, accessory, footer);
-    } else if (sp.hasLegs){
-      const legsRow = walkFrame === 1 ? LEGS_WALK_A : walkFrame === 2 ? LEGS_WALK_B : LEGS_STAND;
-      rows = spriteRows(body, accessory, legsRow);
-    } else {
-      rows = spriteRows(body, accessory, sp.footer ? sp.footer(stage, mood) : null);
-    }
+
+  let faceCfg =
+    sp.face;
+
+
+  /* ---------- HUEVO ---------- */
+
+  if(stage === 'egg'){
+
+    rows =
+      spriteRows(
+        EGG_ROWS,
+        null,
+        null
+      );
+
+    faceCfg =
+      null;
+
   }
 
-  for (let r=0; r<ROWS; r++){
-    const row = normalizeRow(rows[r]);
-    for (let c=0; c<COLS; c++){
-      const ch = row[c];
-      if (ch === '.') continue;
-      ctx.fillStyle = pal[ch] || SPECIES_COLORS[ch] || pal.A;
-      ctx.fillRect(c*CELL, r*CELL, CELL, CELL);
-    }
+
+  /* ---------- MUERTO ---------- */
+
+  else if(mood === 'dead'){
+
+    rows =
+      spriteRows(
+        GHOST_ROWS,
+        null,
+        null
+      );
+
+    faceCfg =
+      GHOST_FACE;
+
   }
 
-  if (stage !== 'egg' && !(sp.face && sp.face.skip)){
-    drawFace(ctx, stage, mood, sp.face);
+
+  /* ---------- NORMAL ---------- */
+
+  else{
+
+    const body =
+      typeof sp.body === 'function'
+        ? sp.body(stage, mood)
+        : sp.body;
+
+
+    const accessory =
+      sp.accessory
+        ? sp.accessory(stage, mood)
+        : null;
+
+
+    const footer =
+      sp.legs
+        ? getLegRow(
+            sp,
+            mood,
+            walkFrame
+          )
+        : (
+            sp.footer
+              ? sp.footer(
+                  stage,
+                  mood
+                )
+              : null
+          );
+
+
+    rows =
+      spriteRows(
+        body,
+        accessory,
+        footer
+      );
+
   }
+
+
+  /* ---------- PIXELES ---------- */
+
+  for(
+    let r = 0;
+    r < ROWS;
+    r++
+  ){
+
+    const row =
+      normalizeRow(
+        rows[r]
+      );
+
+
+    for(
+      let c = 0;
+      c < COLS;
+      c++
+    ){
+
+      const ch =
+        row[c];
+
+
+      if(ch === '.')
+        continue;
+
+
+      ctx.fillStyle =
+        resolveColor(
+          ch,
+          pal,
+          sp
+        );
+
+
+      ctx.fillRect(
+        c * CELL,
+        r * CELL,
+        CELL,
+        CELL
+      );
+
+    }
+
+  }
+
+
+  /* ---------- CARA ---------- */
+
+  if(faceCfg){
+
+    drawFace(
+      ctx,
+      mood,
+      faceCfg
+    );
+
+  }
+
 }
 
-function drawFace(ctx, stage, mood, faceCfg){
-  const row = (faceCfg && faceCfg.row) || 4;
-  const eyeY = row*CELL;
-  const lx = ((faceCfg && faceCfg.left) || 3)*CELL;
-  const rx = ((faceCfg && faceCfg.right) || 6)*CELL;
-  const es = CELL;
 
-  ctx.fillStyle = OUTLINE;
+/* ===================== CARAS ===================== */
 
-  if (mood === 'sleepy'){
-    ctx.fillRect(lx, eyeY+es*0.4, es, es*0.2);
-    ctx.fillRect(rx, eyeY+es*0.4, es, es*0.2);
-    return;
-  }
-  if (mood === 'dead'){
-    ctx.fillRect(lx, eyeY, es*0.55, es*0.55);
-    ctx.fillRect(rx, eyeY+es*0.3, es*0.55, es*0.55);
-    return;
-  }
+function drawPixel(
+  ctx,
+  x,
+  y,
+  w = 0.5,
+  h = 0.5,
+  color = OUTLINE
+){
 
-  const drawEye = (x) => {
-    if (mood === 'sad'){
-      ctx.fillRect(x, eyeY, es*0.8, es*0.55);
-    } else if (mood === 'sick'){
-      ctx.fillRect(x, eyeY, es*0.4, es*0.4);
-      ctx.fillRect(x+es*0.45, eyeY+es*0.3, es*0.4, es*0.4);
-    } else if (mood === 'happy'){
-      ctx.fillRect(x, eyeY+es*0.4, es*0.8, es*0.3);
-    } else {
-      ctx.fillRect(x, eyeY, es*0.7, es*0.7);
-    }
-  };
-  drawEye(lx); drawEye(rx);
+  ctx.fillStyle =
+    color;
 
-  const mouthY = eyeY + CELL*1.6;
-  const mx = 3.5*CELL;
-  if (mood === 'happy') ctx.fillRect(mx, mouthY, CELL*3, CELL*0.55);
-  else if (mood === 'sad') ctx.fillRect(mx+CELL*0.3, mouthY, CELL*2, CELL*0.35);
-  else if (mood === 'sick') ctx.fillRect(mx+CELL*0.6, mouthY, CELL*1.5, CELL*0.35);
-  else ctx.fillRect(mx+CELL*0.4, mouthY, CELL*2.2, CELL*0.35);
+
+  ctx.fillRect(
+    x * CELL,
+    y * CELL,
+    w * CELL,
+    h * CELL
+  );
+
 }
 
+
+/* ---------- OJO EN X ---------- */
+
+function drawXEye(
+  ctx,
+  x,
+  y,
+  size = 0.72
+){
+
+  const p =
+    size / 3;
+
+
+  drawPixel(
+    ctx,
+    x,
+    y,
+    p,
+    p
+  );
+
+
+  drawPixel(
+    ctx,
+    x + p,
+    y + p,
+    p,
+    p
+  );
+
+
+  drawPixel(
+    ctx,
+    x + 2 * p,
+    y + 2 * p,
+    p,
+    p
+  );
+
+
+  drawPixel(
+    ctx,
+    x + 2 * p,
+    y,
+    p,
+    p
+  );
+
+
+  drawPixel(
+    ctx,
+    x,
+    y + 2 * p,
+    p,
+    p
+  );
+
+}
+
+
+/* ===================== OJOS ===================== */
+
+function drawNormalEye(
+  ctx,
+  x,
+  y,
+  style,
+  mood
+){
+
+  /* ---------- sleepy ---------- */
+
+  if(mood === 'sleepy'){
+
+    drawPixel(
+      ctx,
+      x,
+      y + 0.35,
+      0.8,
+      0.18
+    );
+
+    return;
+
+  }
+
+
+  /* ---------- sick ---------- */
+
+  if(mood === 'sick'){
+
+    drawXEye(
+      ctx,
+      x,
+      y,
+      0.72
+    );
+
+    return;
+
+  }
+
+
+  /* ---------- happy ---------- */
+
+  if(mood === 'happy'){
+
+    if(style === 'led'){
+
+      drawPixel(
+        ctx,
+        x,
+        y + 0.28,
+        0.75,
+        0.22
+      );
+
+      return;
+
+    }
+
+
+    if(style === 'cat'){
+
+      drawPixel(
+        ctx,
+        x,
+        y + 0.36,
+        0.32,
+        0.18
+      );
+
+
+      drawPixel(
+        ctx,
+        x + 0.32,
+        y + 0.22,
+        0.32,
+        0.18
+      );
+
+      return;
+
+    }
+
+
+    drawPixel(
+      ctx,
+      x,
+      y + 0.38,
+      0.75,
+      0.2
+    );
+
+    return;
+
+  }
+
+
+  /* ---------- sad ---------- */
+
+  if(mood === 'sad'){
+
+    drawPixel(
+      ctx,
+      x,
+      y + 0.18,
+      0.72,
+      0.42
+    );
+
+
+    drawPixel(
+      ctx,
+      x,
+      y,
+      0.28,
+      0.16
+    );
+
+    return;
+
+  }
+
+
+  /* ---------- gato ---------- */
+
+  if(style === 'cat'){
+
+    drawPixel(
+      ctx,
+      x + 0.17,
+      y,
+      0.36,
+      0.72
+    );
+
+    return;
+
+  }
+
+
+  /* ---------- dot ---------- */
+
+  if(style === 'dot'){
+
+    drawPixel(
+      ctx,
+      x + 0.12,
+      y + 0.08,
+      0.48,
+      0.48
+    );
+
+    return;
+
+  }
+
+
+  /* ---------- small / soft ---------- */
+
+  if(
+    style === 'small' ||
+    style === 'soft'
+  ){
+
+    drawPixel(
+      ctx,
+      x + 0.1,
+      y + 0.08,
+      0.5,
+      0.52
+    );
+
+    return;
+
+  }
+
+
+  /* ---------- LED ---------- */
+
+  if(style === 'led'){
+
+    drawPixel(
+      ctx,
+      x,
+      y + 0.16,
+      0.78,
+      0.38
+    );
+
+    return;
+
+  }
+
+
+  /* ---------- Dino ---------- */
+
+  if(style === 'dino'){
+
+    drawPixel(
+      ctx,
+      x,
+      y,
+      0.62,
+      0.62
+    );
+
+
+    drawPixel(
+      ctx,
+      x + 0.37,
+      y + 0.08,
+      0.16,
+      0.16,
+      FACE_HIGHLIGHT
+    );
+
+    return;
+
+  }
+
+
+  /* ---------- Cute/default ----------
+     ojo grande con brillo.
+  */
+
+  drawPixel(
+    ctx,
+    x,
+    y,
+    0.72,
+    0.72
+  );
+
+
+  drawPixel(
+    ctx,
+    x + 0.42,
+    y + 0.08,
+    0.18,
+    0.18,
+    FACE_HIGHLIGHT
+  );
+
+}
+
+
+/* ===================== BOCAS ===================== */
+
+function drawMouth(
+  ctx,
+  x,
+  y,
+  style,
+  mood
+){
+
+  if(mood === 'sleepy')
+    return;
+
+
+  /* ---------- GATO ---------- */
+
+  if(style === 'cat'){
+
+    /*
+      Nariz central.
+    */
+
+    drawPixel(
+      ctx,
+      x + 0.28,
+      y,
+      0.28,
+      0.22
+    );
+
+
+    if(mood === 'happy'){
+
+      drawPixel(
+        ctx,
+        x,
+        y + 0.28,
+        0.34,
+        0.18
+      );
+
+
+      drawPixel(
+        ctx,
+        x + 0.5,
+        y + 0.28,
+        0.34,
+        0.18
+      );
+
+    }
+
+
+    else if(
+      mood === 'sad' ||
+      mood === 'sick'
+    ){
+
+      drawPixel(
+        ctx,
+        x + 0.22,
+        y + 0.38,
+        0.42,
+        0.18
+      );
+
+    }
+
+
+    else{
+
+      drawPixel(
+        ctx,
+        x + 0.08,
+        y + 0.28,
+        0.26,
+        0.18
+      );
+
+
+      drawPixel(
+        ctx,
+        x + 0.5,
+        y + 0.28,
+        0.26,
+        0.18
+      );
+
+    }
+
+    return;
+
+  }
+
+
+  /* ---------- DINO ---------- */
+
+  if(style === 'dino'){
+
+    if(mood === 'happy'){
+
+      drawPixel(
+        ctx,
+        x,
+        y,
+        1.0,
+        0.22
+      );
+
+    }
+
+    else if(
+      mood === 'sad' ||
+      mood === 'sick'
+    ){
+
+      drawPixel(
+        ctx,
+        x + 0.18,
+        y,
+        0.58,
+        0.18
+      );
+
+    }
+
+    else{
+
+      drawPixel(
+        ctx,
+        x,
+        y,
+        0.72,
+        0.18
+      );
+
+    }
+
+    return;
+
+  }
+
+
+  /* ---------- ROBOT ---------- */
+
+  if(style === 'robot'){
+
+    if(mood === 'happy'){
+
+      drawPixel(
+        ctx,
+        x,
+        y,
+        0.45,
+        0.2
+      );
+
+
+      drawPixel(
+        ctx,
+        x + 0.45,
+        y + 0.18,
+        0.45,
+        0.2
+      );
+
+
+      drawPixel(
+        ctx,
+        x + 0.9,
+        y,
+        0.45,
+        0.2
+      );
+
+    }
+
+
+    else if(
+      mood === 'sad' ||
+      mood === 'sick'
+    ){
+
+      drawPixel(
+        ctx,
+        x + 0.2,
+        y,
+        0.95,
+        0.2
+      );
+
+    }
+
+
+    else{
+
+      drawPixel(
+        ctx,
+        x,
+        y,
+        1.35,
+        0.22
+      );
+
+    }
+
+    return;
+
+  }
+
+
+  /* ---------- TINY / SOFT ---------- */
+
+  if(
+    style === 'tiny' ||
+    style === 'soft'
+  ){
+
+    if(mood === 'happy'){
+
+      drawPixel(
+        ctx,
+        x,
+        y,
+        0.35,
+        0.18
+      );
+
+
+      drawPixel(
+        ctx,
+        x + 0.35,
+        y + 0.18,
+        0.4,
+        0.18
+      );
+
+
+      drawPixel(
+        ctx,
+        x + 0.75,
+        y,
+        0.35,
+        0.18
+      );
+
+    }
+
+
+    else if(mood === 'sad'){
+
+      drawPixel(
+        ctx,
+        x + 0.18,
+        y + 0.15,
+        0.72,
+        0.18
+      );
+
+    }
+
+
+    else if(mood === 'sick'){
+
+      drawPixel(
+        ctx,
+        x + 0.32,
+        y + 0.08,
+        0.48,
+        0.18
+      );
+
+    }
+
+
+    else{
+
+      drawPixel(
+        ctx,
+        x + 0.25,
+        y,
+        0.62,
+        0.18
+      );
+
+    }
+
+    return;
+
+  }
+
+
+  /* ---------- CUTE / DEFAULT ---------- */
+
+  if(mood === 'happy'){
+
+    drawPixel(
+      ctx,
+      x,
+      y,
+      0.4,
+      0.2
+    );
+
+
+    drawPixel(
+      ctx,
+      x + 0.4,
+      y + 0.2,
+      0.75,
+      0.2
+    );
+
+
+    drawPixel(
+      ctx,
+      x + 1.15,
+      y,
+      0.4,
+      0.2
+    );
+
+  }
+
+
+  else if(mood === 'sad'){
+
+    drawPixel(
+      ctx,
+      x + 0.28,
+      y + 0.12,
+      1.0,
+      0.2
+    );
+
+  }
+
+
+  else if(mood === 'sick'){
+
+    drawPixel(
+      ctx,
+      x + 0.42,
+      y,
+      0.72,
+      0.2
+    );
+
+  }
+
+
+  else{
+
+    drawPixel(
+      ctx,
+      x + 0.28,
+      y,
+      1.0,
+      0.2
+    );
+
+  }
+
+}
+
+
+/* ===================== DRAW FACE ===================== */
+
+function drawFace(
+  ctx,
+  mood,
+  faceCfg
+){
+
+  const eyes =
+    faceCfg.eyes ||
+    [
+      [3,4],
+      [6,4]
+    ];
+
+
+  const eyeStyle =
+    faceCfg.eyeStyle ||
+    'cute';
+
+
+  /* ---------- ojos ---------- */
+
+  if(eyeStyle === 'dead'){
+
+    for(
+      const [x,y]
+      of eyes
+    ){
+
+      drawXEye(
+        ctx,
+        x,
+        y,
+        0.72
+      );
+
+    }
+
+  }
+
+
+  else{
+
+    for(
+      const [x,y]
+      of eyes
+    ){
+
+      drawNormalEye(
+        ctx,
+        x,
+        y,
+        eyeStyle,
+        mood
+      );
+
+    }
+
+  }
+
+
+  /* ---------- boca ---------- */
+
+  if(faceCfg.mouth){
+
+    drawMouth(
+      ctx,
+      faceCfg.mouth[0],
+      faceCfg.mouth[1],
+      faceCfg.mouthStyle || 'cute',
+      mood
+    );
+
+  }
+
+
+  /* ---------- mejillas ---------- */
+
+  if(
+    faceCfg.blush &&
+    mood === 'happy' &&
+    eyes.length >= 2
+  ){
+
+    const left =
+      eyes[0];
+
+    const right =
+      eyes[1];
+
+
+    drawPixel(
+      ctx,
+      left[0] - 0.55,
+      left[1] + 0.62,
+      0.36,
+      0.18,
+      BLUSH
+    );
+
+
+    drawPixel(
+      ctx,
+      right[0] + 0.9,
+      right[1] + 0.62,
+      0.36,
+      0.18,
+      BLUSH
+    );
+
+  }
+
+}
 /* ===================== Comida ===================== */
 
 const FOODS = [
