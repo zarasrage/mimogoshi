@@ -296,6 +296,7 @@ function freshState(name, species){
     stage: 'egg',
     selectedFood: 'simple',
     unlockedFoods: ['simple'],
+    records: {},   // mejor puntaje por minijuego
   };
 }
 
@@ -308,6 +309,7 @@ function loadState(){
     if (!s.selectedFood) s.selectedFood = 'simple';
     if (!s.unlockedFoods) s.unlockedFoods = ['simple'];
     if (!s.species || !SPECIES[s.species]) s.species = DEFAULT_SPECIES; // saves de especies que ya no existen
+    if (!s.records || typeof s.records !== 'object') s.records = {};    // saves anteriores a los récords
     return s;
   } catch (e) {
     return null;
@@ -423,16 +425,15 @@ function triggerGameOver(){
 
 /* Cierra cualquier minijuego en curso a la fuerza (ej. si la mascota muere a mitad de partida) */
 function forceCloseMinigames(){
-  if (sg && sg.raf) cancelAnimationFrame(sg.raf);
-  if (sg){
-    window.removeEventListener('keydown', sg.onKeyDown);
-    window.removeEventListener('keyup', sg.onKeyUp);
-    sg.gc.removeEventListener('pointermove', sg.onMove);
-  }
+  sgDispose();
+  rxDispose();
+  trDispose();
   if (bb && bb.raf) cancelAnimationFrame(bb.raf);
   if (bb && bb.onShoot) document.getElementById('btnShoot').removeEventListener('click', bb.onShoot);
   sg = null;
   bb = null;
+  rx = null;
+  tr = null;
   activeMinigame = null;
   document.getElementById('gameCanvas').classList.add('hidden');
   document.getElementById('btnShoot').classList.add('hidden');
@@ -667,16 +668,36 @@ function openGamesMenu(){
   if (state.energy < 12){ say('Está muy cansado para jugar'); return; }
   if (!tryWake()) return;
 
+  /* El récord va como insignia a la derecha y no dentro del texto: si va en el
+     texto la descripción pasa a dos líneas y con cuatro juegos la lista ya no
+     entra en la pantalla. */
+  const record = (id) => {
+    const best = bestScore(id);
+    return best > 0 ? `<span class="menu-record">★ ${best}</span>` : '';
+  };
+
   showOverlay(`
     <h3>🎮 Elegir juego</h3>
     <div class="menu-list">
       <div class="menu-item" id="pickStars">
         <span class="emoji">⭐</span>
-        <div class="info"><b>Atrapa estrellas</b><small>Mueve la canasta, evita la caca</small></div>
+        <div class="info"><b>Atrapa estrellas</b><small>Esquiva la caca</small></div>
+        ${record('stars')}
       </div>
       <div class="menu-item" id="pickBasketball">
         <span class="emoji">🏀</span>
-        <div class="info"><b>Baloncesto</b><small>Aprieta TIRAR en el momento justo</small></div>
+        <div class="info"><b>Baloncesto</b><small>Tira en el momento justo</small></div>
+        ${record('basketball')}
+      </div>
+      <div class="menu-item" id="pickReflex">
+        <span class="emoji">🎯</span>
+        <div class="info"><b>Reflejos</b><small>Todo menos las bombas</small></div>
+        ${record('reflex')}
+      </div>
+      <div class="menu-item" id="pickTap">
+        <span class="emoji">🎵</span>
+        <div class="info"><b>Tap rítmico</b><small>Toca al cruzar la línea</small></div>
+        ${record('tap')}
       </div>
     </div>
     <button class="overlay-btn" id="btnCloseGames">Cancelar</button>
@@ -684,6 +705,8 @@ function openGamesMenu(){
 
   document.getElementById('pickStars').addEventListener('click', () => { hideOverlay(); startStarsGame(); });
   document.getElementById('pickBasketball').addEventListener('click', () => { hideOverlay(); startBasketballGame(); });
+  document.getElementById('pickReflex').addEventListener('click', () => { hideOverlay(); startReflexGame(); });
+  document.getElementById('pickTap').addEventListener('click', () => { hideOverlay(); startTapGame(); });
   document.getElementById('btnCloseGames').addEventListener('click', hideOverlay);
 }
 
@@ -695,33 +718,142 @@ function fitGameCanvas(gc){
   gc.height = Math.max(90, Math.round(rect.height));
 }
 
-/* ===================== Minijuego 1: atrapar estrellas ===================== */
+/* ===================== Utilidades compartidas de minijuegos ===================== */
 
-let sg = null;
+/* Dibujar un emoji con fillText es caro: el navegador rasteriza el glifo a color
+   en cada llamada, y en una partida hay decenas por frame. Se rasteriza una sola
+   vez a un canvas chico y de ahí en adelante solo se copia con drawImage. */
+const emojiCache = new Map();
 
-function startStarsGame(){
+function emojiSprite(char, size){
+  const key = char + '@' + size;
+  const cached = emojiCache.get(key);
+  if (cached) return cached;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const cx = c.getContext('2d');
+  cx.font = Math.round(size * 0.78) + 'px sans-serif';
+  cx.textAlign = 'center';
+  cx.textBaseline = 'middle';
+  cx.fillText(char, size/2, size/2);
+  emojiCache.set(key, c);
+  return c;
+}
+
+function drawEmoji(ctx, char, size, x, y){
+  ctx.drawImage(emojiSprite(char, size), Math.round(x - size/2), Math.round(y - size/2));
+}
+
+/* getBoundingClientRect() obliga al navegador a recalcular el layout. Llamarlo en
+   cada pointermove es un recálculo por frame, así que se cachea al empezar la
+   partida y solo se refresca si la ventana cambia de tamaño. */
+function makeCanvasPointer(gc){
+  const p = {
+    rect: gc.getBoundingClientRect(),
+    refresh(){ p.rect = gc.getBoundingClientRect(); },
+    at(e){
+      const r = p.rect;
+      return {
+        x: (e.clientX - r.left) / r.width * gc.width,
+        y: (e.clientY - r.top) / r.height * gc.height,
+      };
+    },
+    dispose(){ window.removeEventListener('resize', p.refresh); },
+  };
+  window.addEventListener('resize', p.refresh);
+  return p;
+}
+
+/* Récord por minijuego: es lo que hace que valga la pena repetir una partida.
+   Vive dentro del save, así que se guarda y migra junto con todo lo demás. */
+function bestScore(id){
+  return (state.records && state.records[id]) || 0;
+}
+
+function saveBestScore(id, score){
+  if (!state.records) state.records = {};
+  if (score <= (state.records[id] || 0)) return false;
+  state.records[id] = score;
+  return true;
+}
+
+/* Alta y baja del canvas de minijuego: las dos mitades que todos repiten igual. */
+function enterMinigame(id){
   catchUp();
-  activeMinigame = 'stars';
+  activeMinigame = id;
   document.getElementById('creatureFloor').classList.add('hidden');
   const gc = document.getElementById('gameCanvas');
   gc.classList.remove('hidden');
   fitGameCanvas(gc);
   const ctx = gc.getContext('2d');
   ctx.imageSmoothingEnabled = false;
+  return { gc, ctx };
+}
+
+function exitMinigame(){
+  document.getElementById('gameCanvas').classList.add('hidden');
+  document.getElementById('creatureFloor').classList.remove('hidden');
+  activeMinigame = null;
+}
+
+/* Cierre común: aplica el premio, avisa el récord y deja todo guardado. */
+function finishMinigame(id, { score, happinessGain, energyCost, hygieneCost = 0, message }){
+  const record = saveBestScore(id, score);
+  state.happiness = clamp(state.happiness + happinessGain);
+  state.energy = clamp(state.energy - energyCost);
+  if (hygieneCost) state.hygiene = clamp(state.hygiene - hygieneCost);
+
+  say(record ? `¡RÉCORD! ${message}` : message, 2200);
+  if (happinessGain > 0) triggerPetAction('celebrate');
+  exitMinigame();
+  saveState(); render();
+}
+
+/* ===================== Minijuego 1: atrapar estrellas =====================
+   20 segundos con dificultad creciente: arranca lento y casi todo son estrellas,
+   termina rápido y con mucha más caca. El combo (estrellas seguidas, sin comer
+   caca ni dejar caer ninguna) multiplica hasta x4, así que lo que decide el
+   puntaje no es atrapar mucho sino no romper la racha. */
+
+const SG_DURATION = 20;
+const SG_BASKET_HALF = 18;
+const SG_CHAR = { star:'⭐', gold:'🌟', poop:'💩' };
+
+let sg = null;
+
+/* La grilla de fondo es fija: se dibuja una vez a un canvas aparte y después se
+   copia con un solo drawImage, en vez de repetir ~16 fillRect por frame. */
+function sgBackground(w, h){
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const cx = c.getContext('2d');
+  cx.fillStyle = 'rgba(255,255,255,.06)';
+  for (let i = 0; i < w; i += 16) cx.fillRect(i, 0, 1, h);
+  return c;
+}
+
+function startStarsGame(){
+  const { gc, ctx } = enterMinigame('stars');
 
   sg = {
     ctx, gc,
     basketX: gc.width/2,
     items: [],
+    fx: [],
     score: 0,
-    timeLeft: 10,
-    lastSpawn: 0,
-    keys: {left:false, right:false},
+    combo: 0,
+    bestCombo: 0,
+    timeLeft: SG_DURATION,
+    spawnIn: 0.4,
+    keys: { left:false, right:false },
+    pointer: makeCanvasPointer(gc),
+    bg: sgBackground(gc.width, gc.height),
     raf: null,
+    lastT: 0,
   };
 
   const onKey = (down) => (e) => {
-    if (e.key === 'ArrowLeft' || e.key === 'a') sg.keys.left = down;
+    if (e.key === 'ArrowLeft'  || e.key === 'a') sg.keys.left = down;
     if (e.key === 'ArrowRight' || e.key === 'd') sg.keys.right = down;
   };
   sg.onKeyDown = onKey(true);
@@ -730,15 +862,37 @@ function startStarsGame(){
   window.addEventListener('keyup', sg.onKeyUp);
 
   sg.onMove = (e) => {
-    const rect = gc.getBoundingClientRect();
-    const clientX = (e.touches ? e.touches[0].clientX : e.clientX);
-    const relX = (clientX - rect.left) / rect.width * gc.width;
-    sg.basketX = Math.max(14, Math.min(gc.width-14, relX));
+    const { x } = sg.pointer.at(e);
+    sg.basketX = Math.max(SG_BASKET_HALF, Math.min(gc.width - SG_BASKET_HALF, x));
   };
   gc.addEventListener('pointermove', sg.onMove);
 
   say('¡Atrapa las estrellas!');
-  sgLoop(performance.now());
+  sg.raf = requestAnimationFrame(sgLoop);
+}
+
+function sgMultiplier(){
+  return Math.min(4, 1 + Math.floor(sg.combo / 4));
+}
+
+/* Partículas dentro del canvas. Antes cada atrapada creaba un <div> con floatFx()
+   que vivía 1s: con el ritmo de spawn de ahora eso es un chorro de nodos y de
+   reflows por partida, y el canvas ya está dibujándose igual. */
+function sgSpawnFx(char, x, y){
+  sg.fx.push({ char, x, y, vy: -46, life: 0.6 });
+}
+
+function sgCatch(it){
+  if (it.kind === 'poop'){
+    sg.score -= 2;
+    sg.combo = 0;
+    sgSpawnFx('💩', it.x, it.y);
+    return;
+  }
+  sg.combo += 1;
+  if (sg.combo > sg.bestCombo) sg.bestCombo = sg.combo;
+  sg.score += (it.kind === 'gold' ? 3 : 1) * sgMultiplier();
+  sgSpawnFx(SG_CHAR[it.kind], it.x, it.y);
 }
 
 function sgLoop(t){
@@ -747,78 +901,107 @@ function sgLoop(t){
   sg.lastT = t;
   sg.timeLeft -= dt;
 
-  if (sg.keys.left) sg.basketX = Math.max(14, sg.basketX - 220*dt);
-  if (sg.keys.right) sg.basketX = Math.min(sg.gc.width-14, sg.basketX + 220*dt);
+  const gc = sg.gc, ctx = sg.ctx;
+  const progress = 1 - Math.max(0, sg.timeLeft) / SG_DURATION; // 0 al empezar, 1 al final
 
-  sg.lastSpawn -= dt;
-  if (sg.lastSpawn <= 0){
-    sg.lastSpawn = 0.55 + Math.random()*0.4;
-    sg.items.push({ x: 16+Math.random()*(sg.gc.width-32), y: -10, vy: 70+Math.random()*50, star: Math.random() > 0.2 });
+  if (sg.keys.left)  sg.basketX = Math.max(SG_BASKET_HALF, sg.basketX - 260*dt);
+  if (sg.keys.right) sg.basketX = Math.min(gc.width - SG_BASKET_HALF, sg.basketX + 260*dt);
+
+  sg.spawnIn -= dt;
+  if (sg.spawnIn <= 0){
+    sg.spawnIn = 0.62 - 0.34*progress;          // 0.62s → 0.28s entre caídas
+    const roll = Math.random();
+    const poopChance = 0.16 + 0.26*progress;    // 16% → 42% de caca
+    const kind = roll < poopChance ? 'poop' : (roll > 0.95 ? 'gold' : 'star');
+    sg.items.push({
+      x: 16 + Math.random()*(gc.width - 32),
+      y: -12,
+      vy: (72 + 96*progress) * (0.85 + Math.random()*0.4),
+      kind,
+    });
   }
 
-  const ctx = sg.ctx, gc = sg.gc;
-  ctx.clearRect(0,0,gc.width, gc.height);
-  ctx.fillStyle = 'rgba(255,255,255,.06)';
-  for (let i=0;i<gc.width;i+=16) ctx.fillRect(i,0,1,gc.height);
+  ctx.clearRect(0, 0, gc.width, gc.height);
+  ctx.drawImage(sg.bg, 0, 0);
 
-  sg.items.forEach(it => { it.y += it.vy * dt; });
-
-  for (let i=sg.items.length-1; i>=0; i--){
+  /* Una sola pasada por los items: mover, chequear atrapada/salida y dibujar. */
+  const catchY = gc.height - 26;
+  for (let i = sg.items.length - 1; i >= 0; i--){
     const it = sg.items[i];
-    if (it.y > gc.height + 12){ sg.items.splice(i,1); continue; }
-    const caught = it.y > gc.height-26 && Math.abs(it.x - sg.basketX) < 18;
-    if (caught){
-      sg.score += it.star ? 1 : -1;
-      sg.items.splice(i,1);
-      floatFx(it.star ? '⭐' : '💩');
+    it.y += it.vy * dt;
+
+    if (it.y > catchY && it.y < gc.height && Math.abs(it.x - sg.basketX) < SG_BASKET_HALF + 4){
+      sgCatch(it);
+      sg.items.splice(i, 1);
       continue;
     }
-    ctx.font = '18px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(it.star ? '⭐' : '💩', it.x, it.y);
+    if (it.y > gc.height + 14){
+      if (it.kind !== 'poop') sg.combo = 0; // dejar caer una estrella corta la racha
+      sg.items.splice(i, 1);
+      continue;
+    }
+    drawEmoji(ctx, SG_CHAR[it.kind], 20, it.x, it.y);
   }
+
+  for (let i = sg.fx.length - 1; i >= 0; i--){
+    const f = sg.fx[i];
+    f.life -= dt;
+    if (f.life <= 0){ sg.fx.splice(i, 1); continue; }
+    f.y += f.vy * dt;
+    ctx.globalAlpha = Math.min(1, f.life * 2);
+    drawEmoji(ctx, f.char, 15, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
 
   ctx.fillStyle = '#ffe66d';
   ctx.beginPath();
-  ctx.moveTo(sg.basketX-16, gc.height-6);
-  ctx.lineTo(sg.basketX+16, gc.height-6);
-  ctx.lineTo(sg.basketX, gc.height-26);
+  ctx.moveTo(sg.basketX - SG_BASKET_HALF, gc.height - 6);
+  ctx.lineTo(sg.basketX + SG_BASKET_HALF, gc.height - 6);
+  ctx.lineTo(sg.basketX, gc.height - 26);
   ctx.closePath();
   ctx.fill();
 
+  ctx.font = '11px monospace';
+  ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'left';
   ctx.fillStyle = '#fff';
-  ctx.font = '11px monospace';
   ctx.fillText('⭐ ' + sg.score, 8, 16);
-  ctx.fillText(Math.max(0, sg.timeLeft).toFixed(1) + 's', gc.width-46, 16);
+  ctx.textAlign = 'right';
+  ctx.fillText(Math.max(0, sg.timeLeft).toFixed(1) + 's', gc.width - 8, 16);
 
-  if (sg.timeLeft <= 0){
-    endStarsGame();
-    return;
+  if (sg.combo >= 2){
+    ctx.textAlign = 'center';
+    ctx.fillStyle = sgMultiplier() > 1 ? '#ffe66d' : 'rgba(255,255,255,.7)';
+    ctx.fillText(`combo ${sg.combo}  x${sgMultiplier()}`, gc.width/2, 16);
   }
+
+  if (sg.timeLeft <= 0){ endStarsGame(); return; }
   sg.raf = requestAnimationFrame(sgLoop);
+}
+
+function sgDispose(){
+  if (!sg) return;
+  window.removeEventListener('keydown', sg.onKeyDown);
+  window.removeEventListener('keyup', sg.onKeyUp);
+  sg.gc.removeEventListener('pointermove', sg.onMove);
+  sg.pointer.dispose();
+  if (sg.raf) cancelAnimationFrame(sg.raf);
 }
 
 function endStarsGame(){
   const score = sg ? sg.score : 0;
-  window.removeEventListener('keydown', sg.onKeyDown);
-  window.removeEventListener('keyup', sg.onKeyUp);
-  sg.gc.removeEventListener('pointermove', sg.onMove);
-  if (sg.raf) cancelAnimationFrame(sg.raf);
-
-  document.getElementById('gameCanvas').classList.add('hidden');
-  document.getElementById('creatureFloor').classList.remove('hidden');
-
-  const happinessGain = clamp(score * 6, -10, 45);
-  state.happiness = clamp(state.happiness + happinessGain);
-  state.energy = clamp(state.energy - 18);
-  state.hygiene = clamp(state.hygiene - 5);
-
-  say(score > 0 ? `¡${score} estrellas! +${happinessGain} felicidad` : 'Mmm, la próxima será');
-  if (happinessGain > 0) triggerPetAction('celebrate');
-  activeMinigame = null;
+  const bestCombo = sg ? sg.bestCombo : 0;
+  sgDispose();
   sg = null;
-  saveState(); render();
+
+  /* Un bot que no falla nada saca ~96, así que el tope de felicidad queda arriba
+     de lo que da una partida buena pero no perfecta: hay que jugar bien de verdad. */
+  const happinessGain = clamp(Math.round(score * 0.6), -10, 45);
+  const message = score > 0
+    ? `${score} pts (combo ${bestCombo}) +${happinessGain} felicidad`
+    : 'Mmm, la próxima será';
+
+  finishMinigame('stars', { score, happinessGain, energyCost: 18, hygieneCost: 5, message });
 }
 
 /* ===================== Minijuego 2: baloncesto (timing) ===================== */
@@ -1081,6 +1264,434 @@ function endBasketballGame(){
   saveState(); render();
 }
 
+/* ===================== Minijuego 3: reflejos =====================
+   Aparecen blancos que duran cada vez menos. Hay que tocar los buenos y NO tocar
+   las bombas. Tres cosas empujan la dificultad a la vez: salen más seguido, duran
+   menos y crece la proporción de bombas. Tocar el vacío corta el combo, así que
+   martillar la pantalla al azar es peor que mirar y elegir. */
+
+const RX_DURATION = 25;
+const RX_LIVES = 3;
+const RX_RADIUS = 17;
+const RX_CHAR = { good:'🎯', gold:'💎', bomb:'💣' };
+
+let rx = null;
+
+function startReflexGame(){
+  const { gc, ctx } = enterMinigame('reflex');
+
+  rx = {
+    ctx, gc,
+    targets: [],
+    fx: [],
+    score: 0,
+    combo: 0,
+    bestCombo: 0,
+    lives: RX_LIVES,
+    timeLeft: RX_DURATION,
+    spawnIn: 0.6,
+    flash: 0,            // destello rojo al tocar una bomba
+    pointer: makeCanvasPointer(gc),
+    raf: null,
+    lastT: 0,
+  };
+
+  rx.onDown = (e) => {
+    e.preventDefault();
+    rxTap(rx.pointer.at(e));
+  };
+  gc.addEventListener('pointerdown', rx.onDown);
+
+  say('¡Toca los blancos, esquiva las bombas!');
+  rx.raf = requestAnimationFrame(rxLoop);
+}
+
+function rxMultiplier(){
+  return Math.min(4, 1 + Math.floor(rx.combo / 5));
+}
+
+function rxSpawnFx(char, x, y){
+  rx.fx.push({ char, x, y, vy: -50, life: 0.55 });
+}
+
+/* Busca un hueco donde el blanco nuevo no quede encima de otro: si no encuentra
+   uno limpio en unos intentos, igual lo pone (mejor eso que saltarse el spawn). */
+function rxPlaceTarget(){
+  const gc = rx.gc;
+  const minX = RX_RADIUS + 4, maxX = gc.width - RX_RADIUS - 4;
+  const minY = RX_RADIUS + 22, maxY = gc.height - RX_RADIUS - 6; // 22 deja libre el HUD
+  let x = 0, y = 0;
+  for (let intento = 0; intento < 8; intento++){
+    x = minX + Math.random()*(maxX - minX);
+    y = minY + Math.random()*Math.max(1, maxY - minY);
+    const chocado = rx.targets.some(o => Math.hypot(o.x - x, o.y - y) < RX_RADIUS*2.1);
+    if (!chocado) break;
+  }
+  return { x, y };
+}
+
+function rxTap(pos){
+  if (!rx) return;
+  /* De atrás para adelante: el último dibujado es el que se ve arriba. */
+  for (let i = rx.targets.length - 1; i >= 0; i--){
+    const tg = rx.targets[i];
+    if (Math.hypot(tg.x - pos.x, tg.y - pos.y) > RX_RADIUS + 4) continue;
+
+    rx.targets.splice(i, 1);
+    if (tg.kind === 'bomb'){
+      rx.lives -= 1;
+      rx.combo = 0;
+      rx.flash = 0.3;
+      rxSpawnFx('💥', tg.x, tg.y);
+      if (rx.lives <= 0) endReflexGame();
+      return;
+    }
+    rx.combo += 1;
+    if (rx.combo > rx.bestCombo) rx.bestCombo = rx.combo;
+    rx.score += (tg.kind === 'gold' ? 3 : 1) * rxMultiplier();
+    rxSpawnFx(RX_CHAR[tg.kind], tg.x, tg.y);
+    return;
+  }
+  rx.combo = 0; // tocar el vacío corta la racha
+}
+
+function rxLoop(t){
+  if (activeMinigame !== 'reflex' || !rx) return;
+  const dt = Math.min(0.05, (t - (rx.lastT || t)) / 1000);
+  rx.lastT = t;
+  rx.timeLeft -= dt;
+  if (rx.flash > 0) rx.flash -= dt;
+
+  const gc = rx.gc, ctx = rx.ctx;
+  const progress = 1 - Math.max(0, rx.timeLeft) / RX_DURATION;
+
+  rx.spawnIn -= dt;
+  if (rx.spawnIn <= 0){
+    rx.spawnIn = 0.78 - 0.44*progress;            // 0.78s → 0.34s entre blancos
+    const ttl = 1.55 - 0.75*progress;             // 1.55s → 0.80s de vida
+    const roll = Math.random();
+    const bombChance = 0.18 + 0.22*progress;      // 18% → 40% bombas
+    const kind = roll < bombChance ? 'bomb' : (roll > 0.96 ? 'gold' : 'good');
+    const { x, y } = rxPlaceTarget();
+    rx.targets.push({ x, y, kind, ttl, life: ttl });
+  }
+
+  ctx.clearRect(0, 0, gc.width, gc.height);
+  if (rx.flash > 0){
+    ctx.fillStyle = `rgba(255,70,70,${(rx.flash/0.3)*0.35})`;
+    ctx.fillRect(0, 0, gc.width, gc.height);
+  }
+
+  for (let i = rx.targets.length - 1; i >= 0; i--){
+    const tg = rx.targets[i];
+    tg.life -= dt;
+    if (tg.life <= 0){
+      rx.targets.splice(i, 1);
+      if (tg.kind !== 'bomb') rx.combo = 0; // dejar escapar un blanco corta la racha
+      continue;
+    }
+
+    const restante = tg.life / tg.ttl;
+    /* Entra creciendo en los primeros 120ms: da el pulso de "apareció acá". */
+    const aparicion = Math.min(1, (tg.ttl - tg.life) / 0.12);
+    const r = RX_RADIUS * (0.55 + 0.45*aparicion);
+
+    ctx.beginPath();
+    ctx.arc(tg.x, tg.y, r, 0, Math.PI*2);
+    ctx.fillStyle = tg.kind === 'bomb' ? 'rgba(255,90,90,.20)' : 'rgba(255,230,109,.18)';
+    ctx.fill();
+
+    /* Anillo que se vacía: cuánto queda antes de que desaparezca. */
+    ctx.beginPath();
+    ctx.arc(tg.x, tg.y, r + 3, -Math.PI/2, -Math.PI/2 + Math.PI*2*restante);
+    ctx.strokeStyle = tg.kind === 'bomb' ? '#ff6b6b' : '#ffe66d';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    drawEmoji(ctx, RX_CHAR[tg.kind], Math.round(r * 1.35), tg.x, tg.y);
+  }
+
+  for (let i = rx.fx.length - 1; i >= 0; i--){
+    const f = rx.fx[i];
+    f.life -= dt;
+    if (f.life <= 0){ rx.fx.splice(i, 1); continue; }
+    f.y += f.vy * dt;
+    ctx.globalAlpha = Math.min(1, f.life * 2);
+    drawEmoji(ctx, f.char, 16, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.font = '11px monospace';
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('🎯 ' + rx.score, 8, 16);
+  ctx.textAlign = 'center';
+  if (rx.combo >= 2){
+    ctx.fillStyle = rxMultiplier() > 1 ? '#ffe66d' : 'rgba(255,255,255,.7)';
+    ctx.fillText(`combo ${rx.combo}  x${rxMultiplier()}`, gc.width/2, 16);
+  }
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('❤️'.repeat(Math.max(0, rx.lives)) + '  ' + Math.max(0, rx.timeLeft).toFixed(0) + 's', gc.width - 8, 16);
+
+  if (rx.timeLeft <= 0){ endReflexGame(); return; }
+  rx.raf = requestAnimationFrame(rxLoop);
+}
+
+function rxDispose(){
+  if (!rx) return;
+  rx.gc.removeEventListener('pointerdown', rx.onDown);
+  rx.pointer.dispose();
+  if (rx.raf) cancelAnimationFrame(rx.raf);
+}
+
+function endReflexGame(){
+  const score = rx ? rx.score : 0;
+  const bestCombo = rx ? rx.bestCombo : 0;
+  const sinVidas = rx ? rx.lives <= 0 : false;
+  rxDispose();
+  rx = null;
+
+  const happinessGain = clamp(Math.round(score * 0.5), 0, 45);
+  const message = sinVidas
+    ? `¡Boom! ${score} pts (combo ${bestCombo})`
+    : `${score} pts (combo ${bestCombo}) +${happinessGain} felicidad`;
+
+  finishMinigame('reflex', { score, happinessGain, energyCost: 20, message });
+}
+
+/* ===================== Minijuego 4: tap rítmico =====================
+   Tres carriles, notas que bajan hasta la línea y hay que tocarlas justo cuando
+   la cruzan. El chart acelera solo (0.62s → 0.34s entre notas), y como tocar de
+   más también corta el combo, no sirve tapear a lo loco: hay que seguir el ritmo. */
+
+const TR_LANES = 3;
+const TR_LANE_CHAR = ['🍬','🎮','🫧'];
+const TR_APPROACH = 1.35;   // segundos que tarda una nota en bajar hasta la línea
+const TR_PERFECT = 0.09;    // ventana de acierto perfecto, en segundos
+const TR_GOOD = 0.19;       // ventana de acierto normal
+
+let tr = null;
+
+/* Chart generado, no fijo: mismo esqueleto rítmico siempre (acelera parejo) pero
+   los carriles cambian, así no se memoriza la secuencia en dos partidas. */
+function trBuildChart(){
+  const notes = [];
+  let t = 1.7;        // deja un compás de aire antes de la primera nota
+  let beat = 0.62;
+  let lane = 1;
+  while (t < 26){
+    // salta a otro carril la mayoría de las veces, pero a veces repite
+    if (Math.random() < 0.78){
+      lane = (lane + 1 + Math.floor(Math.random()*(TR_LANES-1))) % TR_LANES;
+    }
+    notes.push({ t, lane, judged: false });
+    t += beat;
+    beat = Math.max(0.34, beat * 0.985);
+  }
+  return notes;
+}
+
+function startTapGame(){
+  const { gc, ctx } = enterMinigame('tap');
+
+  tr = {
+    ctx, gc,
+    notes: trBuildChart(),
+    fx: [],
+    score: 0,
+    combo: 0,
+    bestCombo: 0,
+    perfects: 0,
+    hits: 0,
+    laneW: gc.width / TR_LANES,
+    hitY: gc.height - 26,
+    time: 0,
+    cursor: 0,          // primera nota del chart todavía sin resolver
+    endAt: 0,
+    judgeText: '',
+    judgeColor: '#fff',
+    judgeUntil: 0,
+    lanePulse: [0, 0, 0],
+    pointer: makeCanvasPointer(gc),
+    raf: null,
+    lastT: 0,
+  };
+  tr.speed = (tr.hitY + 26) / TR_APPROACH; // px/s para que la nota tarde TR_APPROACH
+
+  tr.onDown = (e) => {
+    e.preventDefault();
+    const { x } = tr.pointer.at(e);
+    trHit(Math.max(0, Math.min(TR_LANES-1, Math.floor(x / tr.laneW))));
+  };
+  gc.addEventListener('pointerdown', tr.onDown);
+
+  tr.onKeyDown = (e) => {
+    const idx = { '1':0, '2':1, '3':2, a:0, s:1, d:2, ArrowLeft:0, ArrowDown:1, ArrowRight:2 }[e.key];
+    if (idx !== undefined){ e.preventDefault(); trHit(idx); }
+  };
+  window.addEventListener('keydown', tr.onKeyDown);
+
+  say('¡Toca al ritmo!');
+  tr.raf = requestAnimationFrame(trLoop);
+}
+
+function trMultiplier(){
+  return Math.min(4, 1 + Math.floor(tr.combo / 10));
+}
+
+function trJudge(text, color){
+  tr.judgeText = text;
+  tr.judgeColor = color;
+  tr.judgeUntil = tr.time + 0.5;
+}
+
+function trHit(lane){
+  if (!tr) return;
+  tr.lanePulse[lane] = 0.18;
+
+  /* La nota sin juzgar más cercana en el tiempo, dentro de ese carril. */
+  let mejor = null, mejorDist = Infinity;
+  for (const n of tr.notes){
+    if (n.judged || n.lane !== lane) continue;
+    const dist = Math.abs(n.t - tr.time);
+    if (dist < mejorDist){ mejorDist = dist; mejor = n; }
+  }
+
+  if (!mejor || mejorDist > TR_GOOD){
+    tr.combo = 0;                    // tocar cuando no hay nota corta la racha
+    trJudge('fallo', '#ff8f8f');
+    return;
+  }
+
+  mejor.judged = true;
+  tr.combo += 1;
+  if (tr.combo > tr.bestCombo) tr.bestCombo = tr.combo;
+  tr.hits += 1;
+
+  const perfecto = mejorDist <= TR_PERFECT;
+  if (perfecto) tr.perfects += 1;
+  tr.score += (perfecto ? 3 : 1) * trMultiplier();
+  trJudge(perfecto ? '¡PERFECTO!' : 'bien', perfecto ? '#ffe66d' : '#c8f2c2');
+  tr.fx.push({ char: TR_LANE_CHAR[lane], x: (lane + 0.5) * tr.laneW, y: tr.hitY, vy: -55, life: 0.5 });
+}
+
+function trLoop(t){
+  if (activeMinigame !== 'tap' || !tr) return;
+  const dt = Math.min(0.05, (t - (tr.lastT || t)) / 1000);
+  tr.lastT = t;
+  tr.time += dt;
+
+  const gc = tr.gc, ctx = tr.ctx;
+  ctx.clearRect(0, 0, gc.width, gc.height);
+
+  for (let i = 0; i < TR_LANES; i++){
+    if (tr.lanePulse[i] > 0) tr.lanePulse[i] -= dt;
+    if (tr.lanePulse[i] > 0){
+      ctx.fillStyle = `rgba(255,230,109,${(tr.lanePulse[i]/0.18)*0.18})`;
+      ctx.fillRect(i*tr.laneW, 0, tr.laneW, gc.height);
+    }
+    if (i > 0){
+      ctx.fillStyle = 'rgba(255,255,255,.08)';
+      ctx.fillRect(Math.round(i*tr.laneW), 0, 1, gc.height);
+    }
+  }
+
+  /* Franja de acierto: es exactamente la ventana "bien", así el jugador ve
+     dónde tiene que estar la nota al tocar en vez de adivinarlo. */
+  const banda = TR_GOOD * tr.speed;
+  ctx.fillStyle = 'rgba(255,230,109,.10)';
+  ctx.fillRect(0, tr.hitY - banda, gc.width, banda*2);
+  ctx.fillStyle = 'rgba(255,230,109,.55)';
+  ctx.fillRect(0, tr.hitY - 1, gc.width, 2);
+  for (let i = 0; i < TR_LANES; i++){
+    ctx.globalAlpha = 0.45;
+    drawEmoji(ctx, TR_LANE_CHAR[i], 15, (i + 0.5)*tr.laneW, tr.hitY + 14);
+    ctx.globalAlpha = 1;
+  }
+
+  /* El chart está ordenado por tiempo: el cursor salta las notas ya resueltas del
+     principio y el break corta las que todavía no entran en pantalla, así cada
+     frame solo toca las que se ven. */
+  while (tr.cursor < tr.notes.length && tr.notes[tr.cursor].judged) tr.cursor++;
+  let quedan = tr.cursor < tr.notes.length;
+  for (let i = tr.cursor; i < tr.notes.length; i++){
+    const n = tr.notes[i];
+    const falta = n.t - tr.time;                   // >0 todavía viene bajando
+    if (falta > TR_APPROACH) break;                // aún no entra en pantalla
+    if (n.judged) continue;
+    if (falta < -TR_GOOD){                         // se pasó de largo: fallo
+      n.judged = true;
+      tr.combo = 0;
+      trJudge('fallo', '#ff8f8f');
+      continue;
+    }
+    const y = tr.hitY - falta * tr.speed;
+    const x = (n.lane + 0.5) * tr.laneW;
+    ctx.beginPath();
+    ctx.arc(x, y, 13, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,230,109,.16)';
+    ctx.fill();
+    drawEmoji(ctx, TR_LANE_CHAR[n.lane], 20, x, y);
+  }
+
+  for (let i = tr.fx.length - 1; i >= 0; i--){
+    const f = tr.fx[i];
+    f.life -= dt;
+    if (f.life <= 0){ tr.fx.splice(i, 1); continue; }
+    f.y += f.vy * dt;
+    ctx.globalAlpha = Math.min(1, f.life * 2);
+    drawEmoji(ctx, f.char, 16, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.font = '11px monospace';
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('🎵 ' + tr.score, 8, 16);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = trMultiplier() > 1 ? '#ffe66d' : '#fff';
+  ctx.fillText(`combo ${tr.combo}  x${trMultiplier()}`, gc.width - 8, 16);
+
+  if (tr.time < tr.judgeUntil){
+    ctx.textAlign = 'center';
+    ctx.fillStyle = tr.judgeColor;
+    ctx.fillText(tr.judgeText, gc.width/2, tr.hitY - 26);
+  }
+
+  /* Media pausa al final para alcanzar a ver el veredicto de la última nota. */
+  if (!quedan){
+    if (!tr.endAt) tr.endAt = tr.time + 0.8;
+    if (tr.time >= tr.endAt){ endTapGame(); return; }
+  }
+  tr.raf = requestAnimationFrame(trLoop);
+}
+
+function trDispose(){
+  if (!tr) return;
+  tr.gc.removeEventListener('pointerdown', tr.onDown);
+  window.removeEventListener('keydown', tr.onKeyDown);
+  tr.pointer.dispose();
+  if (tr.raf) cancelAnimationFrame(tr.raf);
+}
+
+function endTapGame(){
+  const score = tr ? tr.score : 0;
+  const bestCombo = tr ? tr.bestCombo : 0;
+  const perfects = tr ? tr.perfects : 0;
+  trDispose();
+  tr = null;
+
+  const happinessGain = clamp(Math.round(score * 0.13), 0, 45);
+  const message = score > 0
+    ? `${score} pts · ${perfects} perfectos (combo ${bestCombo})`
+    : 'Se te fue el ritmo…';
+
+  finishMinigame('tap', { score, happinessGain, energyCost: 20, message });
+}
+
 /* ===================== Overlay / setup ===================== */
 
 function showOverlay(html){
@@ -1230,6 +1841,8 @@ function renderDebugPanel(){
         <div class="debug-grid">
           <button class="debug-btn" id="dbgStars">⭐ Estrellas</button>
           <button class="debug-btn" id="dbgBasketball">🏀 Baloncesto</button>
+          <button class="debug-btn" id="dbgReflex">🎯 Reflejos</button>
+          <button class="debug-btn" id="dbgTap">🎵 Tap rítmico</button>
         </div>
       </div>
       <div class="debug-section">
@@ -1272,6 +1885,8 @@ function renderDebugPanel(){
   document.getElementById('dbgActCelebrate').addEventListener('click', () => triggerPetAction('celebrate'));
   document.getElementById('dbgStars').addEventListener('click', () => { closeDebugPanel(); startStarsGame(); });
   document.getElementById('dbgBasketball').addEventListener('click', () => { closeDebugPanel(); startBasketballGame(); });
+  document.getElementById('dbgReflex').addEventListener('click', () => { closeDebugPanel(); startReflexGame(); });
+  document.getElementById('dbgTap').addEventListener('click', () => { closeDebugPanel(); startTapGame(); });
   document.getElementById('dbgPoop').addEventListener('click', () => {
     state.poop = true; saveState(); render(); renderDebugPanel();
   });

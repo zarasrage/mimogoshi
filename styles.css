@@ -254,6 +254,9 @@ body{
   margin:2px 0;
   border-radius:8px;
   background:rgba(0,0,0,.15);
+  /* Sin esto, en el teléfono el navegador se queda esperando a ver si el toque
+     es un scroll y los juegos de tocar (reflejos, tap rítmico) responden tarde. */
+  touch-action:none;
 }
 
 .shoot-btn{
@@ -407,6 +410,17 @@ body{
   margin-bottom:6px;
 }
 
+/* Mismo problema que con las especies: al sumar el tercer y cuarto minijuego la
+   lista creció más que la pantalla y el botón de abajo (Cancelar / Cerrar) quedó
+   fuera de vista. Con el tope de altura la lista se lleva el scroll y el botón
+   siempre se ve, por más juegos o comidas que se agreguen. La lista de especies
+   queda afuera: es horizontal y ya tiene su propio scroll. */
+.menu-list:not(.species-list){
+  max-height:min(52vh, 210px);
+  overflow-y:auto;
+  padding-right:2px;
+}
+
 .menu-item{
   display:flex;
   align-items:center;
@@ -421,7 +435,18 @@ body{
   text-align:left;
 }
 .menu-item .emoji{font-size:20px;}
-.menu-item .info{display:flex; flex-direction:column;}
+.menu-item .info{display:flex; flex-direction:column; min-width:0;}
+.menu-record{
+  margin-left:auto;
+  flex-shrink:0;
+  font-family:var(--font-pixel);
+  font-size:8px;
+  color:var(--amber);
+  background:rgba(255,214,102,.12);
+  border-radius:6px;
+  padding:4px 6px;
+  white-space:nowrap;
+}
 .menu-item .info b{font-size:13px;}
 .menu-item .info small{opacity:.7; font-size:10px;}
 .menu-item.selected{border-color:var(--amber);}

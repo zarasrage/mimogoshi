@@ -200,22 +200,58 @@ sobre la cara. Por eso `PALETTES` quedó reducido a la entrada `egg`.
 
 ## Minijuegos
 
-Dos, ambos sobre `#gameCanvas`, que se redimensiona con `fitGameCanvas()` a su
-tamaño real en pantalla para que nada salga estirado:
+Cuatro, todos sobre `#gameCanvas`, que se redimensiona con `fitGameCanvas()` a
+su tamaño real en pantalla para que nada salga estirado:
 
-- **Atrapa estrellas**: mover la canasta, esquivar la caca. 10 segundos.
-- **Baloncesto**: la pelota sube y baja, se aprieta TIRAR cerca del punto más
-  alto. 3 tiros, dificultad creciente (`BB_DIFFICULTY`). El arco es una parábola
-  real (`bbArcPos()`).
+- **Atrapa estrellas** (`sg`): mover la canasta, esquivar la caca. 20 segundos
+  con dificultad creciente (caen más seguido, más rápido y con más caca). El
+  combo multiplica hasta x4 y se corta tanto al comer caca como al dejar caer
+  una estrella.
+- **Baloncesto** (`bb`): la pelota sube y baja, se aprieta TIRAR cerca del punto
+  más alto. 3 tiros, dificultad creciente (`BB_DIFFICULTY`). El arco es una
+  parábola real (`bbArcPos()`).
+- **Reflejos** (`rx`): aparecen blancos que duran cada vez menos; tocar los
+  buenos, no las bombas. 25 segundos y 3 vidas. Tocar el vacío corta el combo,
+  así que martillar la pantalla es peor que elegir.
+- **Tap rítmico** (`tr`): tres carriles, notas que bajan a la línea. El chart lo
+  genera `trBuildChart()` (acelera de 0.62s a 0.34s entre notas; los carriles
+  cambian en cada partida). Ventanas `TR_PERFECT`/`TR_GOOD`; tocar de más
+  también corta el combo.
 
-Ambos suman felicidad y disparan `triggerPetAction('celebrate')` si el puntaje
-fue positivo.
+Los cuatro suman felicidad y disparan `triggerPetAction('celebrate')` si el
+puntaje fue positivo.
+
+### Cómo se arma un minijuego
+
+Lo compartido está justo debajo de `fitGameCanvas()` y conviene reusarlo:
+
+- `enterMinigame(id)` / `exitMinigame()`: alta y baja del canvas (esconder al
+  monito, mostrar el canvas, `catchUp()`, `activeMinigame`).
+- `finishMinigame(id, {...})`: aplica premio y costo, guarda el récord y avisa
+  "¡RÉCORD!" si corresponde.
+- `drawEmoji()`: **usar siempre esto en vez de `ctx.fillText()` con un emoji.**
+  `fillText` rasteriza el glifo de color en cada llamada y en una partida hay
+  decenas por frame; `emojiSprite()` lo cachea en un canvas chico y después solo
+  copia.
+- `makeCanvasPointer(gc)`: coordenadas del puntero con el `getBoundingClientRect()`
+  cacheado. Llamarlo en cada `pointermove` fuerza un recálculo de layout por
+  frame.
+
+Cada juego guarda su estado en una variable global (`sg`, `bb`, `rx`, `tr`) y
+expone un `xxDispose()` que saca listeners y cancela el `requestAnimationFrame`.
+**Al agregar uno nuevo hay que sumarlo a `forceCloseMinigames()`**, que es lo que
+corre si la mascota se muere a mitad de partida.
+
+Los récords viven en `state.records[id]`, o sea dentro del save (`loadState()` los
+rellena vacíos para saves viejos). Se muestran como insignia en el menú de Jugar;
+si van dentro del texto de la descripción, esta pasa a dos líneas y con cuatro
+juegos la lista deja el botón de Cancelar fuera de la pantalla.
 
 ## Panel de prueba
 
 El botón ✏️ (`#btnDebug`) abre `#debugPanel`: fuerza etapa, ánimo y **especie**
 (para previsualizar sin perder la mascota guardada), dispara las 5 acciones,
-lanza los minijuegos, ensucia y mata. En pantallas anchas queda fijo al lado del
+lanza los 4 minijuegos, ensucia y mata. En pantallas anchas queda fijo al lado del
 dispositivo (`.layout-row`); en celular la misma CSS lo vuelve un modal a
 pantalla completa.
 
