@@ -5,9 +5,10 @@ backend**: se edita directo y se abre `index.html` en el navegador. Todo el
 progreso vive en `localStorage`.
 
 **Archivos:** `index.html` (esqueleto), `styles.css` (todo el CSS), `app.js`
-(toda la lógica) y un par `<especie>_spritesheet.png` + `.json` por cada
-especie. `index.html` carga `styles.css` y `app.js`; los spritesheets se cargan
-como `new Image()` desde `app.js` por ruta relativa.
+(toda la lógica) y, dentro de `sprites/`, un par `<especie>_spritesheet.png` +
+`.json` por cada especie (más los PNG de personajes todavía sin integrar).
+`index.html` carga `styles.css` y `app.js`; los spritesheets se cargan como
+`new Image()` desde `app.js` por ruta relativa (`sprites/<archivo>.png`).
 
 Se trabaja **siempre directo sobre `main`**, sin ramas ni PRs — proyecto de una
 sola persona.
@@ -156,13 +157,14 @@ esto.
 
 ### Agregar una especie nueva
 
-1. Dejar el PNG en la raíz como `<id>_spritesheet.png`, ya verificado según lo
-   de arriba.
-2. Generar `<id>_spritesheet.json` con la grilla estándar (copiar el de otra
-   especie y cambiar `character`, `id` e `image`).
+1. Dejar el PNG en `sprites/` como `<id>_spritesheet.png`, ya verificado según
+   lo de arriba.
+2. Generar `sprites/<id>_spritesheet.json` con la grilla estándar (copiar el
+   de otra especie y cambiar `character`, `id` e `image`).
 3. En `app.js`: agregar `<ID>_RAW` con el mismo JSON embebido (va embebido para
    no depender de un `fetch()`, que no funcionaría abriendo el archivo con
-   `file://`), y registrarlo en `SPECIES_RAW`, `SPECIES` y `SPECIES_IDS`.
+   `file://`) con `image: 'sprites/<id>_spritesheet.png'`, y registrarlo en
+   `SPECIES_RAW`, `SPECIES` y `SPECIES_IDS`.
 4. Listo: el selector, el panel de prueba y las miniaturas se arman solos desde
    `SPECIES_IDS`.
 
