@@ -251,10 +251,21 @@ function foodById(id){ return FOODS.find(f => f.id === id) || FOODS[0]; }
 
 const SAVE_KEY = 'mimogoshi.save.v2';
 const TICK_MS = 4000;
-const MS_PER_GAME_HOUR = 45000;
-const EGG_HOURS = 0.1;         // horas de juego que dura el huevo (~4.5 s reales)
+const MS_PER_GAME_HOUR = 60000;  // 1 minuto real = 1 hora de juego (60 h de juego por hora real)
+const EGG_HOURS = 0.1;         // horas de juego que dura el huevo (~6 s reales)
 const SLEEPY_THRESHOLD = 35;   // bajo esto puede quedarse dormido solo
 const RED_ZONE = 25;           // bajo esto, ni alimentarlo/jugar lo despierta
+
+/* Desgaste en puntos por hora de juego. Van escritos como 100 / <horas de juego>
+   para que se lea directo cuánto tarda cada barra en vaciarse entera; con
+   MS_PER_GAME_HOUR = 60000, una hora real son 60 horas de juego. */
+const DECAY_PER_HOUR = {
+  hunger:    100 / 180,   // 180 h de juego = 3 horas reales
+  happiness: 3.0,         // TODO: sin definir todavía, quedó el valor viejo
+  energy:    100 / 960,   // 960 h de juego = 16 horas reales
+  hygiene:   100 / 120,   // 120 h de juego = 2 horas reales, pero solo si hay caca
+};
+const ENERGY_RECOVER_PER_HOUR = 9;  // durmiendo
 
 let state = null;
 let tickTimer = null;
@@ -347,13 +358,17 @@ function applyDecay(hours){
   }
 
   const sleepFactor = state.sleeping ? 0.25 : 1;
-  state.hunger   = clamp(state.hunger   - hours * 4.2 * sleepFactor);
-  state.happiness= clamp(state.happiness- hours * 3.0 * sleepFactor);
-  state.hygiene  = clamp(state.hygiene  - hours * 2.6 * sleepFactor);
-  state.energy   = clamp(state.energy   + (state.sleeping ? hours*9 : -hours*2.4));
+  state.hunger   = clamp(state.hunger   - hours * DECAY_PER_HOUR.hunger * sleepFactor);
+  state.happiness= clamp(state.happiness- hours * DECAY_PER_HOUR.happiness * sleepFactor);
+  state.energy   = clamp(state.energy   + (state.sleeping
+    ? hours * ENERGY_RECOVER_PER_HOUR
+    : -hours * DECAY_PER_HOUR.energy));
 
   if (!state.poop && Math.random() < hours * 0.35) state.poop = true;
-  if (state.poop) state.hygiene = clamp(state.hygiene - hours*1.2);
+  /* La higiene NO baja sola: solo se ensucia mientras haya caca sin limpiar. Así
+     limpiar deja de ser un trámite periódico y pasa a ser la respuesta a algo
+     que el jugador ve en pantalla. */
+  if (state.poop) state.hygiene = clamp(state.hygiene - hours * DECAY_PER_HOUR.hygiene);
 
   const distress = [state.hunger < 20, state.hygiene < 20, state.energy < 10].filter(Boolean).length;
   if (distress > 0){
