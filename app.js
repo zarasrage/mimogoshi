@@ -261,11 +261,28 @@ const RED_ZONE = 25;           // bajo esto, ni alimentarlo/jugar lo despierta
    MS_PER_GAME_HOUR = 60000, una hora real son 60 horas de juego. */
 const DECAY_PER_HOUR = {
   hunger:    100 / 180,   // 180 h de juego = 3 horas reales
-  happiness: 3.0,         // TODO: sin definir todavía, quedó el valor viejo
+  happiness: 100 / 300,   // 300 h de juego = 5 horas reales
   energy:    100 / 960,   // 960 h de juego = 16 horas reales
   hygiene:   100 / 120,   // 120 h de juego = 2 horas reales, pero solo si hay caca
 };
 const ENERGY_RECOVER_PER_HOUR = 9;  // durmiendo
+
+/* Bajo estos valores la barra entra en "apuro" y se vacía más rápido — el bajón
+   se acelera solo cuando ya va mal. La felicidad no tiene umbral. */
+const DISTRESS_AT = { hunger: 20, hygiene: 20, energy: 10 };
+const DISTRESS_MULT = 1.5;
+
+/* La salud tiene dos causas de daño independientes que se suman: que alguna de
+   las otras barras esté bajo HEALTH_RISK_AT, y estar enfermo. Con las dos a la
+   vez la salud cae al doble (una hora real de 100 a 0). */
+const HEALTH_RISK_AT = 50;
+const HEALTH_DECAY_PER_HOUR = 100 / 120;   // 2 horas reales por cada causa
+const HEALTH_RECOVER_PER_HOUR = 1.5;       // solo si no hay ninguna causa activa
+
+/* Probabilidad de enfermarse, por hora de juego. */
+const SICK_CHANCE_PER_HOUR = 0.002;
+const SICK_CHANCE_PER_HOUR_LOW = 0.1;
+const SICK_LOW_HEALTH_AT = 60;
 
 let state = null;
 let tickTimer = null;
@@ -345,6 +362,22 @@ function stageFor(ageHours){
   return ageHours < EGG_HOURS ? 'egg' : 'grown';
 }
 
+/* Velocidad a la que baja una barra, ya con el castigo por estar en apuro. */
+function decayRate(stat, value){
+  const base = DECAY_PER_HOUR[stat];
+  const umbral = DISTRESS_AT[stat];
+  return (umbral !== undefined && value < umbral) ? base * DISTRESS_MULT : base;
+}
+
+/* Probabilidad de enfermarse en un lapso de `hours` horas de juego.
+   Se compone en vez de multiplicar: catchUp() puede entregar 72 horas de una,
+   y 72 * 0.1 daría 7.2 — o sea "seguro", además de ser una probabilidad > 1.
+   Compuesta, el resultado siempre queda entre 0 y 1 y respeta la tasa por hora. */
+function sickChance(hours){
+  const porHora = state.health < SICK_LOW_HEALTH_AT ? SICK_CHANCE_PER_HOUR_LOW : SICK_CHANCE_PER_HOUR;
+  return 1 - Math.pow(1 - porHora, hours);
+}
+
 function applyDecay(hours){
   if (hours <= 0) return;
 
@@ -358,28 +391,28 @@ function applyDecay(hours){
   }
 
   const sleepFactor = state.sleeping ? 0.25 : 1;
-  state.hunger   = clamp(state.hunger   - hours * DECAY_PER_HOUR.hunger * sleepFactor);
-  state.happiness= clamp(state.happiness- hours * DECAY_PER_HOUR.happiness * sleepFactor);
+  state.hunger   = clamp(state.hunger   - hours * decayRate('hunger',    state.hunger)    * sleepFactor);
+  state.happiness= clamp(state.happiness- hours * decayRate('happiness', state.happiness) * sleepFactor);
   state.energy   = clamp(state.energy   + (state.sleeping
     ? hours * ENERGY_RECOVER_PER_HOUR
-    : -hours * DECAY_PER_HOUR.energy));
+    : -hours * decayRate('energy', state.energy)));
 
   if (!state.poop && Math.random() < hours * 0.35) state.poop = true;
   /* La higiene NO baja sola: solo se ensucia mientras haya caca sin limpiar. Así
      limpiar deja de ser un trámite periódico y pasa a ser la respuesta a algo
      que el jugador ve en pantalla. */
-  if (state.poop) state.hygiene = clamp(state.hygiene - hours * DECAY_PER_HOUR.hygiene);
+  if (state.poop) state.hygiene = clamp(state.hygiene - hours * decayRate('hygiene', state.hygiene));
 
-  const distress = [state.hunger < 20, state.hygiene < 20, state.energy < 10].filter(Boolean).length;
-  if (distress > 0){
-    state.health = clamp(state.health - hours * distress * 3.5);
-    if (!state.sick && state.health < 55 && Math.random() < hours * 0.3) state.sick = true;
-  } else if (state.hunger > 50 && state.hygiene > 50 && state.health < 100){
-    state.health = clamp(state.health + hours * 1.5);
-  }
-  if (state.sick){
-    state.health = clamp(state.health - hours*2);
-  }
+  /* Salud: las dos causas se suman, y solo se recupera si no hay ninguna. */
+  const enRiesgo = state.hunger    < HEALTH_RISK_AT || state.happiness < HEALTH_RISK_AT ||
+                   state.energy    < HEALTH_RISK_AT || state.hygiene   < HEALTH_RISK_AT;
+  let healthDelta = 0;
+  if (enRiesgo)   healthDelta -= HEALTH_DECAY_PER_HOUR;
+  if (state.sick) healthDelta -= HEALTH_DECAY_PER_HOUR;
+  if (healthDelta === 0) healthDelta = HEALTH_RECOVER_PER_HOUR;
+  state.health = clamp(state.health + hours * healthDelta);
+
+  if (!state.sick && Math.random() < sickChance(hours)) state.sick = true;
 
   /* Se sigue llevando la cuenta de qué tan bien se cuidó, pero por ahora nadie la
      lee: era lo que decidía la rama adulta (buena/neutra/mala) y esas etapas ya
