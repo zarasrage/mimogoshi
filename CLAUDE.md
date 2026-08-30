@@ -187,16 +187,25 @@ Simulación por ticks (`TICK_MS = 4000`, `MS_PER_GAME_HOUR = 45000`): hambre,
 felicidad, energía, higiene y salud bajan solas; `catchUp()` recupera el tiempo
 que pasó con la pestaña cerrada (con tope de 3 días).
 
-- **Etapas** (`ALL_STAGES`): `egg → baby → child → teen → adult_*`. La rama
-  adulta (`adult_good` / `adult_neutral` / `adult_bad`) depende de
-  `careGood - careBad`.
+- **Etapas** (`ALL_STAGES`): solo dos, `egg → grown` (`EGG_HOURS = 0.1`, o sea
+  ~4.5 s reales de huevo). Había una escalera de edades
+  (bebé/niño/adolescente/adulto bueno-neutro-malo) pero **no existía arte por
+  edad**: cada especie tiene un solo diseño, así que las cinco etapas se veían
+  idénticas. `loadState()` mapea a `grown` cualquier etapa que ya no exista, si
+  no los saves viejos quedan con una etapa fantasma.
 - **Ánimos** (`ALL_MOODS`): `normal, happy, sad, sick, sleepy, dead`.
+
+`careGood` / `careBad` se siguen acumulando pero **hoy no los lee nadie**: eran
+lo que elegía la rama adulta. Se dejan porque van en el save y son el enganche
+obvio si vuelve a haber ramas o un final según el cuidado.
 
 El huevo es lo **único** que se dibuja procedural (`drawEgg()`, un óvalo): no
 vino arte para esa etapa en ninguna especie. Todo lo demás sale recortado del
 PNG tal cual, **sin tinte ni recoloreo encima** — los spritesheets ya son la
 ilustración terminada, y aplicarles un wash de color por etapa pintaba también
-sobre la cara. Por eso `PALETTES` quedó reducido a la entrada `egg`.
+sobre la cara. Por eso `PALETTES` quedó reducido a la entrada `egg`, y por eso
+mismo `drawSprite()` solo usa `stage` para decidir si dibuja el huevo o el
+sprite: entre las dos etapas que quedan no hay ninguna otra diferencia visual.
 
 ## Minijuegos
 

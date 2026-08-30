@@ -252,7 +252,7 @@ function foodById(id){ return FOODS.find(f => f.id === id) || FOODS[0]; }
 const SAVE_KEY = 'mimogoshi.save.v2';
 const TICK_MS = 4000;
 const MS_PER_GAME_HOUR = 45000;
-const STAGE_HOURS = { baby: 3, child: 8, teen: 16 };
+const EGG_HOURS = 0.1;         // horas de juego que dura el huevo (~4.5 s reales)
 const SLEEPY_THRESHOLD = 35;   // bajo esto puede quedarse dormido solo
 const RED_ZONE = 25;           // bajo esto, ni alimentarlo/jugar lo despierta
 
@@ -268,7 +268,10 @@ let debugForcedStage = null;   // null = usar la etapa real de la mascota
 let debugForcedMood = null;    // null = usar el ánimo calculado normalmente
 let debugForcedSpecies = null; // null = usar la especie real de la mascota
 
-const ALL_STAGES = ['egg','baby','child','teen','adult_neutral','adult_good','adult_bad'];
+/* Solo dos etapas: el huevo (lo único procedural, `drawEgg()`) y la mascota ya
+   salida. No había arte distinto por edad —los spritesheets son un solo diseño
+   por especie— así que bebé/niño/adolescente/adulto se veían todos idénticos. */
+const ALL_STAGES = ['egg','grown'];
 const ALL_MOODS = ['normal','happy','sad','sick','sleepy','dead'];
 
 function displayStage(){ return debugForcedStage || state.stage; }
@@ -310,6 +313,7 @@ function loadState(){
     if (!s.unlockedFoods) s.unlockedFoods = ['simple'];
     if (!s.species || !SPECIES[s.species]) s.species = DEFAULT_SPECIES; // saves de especies que ya no existen
     if (!s.records || typeof s.records !== 'object') s.records = {};    // saves anteriores a los récords
+    if (!ALL_STAGES.includes(s.stage)) s.stage = 'grown';               // saves con baby/child/teen/adult_*
     return s;
   } catch (e) {
     return null;
@@ -326,14 +330,8 @@ function clamp(v, min=0, max=100){ return Math.max(min, Math.min(max, v)); }
 
 /* ===================== Simulación ===================== */
 
-function stageFor(ageHours, careScore){
-  if (ageHours < 0.1) return 'egg';
-  if (ageHours < STAGE_HOURS.baby) return 'baby';
-  if (ageHours < STAGE_HOURS.child) return 'child';
-  if (ageHours < STAGE_HOURS.teen) return 'teen';
-  if (careScore > 8) return 'adult_good';
-  if (careScore < -8) return 'adult_bad';
-  return 'adult_neutral';
+function stageFor(ageHours){
+  return ageHours < EGG_HOURS ? 'egg' : 'grown';
 }
 
 function applyDecay(hours){
@@ -344,7 +342,7 @@ function applyDecay(hours){
     state.sick = false;
     state.poop = false;
     state.ageHours += hours;
-    if (!debugForcedStage) state.stage = stageFor(state.ageHours, state.careGood - state.careBad);
+    if (!debugForcedStage) state.stage = stageFor(state.ageHours);
     return;
   }
 
@@ -368,12 +366,16 @@ function applyDecay(hours){
     state.health = clamp(state.health - hours*2);
   }
 
+  /* Se sigue llevando la cuenta de qué tan bien se cuidó, pero por ahora nadie la
+     lee: era lo que decidía la rama adulta (buena/neutra/mala) y esas etapas ya
+     no existen. Se deja acumulando porque va en el save y es el enganche obvio
+     si algún día vuelve a haber ramas o un final según el cuidado. */
   const careDelta = (state.hunger>60?1:-1) + (state.happiness>60?1:-1) + (state.hygiene>60?1:-1);
   if (careDelta > 0) state.careGood += hours * careDelta * 0.5;
   if (careDelta < 0) state.careBad += hours * -careDelta * 0.5;
 
   state.ageHours += hours;
-  state.stage = stageFor(state.ageHours, state.careGood - state.careBad);
+  state.stage = stageFor(state.ageHours);
 
   if (state.health <= 0){
     triggerGameOver();
@@ -1755,8 +1757,7 @@ function askName(){
 /* ===================== Modo prueba (debug) ===================== */
 
 const STAGE_LABELS = {
-  egg:'🥚 Huevo', baby:'👶 Bebé', child:'🧒 Niño', teen:'🧑 Adolesc.',
-  adult_neutral:'😐 Adulto', adult_good:'✨ Adulto bueno', adult_bad:'😠 Adulto malo',
+  egg:'🥚 Huevo', grown:'🐣 Mascota',
 };
 const MOOD_LABELS = {
   normal:'😐 Normal', happy:'😄 Feliz', sad:'😢 Triste',
