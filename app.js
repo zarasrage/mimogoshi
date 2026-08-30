@@ -327,7 +327,7 @@ function clamp(v, min=0, max=100){ return Math.max(min, Math.min(max, v)); }
 /* ===================== Simulación ===================== */
 
 function stageFor(ageHours, careScore){
-  if (ageHours < 0.4) return 'egg';
+  if (ageHours < 0.1) return 'egg';
   if (ageHours < STAGE_HOURS.baby) return 'baby';
   if (ageHours < STAGE_HOURS.child) return 'child';
   if (ageHours < STAGE_HOURS.teen) return 'teen';
