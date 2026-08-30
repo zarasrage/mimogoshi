@@ -1061,9 +1061,9 @@ const BB_TOTAL_SHOTS = 3;
    más alto se aprieta TIRAR — las zonas de acierto no se muestran, solo están codificadas
    como umbrales de altura (0 = abajo, 1 = arriba del todo). Se endurece por tiro. */
 const BB_DIFFICULTY = [
-  { peak: 0.85, near: 0.60, speed: 1.0 },
-  { peak: 0.90, near: 0.70, speed: 1.25 },
-  { peak: 0.95, near: 0.80, speed: 1.5 },
+  { peak: 0.90, near: 0.80, speed: 1.0 },
+  { peak: 0.95, near: 0.85, speed: 1.25 },
+  { peak: 0.98, near: 0.90, speed: 1.5 },
 ];
 
 /* Posiciones como fracción del tamaño real del canvas (se recalculan al empezar
