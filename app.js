@@ -924,24 +924,38 @@ function exitMinigame(){
   activeMinigame = null;
 }
 
-/* Las monedas salen de la felicidad ganada, no del puntaje: el puntaje de cada
-   juego está en una escala distinta (9 en baloncesto, ~500 en tap rítmico) y
-   habría que calibrar cuatro fórmulas. happinessGain ya viene normalizado a
-   0-45 en los cuatro, así que dividirlo deja los cuatro pagando parejo. */
-const HAPPINESS_PER_COIN = 3;   // tope 45 de felicidad → 15 monedas por partida
+/* El "mérito" es el puntaje del juego llevado a una escala común: ~45 para una
+   partida muy buena. Existe porque los cuatro puntajes viven en escalas que no
+   se pueden comparar (9 en baloncesto contra ~500 en tap rítmico), y así hay una
+   sola fórmula de premio en vez de cuatro.
+
+   Las dos recompensas salen del mérito pero con reglas distintas a propósito:
+   - La felicidad tiene tope. Jugar no puede ser la forma de tapar el descuido:
+     sube la barra un buen tramo, no la llena de una partida.
+   - Las monedas no lo tienen. Es lo que hace que jugar excelente pague más que
+     jugar bien; con tope, 75 y 96 puntos en estrellas daban exactamente lo mismo. */
+const HAPPINESS_PER_MERIT = 1/3;
+const HAPPINESS_MAX_GAIN = 15;
+const HAPPINESS_MIN_GAIN = -3;   // solo estrellas puede dar negativo (comer caca)
+const COINS_PER_MERIT = 1/6;
 
 /* Cierre común: aplica el premio, paga, avisa el récord y deja todo guardado. */
-function finishMinigame(id, { score, happinessGain, energyCost, hygieneCost = 0, message }){
+function finishMinigame(id, { score, merit, energyCost, hygieneCost = 0, message }){
   const record = saveBestScore(id, score);
-  const coins = Math.max(0, Math.round(happinessGain / HAPPINESS_PER_COIN));
+  const happinessGain = clamp(Math.round(merit * HAPPINESS_PER_MERIT), HAPPINESS_MIN_GAIN, HAPPINESS_MAX_GAIN);
+  const coins = Math.max(0, Math.round(merit * COINS_PER_MERIT));
 
   state.happiness = clamp(state.happiness + happinessGain);
   state.energy = clamp(state.energy - energyCost);
   if (hygieneCost) state.hygiene = clamp(state.hygiene - hygieneCost);
   state.coins += coins;
 
-  const pago = coins > 0 ? ` · ${coinsLabel('+' + coins)}` : '';
-  say((record ? `¡RÉCORD! ${message}` : message) + pago, 2200);
+  const premio = [
+    happinessGain !== 0 ? `${happinessGain > 0 ? '+' : ''}${happinessGain} felicidad` : null,
+    coins > 0 ? coinsLabel('+' + coins) : null,
+  ].filter(Boolean).join(' · ');
+
+  say((record ? `¡RÉCORD! ${message}` : message) + (premio ? ` · ${premio}` : ''), 2200);
   if (happinessGain > 0) triggerPetAction('celebrate');
   exitMinigame();
   saveState(); render();
@@ -1132,14 +1146,10 @@ function endStarsGame(){
   sgDispose();
   sg = null;
 
-  /* Un bot que no falla nada saca ~96, así que el tope de felicidad queda arriba
-     de lo que da una partida buena pero no perfecta: hay que jugar bien de verdad. */
-  const happinessGain = clamp(Math.round(score * 0.6), -10, 45);
-  const message = score > 0
-    ? `${score} pts (combo ${bestCombo}) +${happinessGain} felicidad`
-    : 'Mmm, la próxima será';
+  /* Un bot que no falla nada saca ~96 puntos; 75 ya es una partida muy buena. */
+  const message = score > 0 ? `${score} pts (combo ${bestCombo})` : 'Mmm, la próxima será';
 
-  finishMinigame('stars', { score, happinessGain, energyCost: 18, hygieneCost: 5, message });
+  finishMinigame('stars', { score, merit: score * 0.6, energyCost: 18, hygieneCost: 5, message });
 }
 
 /* ===================== Minijuego 2: baloncesto (timing) ===================== */
@@ -1390,10 +1400,9 @@ function endBasketballGame(){
   if (bb && bb.raf) cancelAnimationFrame(bb.raf);
   bb = null;
 
-  const happinessGain = clamp(score * 8, 0, 45);
   const message = score > 0 ? `${score} puntos en baloncesto` : 'Ni una… la próxima';
 
-  finishMinigame('basketball', { score, happinessGain, energyCost: 16, message });
+  finishMinigame('basketball', { score, merit: score * 8, energyCost: 16, message });
 }
 
 /* ===================== Minijuego 3: reflejos =====================
@@ -1585,12 +1594,11 @@ function endReflexGame(){
   rxDispose();
   rx = null;
 
-  const happinessGain = clamp(Math.round(score * 0.5), 0, 45);
   const message = sinVidas
     ? `¡Boom! ${score} pts (combo ${bestCombo})`
-    : `${score} pts (combo ${bestCombo}) +${happinessGain} felicidad`;
+    : `${score} pts (combo ${bestCombo})`;
 
-  finishMinigame('reflex', { score, happinessGain, energyCost: 20, message });
+  finishMinigame('reflex', { score, merit: score * 0.5, energyCost: 20, message });
 }
 
 /* ===================== Minijuego 4: tap rítmico =====================
@@ -1816,12 +1824,11 @@ function endTapGame(){
   trDispose();
   tr = null;
 
-  const happinessGain = clamp(Math.round(score * 0.13), 0, 45);
   const message = score > 0
     ? `${score} pts · ${perfects} perfectos (combo ${bestCombo})`
     : 'Se te fue el ritmo…';
 
-  finishMinigame('tap', { score, happinessGain, energyCost: 20, message });
+  finishMinigame('tap', { score, merit: score * 0.13, energyCost: 20, message });
 }
 
 /* ===================== Overlay / setup ===================== */

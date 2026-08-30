@@ -201,10 +201,21 @@ obvio si vuelve a haber ramas o un final según el cuidado.
 
 ### Dinero y tienda
 
-`state.coins` se gana **solo jugando**: `finishMinigame()` paga
-`happinessGain / HAPPINESS_PER_COIN` (tope 15 por partida). Se calcula desde la
-felicidad y no desde el puntaje porque cada juego tiene su escala (9 puntos en
-baloncesto, ~500 en tap rítmico) y si no habría que calibrar cuatro fórmulas.
+`state.coins` se gana **solo jugando**. Cada juego le pasa a `finishMinigame()`
+un **mérito**: su puntaje llevado a una escala común (~45 = partida muy buena),
+porque los cuatro puntajes no se pueden comparar entre sí (9 en baloncesto contra
+~500 en tap rítmico). De ese mérito salen las dos recompensas, con reglas
+distintas a propósito:
+
+- **Felicidad** (`merit/3`, tope 15): jugar no puede ser la forma de tapar el
+  descuido, así que sube la barra pero no la llena de una partida.
+- **Monedas** (`merit/6`, **sin tope**): es lo que hace que jugar excelente pague
+  más que jugar bien. Cuando tenían tope, 75 y 96 puntos en estrellas daban
+  exactamente lo mismo.
+
+Las monedas no pueden derivarse de la felicidad ya topada: si se hace así, subir
+el premio de una arrastra al de la otra y el tope de la felicidad le pone techo
+al dinero.
 
 `state.pantry` guarda **porciones compradas** por comida. El bocadillo simple
 (`price: 0`) es gratis e infinito **a propósito**: es la red de seguridad, si
