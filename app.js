@@ -480,8 +480,9 @@ function updateLed(){
 
 function updateWalker(dt){
   if (activeMinigame) return;
-  const frozen = gameOver || displayStage() === 'egg' || state.sleeping ||
-    debugForcedMood === 'sleepy' || debugForcedMood === 'dead';
+  const mood = displayMood();
+  const frozen = gameOver || displayStage() === 'egg' || state.sleeping || petAction ||
+    mood === 'sleepy' || mood === 'dead' || mood === 'sad' || mood === 'sick';
   if (frozen){
     walker.frame = 0;
     return;
