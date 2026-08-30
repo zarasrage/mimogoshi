@@ -265,11 +265,11 @@ const DECAY_PER_HOUR = {
   energy:    100 / 960,   // 960 h de juego = 16 horas reales
   hygiene:   100 / 120,   // 120 h de juego = 2 horas reales, pero solo si hay caca
 };
-const ENERGY_RECOVER_PER_HOUR = 9;  // durmiendo
+const ENERGY_RECOVER_PER_HOUR = 100 / 60;  // durmiendo: barra entera en 1 hora real
 
 /* Bajo estos valores la barra entra en "apuro" y se vacía más rápido — el bajón
-   se acelera solo cuando ya va mal. La felicidad no tiene umbral. */
-const DISTRESS_AT = { hunger: 20, hygiene: 20, energy: 10 };
+   se acelera solo cuando ya va mal. */
+const DISTRESS_AT = { hunger: 20, happiness: 20, hygiene: 20, energy: 10 };
 const DISTRESS_MULT = 1.5;
 
 /* La salud tiene dos causas de daño independientes que se suman: que alguna de
