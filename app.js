@@ -239,13 +239,25 @@ function drawSprite(ctx, stage, mood, walkFrame, noClear){
 
 /* ===================== Comida ===================== */
 
+/* El bocadillo simple es gratis e infinito a propósito: es la red de seguridad.
+   Si toda la comida costara monedas, un jugador sin plata y con la mascota
+   muerta de hambre no tendría ninguna salida. Las otras dos se compran en la
+   tienda y se gastan al usarlas. */
 const FOODS = [
-  { id:'simple',   name:'Bocadillo simple', emoji:'🍬', restore:15 },
-  { id:'rica',     name:'Comida rica',      emoji:'🍗', restore:30 },
-  { id:'especial', name:'Comida especial',  emoji:'🍰', restore:50 },
+  { id:'simple',   name:'Bocadillo simple', emoji:'🍬', restore:15, price:  0 },
+  { id:'rica',     name:'Comida rica',      emoji:'🍗', restore:30, price: 12 },
+  { id:'especial', name:'Comida especial',  emoji:'🍰', restore:50, price: 25 },
 ];
 
 function foodById(id){ return FOODS.find(f => f.id === id) || FOODS[0]; }
+
+/* Cuántas porciones quedan. El bocadillo simple no se cuenta: nunca se acaba. */
+function foodStock(id){
+  if (foodById(id).price === 0) return Infinity;
+  return (state.pantry && state.pantry[id]) || 0;
+}
+
+function coinsLabel(n){ return `🪙 ${n}`; }
 
 /* ===================== Estado del juego ===================== */
 
@@ -326,7 +338,8 @@ function freshState(name, species){
     poop: false,
     stage: 'egg',
     selectedFood: 'simple',
-    unlockedFoods: ['simple'],
+    coins: 0,
+    pantry: {},    // porciones compradas por comida (el bocadillo simple no se guarda)
     records: {},   // mejor puntaje por minijuego
   };
 }
@@ -338,7 +351,9 @@ function loadState(){
     const s = JSON.parse(raw);
     if (!s || typeof s !== 'object') return null;
     if (!s.selectedFood) s.selectedFood = 'simple';
-    if (!s.unlockedFoods) s.unlockedFoods = ['simple'];
+    if (typeof s.coins !== 'number' || !isFinite(s.coins)) s.coins = 0;   // saves anteriores al dinero
+    if (!s.pantry || typeof s.pantry !== 'object') s.pantry = {};
+    delete s.unlockedFoods;  // el modelo viejo era desbloqueo permanente; ahora son porciones
     if (!s.species || !SPECIES[s.species]) s.species = DEFAULT_SPECIES; // saves de especies que ya no existen
     if (!s.records || typeof s.records !== 'object') s.records = {};    // saves anteriores a los récords
     if (!ALL_STAGES.includes(s.stage)) s.stage = 'grown';               // saves con baby/child/teen/adult_*
@@ -570,6 +585,7 @@ function render(){
 
   document.getElementById('petName').textContent = state.name;
   document.getElementById('petAge').textContent = `Día ${Math.floor(state.ageHours/24)+1}`;
+  document.getElementById('petCoins').textContent = coinsLabel(state.coins);
 
   ['hunger','happiness','energy','hygiene','health'].forEach(k => {
     const fill = document.getElementById('fill-'+k);
@@ -635,12 +651,28 @@ const btnFeed = () => {
   if (state.stage === 'egg') { say('Todavía es un huevo…'); return; }
   if (!tryWake()) return;
   catchUp();
+
+  /* Si se acabó lo que estaba elegido, cae al bocadillo simple en vez de no
+     hacer nada: quedarse con un botón que no responde es peor que dar de comer
+     algo más flojo y avisarlo. */
+  let seAcabo = null;
+  if (foodStock(state.selectedFood) <= 0){
+    seAcabo = foodById(state.selectedFood).name;
+    state.selectedFood = 'simple';
+  }
+
   const food = foodById(state.selectedFood);
+  if (food.price > 0) state.pantry[food.id] = (state.pantry[food.id] || 0) - 1;
+
   state.hunger = clamp(state.hunger + food.restore);
   state.energy = clamp(state.energy + 4);
   floatFx(food.emoji);
-  say('¡Ñam ñam!');
+  say(seAcabo ? `Se acabó ${seAcabo}, le doy un bocadillo` : '¡Ñam ñam!');
   triggerPetAction('eat');
+
+  // gastada la última porción, vuelve solo al bocadillo para no dejarlo elegido en 0
+  if (food.price > 0 && foodStock(food.id) <= 0) state.selectedFood = 'simple';
+
   saveState(); render();
 };
 
@@ -681,14 +713,16 @@ const btnPet = () => {
 
 function openFoodMenu(){
   const rows = FOODS.map(f => {
-    const unlocked = state.unlockedFoods.includes(f.id);
+    const stock = foodStock(f.id);
+    const hay = stock > 0;
     const selected = state.selectedFood === f.id;
+    const cuanto = f.price === 0 ? 'siempre disponible' : `te quedan ${stock}`;
     return `
-      <div class="menu-item ${unlocked ? '' : 'locked'} ${selected ? 'selected' : ''}" data-food="${f.id}">
-        <span class="emoji">${unlocked ? f.emoji : '🔒'}</span>
+      <div class="menu-item ${hay ? '' : 'locked'} ${selected ? 'selected' : ''}" data-food="${f.id}">
+        <span class="emoji">${f.emoji}</span>
         <div class="info">
           <b>${escapeHtml(f.name)}</b>
-          <small>${unlocked ? `Recupera ${f.restore} de hambre` : 'Todavía no la consigues'}</small>
+          <small>+${f.restore} de hambre · ${hay ? cuanto : 'sin porciones'}</small>
         </div>
       </div>`;
   }).join('');
@@ -699,16 +733,60 @@ function openFoodMenu(){
     <button class="overlay-btn" id="btnCloseMenu">Cerrar</button>
   `);
 
-  document.querySelectorAll('.menu-item').forEach(el => {
+  /* A las que no tienen porciones no se les engancha nada: ya salen en gris y
+     con cursor de "no". Un say() acá tampoco se vería, queda bajo el overlay. */
+  document.querySelectorAll('[data-food]').forEach(el => {
+    if (foodStock(el.dataset.food) <= 0) return;
     el.addEventListener('click', () => {
-      const id = el.dataset.food;
-      if (!state.unlockedFoods.includes(id)) return;
-      state.selectedFood = id;
+      state.selectedFood = el.dataset.food;
       saveState(); render();
       hideOverlay();
     });
   });
   document.getElementById('btnCloseMenu').addEventListener('click', hideOverlay);
+}
+
+/* ===================== Tienda =====================
+   Las monedas salen de los minijuegos (ver finishMinigame). Solo se venden las
+   comidas con precio: el bocadillo simple no se compra porque nunca se acaba. */
+
+/* El aviso va dentro de la tarjeta y no con say(): la burbuja tiene z-index 5 y
+   el overlay 10, así que un mensaje por say() con la tienda abierta queda tapado. */
+function openShop(aviso){
+  const rows = FOODS.filter(f => f.price > 0).map(f => {
+    const alcanza = state.coins >= f.price;
+    return `
+      <div class="menu-item ${alcanza ? '' : 'locked'}" data-buy="${f.id}">
+        <span class="emoji">${f.emoji}</span>
+        <div class="info">
+          <b>${escapeHtml(f.name)}</b>
+          <small>+${f.restore} de hambre · tienes ${foodStock(f.id)}</small>
+        </div>
+        <span class="menu-record">${coinsLabel(f.price)}</span>
+      </div>`;
+  }).join('');
+
+  showOverlay(`
+    <h3>🛒 Tienda</h3>
+    <p>${aviso ? escapeHtml(aviso) : `Tienes ${coinsLabel(state.coins)}. Se ganan monedas jugando.`}</p>
+    <div class="menu-list">${rows}</div>
+    <button class="overlay-btn" id="btnCloseShop">Cerrar</button>
+  `);
+
+  document.querySelectorAll('[data-buy]').forEach(el => {
+    el.addEventListener('click', () => {
+      const food = foodById(el.dataset.buy);
+      if (state.coins < food.price){
+        openShop(`Te faltan ${coinsLabel(food.price - state.coins)} para ${food.name}`);
+        return;
+      }
+      state.coins -= food.price;
+      state.pantry[food.id] = (state.pantry[food.id] || 0) + 1;
+      saveState(); render();
+      openShop(`¡${food.name} comprada! Te quedan ${coinsLabel(state.coins)}`);
+    });
+  });
+  document.getElementById('btnCloseShop').addEventListener('click', hideOverlay);
 }
 
 /* ===================== Menú de minijuegos ===================== */
@@ -846,14 +924,24 @@ function exitMinigame(){
   activeMinigame = null;
 }
 
-/* Cierre común: aplica el premio, avisa el récord y deja todo guardado. */
+/* Las monedas salen de la felicidad ganada, no del puntaje: el puntaje de cada
+   juego está en una escala distinta (9 en baloncesto, ~500 en tap rítmico) y
+   habría que calibrar cuatro fórmulas. happinessGain ya viene normalizado a
+   0-45 en los cuatro, así que dividirlo deja los cuatro pagando parejo. */
+const HAPPINESS_PER_COIN = 3;   // tope 45 de felicidad → 15 monedas por partida
+
+/* Cierre común: aplica el premio, paga, avisa el récord y deja todo guardado. */
 function finishMinigame(id, { score, happinessGain, energyCost, hygieneCost = 0, message }){
   const record = saveBestScore(id, score);
+  const coins = Math.max(0, Math.round(happinessGain / HAPPINESS_PER_COIN));
+
   state.happiness = clamp(state.happiness + happinessGain);
   state.energy = clamp(state.energy - energyCost);
   if (hygieneCost) state.hygiene = clamp(state.hygiene - hygieneCost);
+  state.coins += coins;
 
-  say(record ? `¡RÉCORD! ${message}` : message, 2200);
+  const pago = coins > 0 ? ` · ${coinsLabel('+' + coins)}` : '';
+  say((record ? `¡RÉCORD! ${message}` : message) + pago, 2200);
   if (happinessGain > 0) triggerPetAction('celebrate');
   exitMinigame();
   saveState(); render();
@@ -1299,19 +1387,13 @@ function endBasketballGame(){
   const score = bb ? bb.score : 0;
   document.getElementById('btnShoot').removeEventListener('click', bb.onShoot);
   document.getElementById('btnShoot').classList.add('hidden');
-  document.getElementById('gameCanvas').classList.add('hidden');
-  document.getElementById('creatureFloor').classList.remove('hidden');
   if (bb && bb.raf) cancelAnimationFrame(bb.raf);
+  bb = null;
 
   const happinessGain = clamp(score * 8, 0, 45);
-  state.happiness = clamp(state.happiness + happinessGain);
-  state.energy = clamp(state.energy - 16);
+  const message = score > 0 ? `${score} puntos en baloncesto` : 'Ni una… la próxima';
 
-  say(`${score} puntos en baloncesto. +${happinessGain} felicidad`);
-  if (happinessGain > 0) triggerPetAction('celebrate');
-  activeMinigame = null;
-  bb = null;
-  saveState(); render();
+  finishMinigame('basketball', { score, happinessGain, energyCost: 16, message });
 }
 
 /* ===================== Minijuego 3: reflejos =====================
@@ -1953,6 +2035,7 @@ function wireButtons(){
   document.getElementById('btnPlay').addEventListener('click', requireAlive(openGamesMenu));
   document.getElementById('btnClean').addEventListener('click', requireAlive(btnClean));
   document.getElementById('btnFoodMenu').addEventListener('click', requireAlive(openFoodMenu));
+  document.getElementById('btnShop').addEventListener('click', requireAlive(openShop));
   document.getElementById('btnMed').addEventListener('click', requireAlive(btnMed));
   document.getElementById('btnDebug').addEventListener('click', requireAlive(toggleDebugPanel));
   document.getElementById('btnCloseDebugSide').addEventListener('click', closeDebugPanel);

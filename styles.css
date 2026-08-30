@@ -212,6 +212,9 @@ body{
   margin-bottom:2px;
 }
 
+.topbar-right{display:flex; align-items:center; gap:8px;}
+.pet-coins{color:var(--amber); text-shadow:0 0 6px rgba(255,206,75,.45);}
+
 .creature-floor{
   position:relative;
   flex:1;
@@ -541,6 +544,12 @@ body{
 .btn:disabled:active{transform:none; box-shadow:0 4px 0 var(--btn-shadow);}
 
 .btn-icon{font-size:18px;}
+
+/* Con 7 botones la grilla de 3 columnas deja la última fila con uno solo y un
+   hueco al lado. Reiniciar la ocupa entera: es el único que no es una acción
+   de cuidado, así que separarlo en su propia franja también lo hace más difícil
+   de apretar sin querer. */
+.btn-wide{grid-column:1 / -1; flex-direction:row; gap:8px; padding:7px 4px;}
 
 .btn-ghost{
   background:rgba(255,255,255,.55);

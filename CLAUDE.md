@@ -199,6 +199,26 @@ que pasó con la pestaña cerrada (con tope de 3 días).
 lo que elegía la rama adulta. Se dejan porque van en el save y son el enganche
 obvio si vuelve a haber ramas o un final según el cuidado.
 
+### Dinero y tienda
+
+`state.coins` se gana **solo jugando**: `finishMinigame()` paga
+`happinessGain / HAPPINESS_PER_COIN` (tope 15 por partida). Se calcula desde la
+felicidad y no desde el puntaje porque cada juego tiene su escala (9 puntos en
+baloncesto, ~500 en tap rítmico) y si no habría que calibrar cuatro fórmulas.
+
+`state.pantry` guarda **porciones compradas** por comida. El bocadillo simple
+(`price: 0`) es gratis e infinito **a propósito**: es la red de seguridad, si
+toda la comida costara, un jugador sin monedas y con la mascota hambrienta
+quedaría sin salida. `btnFeed()` cae solo al bocadillo si lo elegido se acabó.
+
+El modelo viejo era `unlockedFoods` (desbloqueo permanente), pero nada en el
+código lo llenaba nunca: las comidas 2 y 3 eran inalcanzables. `loadState()`
+borra ese campo al migrar.
+
+**Los avisos de la tienda van dentro de la tarjeta, no con `say()`**: la burbuja
+tiene `z-index:5` y el overlay `10`, así que un `say()` con un overlay abierto
+queda tapado. Lo mismo vale para cualquier menú nuevo.
+
 El huevo es lo **único** que se dibuja procedural (`drawEgg()`, un óvalo): no
 vino arte para esa etapa en ninguna especie. Todo lo demás sale recortado del
 PNG tal cual, **sin tinte ni recoloreo encima** — los spritesheets ya son la
