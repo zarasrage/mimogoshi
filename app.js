@@ -534,17 +534,34 @@ function currentMood(){
   return 'normal';
 }
 
-function statColor(v){
-  if (v < 25) return 'var(--bad)';
-  if (v < 55) return 'var(--mid)';
+const CARE_STATS = ['hunger', 'happiness', 'energy', 'hygiene'];
+
+/* Los colores tienen que coincidir con lo que de verdad pasa, si no el jugador
+   no puede leer el estado de un vistazo. Antes eran 55 y 25, que no correspondían
+   a nada: el daño a la salud empieza en HEALTH_RISK_AT (50) y la barra se vacía
+   1.5x más rápido bajo su DISTRESS_AT (20, o 10 en energía). La salud se mide con
+   su propio umbral: bajo SICK_LOW_HEALTH_AT la probabilidad de enfermarse salta
+   de 0.002 a 0.1 por hora. */
+function statColor(v, stat){
+  if (stat === 'health'){
+    if (v < 25) return 'var(--bad)';
+    if (v < SICK_LOW_HEALTH_AT) return 'var(--mid)';
+    return 'var(--good)';
+  }
+  if (v < DISTRESS_AT[stat]) return 'var(--bad)';   // encima se vacía más rápido
+  if (v < HEALTH_RISK_AT) return 'var(--mid)';      // ya le está costando salud
   return 'var(--good)';
 }
 
+/* El LED es el aviso a distancia, para cuando no estás mirando las barras.
+   Antes ignoraba la energía, que hoy también le baja la salud. */
 function updateLed(){
   const led = document.getElementById('led');
   led.className = 'led';
-  if (state.sick || state.health < 30) led.classList.add('danger');
-  else if (state.hunger < 35 || state.happiness < 35 || state.hygiene < 35) led.classList.add('warn');
+  const enApuro  = CARE_STATS.some(k => state[k] < DISTRESS_AT[k]);
+  const enRiesgo = CARE_STATS.some(k => state[k] < HEALTH_RISK_AT);
+  if (state.sick || enApuro || state.health < 25) led.classList.add('danger');
+  else if (enRiesgo) led.classList.add('warn');
 }
 
 /* ===================== Movimiento pasivo ===================== */
@@ -592,10 +609,10 @@ function render(){
   document.getElementById('petAge').textContent = `Día ${Math.floor(state.ageHours/24)+1}`;
   document.getElementById('petCoins').textContent = coinsLabel(state.coins);
 
-  ['hunger','happiness','energy','hygiene','health'].forEach(k => {
+  [...CARE_STATS, 'health'].forEach(k => {
     const fill = document.getElementById('fill-'+k);
     fill.style.width = clamp(state[k]) + '%';
-    fill.style.background = statColor(state[k]);
+    fill.style.background = statColor(state[k], k);
   });
 
   updateLed();
