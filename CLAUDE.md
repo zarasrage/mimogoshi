@@ -69,7 +69,7 @@ Para cambiarle el tamaño a la mascota hay que mover **los tres a la vez**
 solo a múltiplos de 32: 64, 96, 128, 192. Poner `width:50px` sobre un canvas de
 80 (como estaba antes) reescala por 0.625 y arruina todo el pixel art.
 
-Lo mismo aplica a las miniaturas del selector (`speciesThumbStyle()` usa `s=3`)
+Lo mismo aplica a las miniaturas del selector (`speciesThumbStyle()` usa `s=2`)
 y al mono del minijuego de baloncesto, que se dibuja 1:1 con `ctx.translate()`
 y **sin** `ctx.scale()`.
 
@@ -254,7 +254,7 @@ sprite: entre las dos etapas que quedan no hay ninguna otra diferencia visual.
 
 ## Minijuegos
 
-Cuatro, todos sobre `#gameCanvas`, que se redimensiona con `fitGameCanvas()` a
+Seis, todos sobre `#gameCanvas`, que se redimensiona con `fitGameCanvas()` a
 su tamaño real en pantalla para que nada salga estirado:
 
 - **Atrapa estrellas** (`sg`): mover la canasta, esquivar la caca. 20 segundos
@@ -272,7 +272,21 @@ su tamaño real en pantalla para que nada salga estirado:
   cambian en cada partida). Ventanas `TR_PERFECT`/`TR_GOOD`; tocar de más
   también corta el combo.
 
-Los cuatro suman felicidad y disparan `triggerPetAction('celebrate')` si el
+- **Snake** (`sn`): clásico, sobre una rejilla de celdas de `SN_CELL`. Se gira
+  deslizando el dedo o con flechas / WASD. El giro se registra en `pointermove`
+  y no al soltar, para poder encadenar dos curvas sin levantar el dedo. `snTurn()`
+  compara contra `dir` (la dirección del último paso ya dado) y no contra
+  `nextDir`: si no, dos giros dentro del mismo paso dejan volverse 180° sobre el
+  propio cuerpo. Acelera 4 ms por manzana, de 190 a 85 ms por paso.
+- **Memorice** (`mm`): 10 luces en posiciones al azar; se enciende una secuencia
+  y hay que repetirla tocándolas en orden. Suma una luz por ronda y un solo error
+  termina la partida. Las posiciones salen de una rejilla 4x3 barajada con la luz
+  corrida al azar dentro de su casilla: sortear posiciones libres y descartar las
+  que se pisan se amontona, y con diez círculos en un canvas chico hay tiradas
+  donde no entra ninguna. La secuencia **crece**, no se sortea de nuevo cada
+  ronda: rehacerla entera es más difícil pero se siente arbitrario.
+
+Los seis suman felicidad y disparan `triggerPetAction('celebrate')` si el
 puntaje fue positivo.
 
 ### Cómo se arma un minijuego
@@ -291,8 +305,9 @@ Lo compartido está justo debajo de `fitGameCanvas()` y conviene reusarlo:
   cacheado. Llamarlo en cada `pointermove` fuerza un recálculo de layout por
   frame.
 
-Cada juego guarda su estado en una variable global (`sg`, `bb`, `rx`, `tr`) y
-expone un `xxDispose()` que saca listeners y cancela el `requestAnimationFrame`.
+Cada juego guarda su estado en una variable global (`sg`, `bb`, `rx`, `tr`, `sn`,
+`mm`) y expone un `xxDispose()` que saca listeners y cancela el
+`requestAnimationFrame`.
 **Al agregar uno nuevo hay que sumarlo a `forceCloseMinigames()`**, que es lo que
 corre si la mascota se muere a mitad de partida.
 

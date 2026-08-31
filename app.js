@@ -498,12 +498,16 @@ function forceCloseMinigames(){
   sgDispose();
   rxDispose();
   trDispose();
+  snDispose();
+  mmDispose();
   if (bb && bb.raf) cancelAnimationFrame(bb.raf);
   if (bb && bb.onShoot) document.getElementById('btnShoot').removeEventListener('click', bb.onShoot);
   sg = null;
   bb = null;
   rx = null;
   tr = null;
+  sn = null;
+  mm = null;
   activeMinigame = null;
   document.getElementById('gameCanvas').classList.add('hidden');
   document.getElementById('btnShoot').classList.add('hidden');
@@ -849,6 +853,16 @@ function openGamesMenu(){
         <div class="info"><b>Tap rítmico</b><small>Toca al cruzar la línea</small></div>
         ${record('tap')}
       </div>
+      <div class="menu-item" id="pickSnake">
+        <span class="emoji">🐍</span>
+        <div class="info"><b>Snake</b><small>Desliza para girar</small></div>
+        ${record('snake')}
+      </div>
+      <div class="menu-item" id="pickMemory">
+        <span class="emoji">💡</span>
+        <div class="info"><b>Memorice</b><small>Repite la secuencia</small></div>
+        ${record('memory')}
+      </div>
     </div>
     <button class="overlay-btn" id="btnCloseGames">Cancelar</button>
   `);
@@ -857,6 +871,8 @@ function openGamesMenu(){
   document.getElementById('pickBasketball').addEventListener('click', () => { hideOverlay(); startBasketballGame(); });
   document.getElementById('pickReflex').addEventListener('click', () => { hideOverlay(); startReflexGame(); });
   document.getElementById('pickTap').addEventListener('click', () => { hideOverlay(); startTapGame(); });
+  document.getElementById('pickSnake').addEventListener('click', () => { hideOverlay(); startSnakeGame(); });
+  document.getElementById('pickMemory').addEventListener('click', () => { hideOverlay(); startMemoryGame(); });
   document.getElementById('btnCloseGames').addEventListener('click', hideOverlay);
 }
 
@@ -1853,6 +1869,375 @@ function endTapGame(){
   finishMinigame('tap', { score, merit: score * 0.13, energyCost: 20, message });
 }
 
+/* ===================== Minijuego 5: snake =====================
+   Se controla deslizando el dedo (o con flechas / WASD). El giro se registra en
+   pointermove y no al soltar: así se pueden encadenar dos curvas sin levantar
+   el dedo, que es lo que se necesita cuando ya va rápido. */
+
+const SN_CELL = 14;
+const SN_HUD = 22;
+const SN_START_MS = 190;   // ms por paso al empezar
+const SN_MIN_MS = 85;      // lo más rápido que llega a ir
+const SN_SPEEDUP = 4;      // ms menos por manzana
+const SN_SWIPE = 20;       // px de deslizamiento para que cuente como giro
+
+let sn = null;
+
+function startSnakeGame(){
+  const { gc, ctx } = enterMinigame('snake');
+  const cols = Math.floor(gc.width / SN_CELL);
+  const rows = Math.floor((gc.height - SN_HUD) / SN_CELL);
+  const cx = Math.floor(cols/2), cy = Math.floor(rows/2);
+
+  sn = {
+    ctx, gc, cols, rows,
+    offX: Math.floor((gc.width - cols*SN_CELL) / 2),
+    offY: SN_HUD,
+    body: [{x:cx, y:cy}, {x:cx-1, y:cy}, {x:cx-2, y:cy}],
+    dir: { x:1, y:0 },
+    nextDir: { x:1, y:0 },
+    food: null,
+    score: 0,
+    stepMs: SN_START_MS,
+    acc: 0,
+    dead: false,
+    deadUntil: 0,
+    swipeFrom: null,
+    pointer: makeCanvasPointer(gc),
+    raf: null, lastT: 0,
+  };
+  snPlaceFood();
+
+  sn.onKeyDown = (e) => {
+    const d = { ArrowUp:[0,-1], ArrowDown:[0,1], ArrowLeft:[-1,0], ArrowRight:[1,0],
+                w:[0,-1], s:[0,1], a:[-1,0], d:[1,0] }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    snTurn(d[0], d[1]);
+  };
+  window.addEventListener('keydown', sn.onKeyDown);
+
+  sn.onDown = (e) => { e.preventDefault(); sn.swipeFrom = sn.pointer.at(e); };
+  sn.onMove = (e) => {
+    if (!sn.swipeFrom) return;
+    const to = sn.pointer.at(e);
+    const dx = to.x - sn.swipeFrom.x, dy = to.y - sn.swipeFrom.y;
+    if (Math.hypot(dx, dy) < SN_SWIPE) return;
+    if (Math.abs(dx) > Math.abs(dy)) snTurn(Math.sign(dx), 0);
+    else snTurn(0, Math.sign(dy));
+    sn.swipeFrom = to;   // deja encadenar el siguiente giro sin levantar el dedo
+  };
+  sn.onUp = () => { sn.swipeFrom = null; };
+  gc.addEventListener('pointerdown', sn.onDown);
+  gc.addEventListener('pointermove', sn.onMove);
+  gc.addEventListener('pointerup', sn.onUp);
+  gc.addEventListener('pointercancel', sn.onUp);
+
+  say('¡Desliza para girar!');
+  sn.raf = requestAnimationFrame(snLoop);
+}
+
+/* Se compara contra `dir` (la dirección del último paso ya dado) y no contra
+   `nextDir`: si no, dos giros dentro del mismo paso permiten volverse 180° sobre
+   el propio cuerpo y morir sin haber hecho nada raro. */
+function snTurn(x, y){
+  if (!sn || sn.dead) return;
+  if (x === -sn.dir.x && y === -sn.dir.y) return;
+  sn.nextDir = { x, y };
+}
+
+function snPlaceFood(){
+  const libres = [];
+  for (let y = 0; y < sn.rows; y++){
+    for (let x = 0; x < sn.cols; x++){
+      if (!sn.body.some(s => s.x === x && s.y === y)) libres.push({ x, y });
+    }
+  }
+  sn.food = libres.length ? libres[Math.floor(Math.random()*libres.length)] : null;
+}
+
+function snStep(){
+  sn.dir = sn.nextDir;
+  const head = sn.body[0];
+  const nx = head.x + sn.dir.x, ny = head.y + sn.dir.y;
+
+  if (nx < 0 || ny < 0 || nx >= sn.cols || ny >= sn.rows){ snDie(); return; }
+  /* La cola se corre en el mismo paso, así que pisar el último segmento no mata
+     (salvo que justo se coma, y ahí la cola no se mueve). */
+  const chocaConsigo = sn.body.some((s, i) => i < sn.body.length - 1 && s.x === nx && s.y === ny);
+  if (chocaConsigo){ snDie(); return; }
+
+  sn.body.unshift({ x:nx, y:ny });
+  if (sn.food && nx === sn.food.x && ny === sn.food.y){
+    sn.score += 1;
+    sn.stepMs = Math.max(SN_MIN_MS, sn.stepMs - SN_SPEEDUP);
+    snPlaceFood();
+  } else {
+    sn.body.pop();
+  }
+}
+
+function snDie(){
+  sn.dead = true;
+  sn.deadUntil = performance.now() + 900;   // deja ver dónde se chocó
+}
+
+function snDraw(){
+  const { ctx, gc } = sn;
+  ctx.clearRect(0, 0, gc.width, gc.height);
+
+  ctx.fillStyle = 'rgba(0,0,0,.18)';
+  ctx.fillRect(sn.offX, sn.offY, sn.cols*SN_CELL, sn.rows*SN_CELL);
+
+  if (sn.food){
+    drawEmoji(ctx, '🍎', SN_CELL, sn.offX + (sn.food.x+0.5)*SN_CELL, sn.offY + (sn.food.y+0.5)*SN_CELL);
+  }
+
+  for (let i = sn.body.length - 1; i >= 0; i--){
+    const s = sn.body[i];
+    if (sn.dead)      ctx.fillStyle = i === 0 ? '#ff8f8f' : 'rgba(255,120,120,.5)';
+    else if (i === 0) ctx.fillStyle = '#ffe66d';
+    else              ctx.fillStyle = `rgba(200,242,194,${Math.max(0.35, 0.85 - i*0.012)})`;
+    ctx.fillRect(sn.offX + s.x*SN_CELL + 1, sn.offY + s.y*SN_CELL + 1, SN_CELL-2, SN_CELL-2);
+  }
+
+  ctx.font = '11px monospace';
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('🍎 ' + sn.score, 8, 16);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = sn.dead ? '#ff8f8f' : 'rgba(255,255,255,.7)';
+  ctx.fillText(sn.dead ? '¡chocaste!' : 'largo ' + sn.body.length, gc.width - 8, 16);
+}
+
+function snLoop(t){
+  if (activeMinigame !== 'snake' || !sn) return;
+  const dtMs = Math.min(120, t - (sn.lastT || t));
+  sn.lastT = t;
+
+  if (sn.dead){
+    snDraw();
+    if (performance.now() >= sn.deadUntil){ endSnakeGame(); return; }
+  } else {
+    sn.acc += dtMs;
+    while (sn.acc >= sn.stepMs && !sn.dead){
+      sn.acc -= sn.stepMs;
+      snStep();
+    }
+    snDraw();
+  }
+  sn.raf = requestAnimationFrame(snLoop);
+}
+
+function snDispose(){
+  if (!sn) return;
+  window.removeEventListener('keydown', sn.onKeyDown);
+  sn.gc.removeEventListener('pointerdown', sn.onDown);
+  sn.gc.removeEventListener('pointermove', sn.onMove);
+  sn.gc.removeEventListener('pointerup', sn.onUp);
+  sn.gc.removeEventListener('pointercancel', sn.onUp);
+  sn.pointer.dispose();
+  if (sn.raf) cancelAnimationFrame(sn.raf);
+}
+
+function endSnakeGame(){
+  const score = sn ? sn.score : 0;
+  const largo = sn ? sn.body.length : 0;
+  snDispose();
+  sn = null;
+
+  const message = score > 0 ? `${score} manzanas (largo ${largo})` : 'Se chocó al toque';
+  finishMinigame('snake', { score, merit: score * 2.2, energyCost: 20, message });
+}
+
+/* ===================== Minijuego 6: memorice de luces =====================
+   Diez luces en posiciones al azar. Se enciende una secuencia y hay que
+   repetirla tocándolas en el mismo orden; cada ronda suma una luz más. Un solo
+   error termina la partida. */
+
+const MM_LIGHTS = 10;
+const MM_START_LEN = 3;
+const MM_RADIUS = 16;
+const MM_HUD = 22;
+
+let mm = null;
+
+/* Casillas de una rejilla 4x3 barajadas, con la luz corrida al azar dentro de su
+   casilla. Sortear posiciones libres y descartar las que se pisan queda lindo en
+   el papel pero se amontona: con diez círculos en un canvas chico hay tiradas
+   donde no entra ninguna sin solaparse. Así siempre salen diez separadas y
+   tocables, y de todos modos cambian de lugar en cada partida. */
+function mmPlaceLights(gc){
+  const cols = 4, rows = 3;
+  const cw = gc.width / cols, ch = (gc.height - MM_HUD) / rows;
+  const casillas = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) casillas.push({ c, r });
+  for (let i = casillas.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [casillas[i], casillas[j]] = [casillas[j], casillas[i]];
+  }
+  const jitterX = Math.max(0, cw/2 - MM_RADIUS - 3);
+  const jitterY = Math.max(0, ch/2 - MM_RADIUS - 3);
+  return casillas.slice(0, MM_LIGHTS).map(({ c, r }) => ({
+    x: c*cw + cw/2 + (Math.random()*2 - 1)*jitterX,
+    y: MM_HUD + r*ch + ch/2 + (Math.random()*2 - 1)*jitterY,
+  }));
+}
+
+function startMemoryGame(){
+  const { gc, ctx } = enterMinigame('memory');
+  mm = {
+    ctx, gc,
+    lights: mmPlaceLights(gc),
+    sequence: [],
+    round: 0,
+    step: 0,
+    phase: 'showing',   // 'showing' | 'input' | 'good' | 'fail'
+    lit: -1,
+    litUntil: 0,
+    wrong: -1,
+    timer: 0,
+    score: 0,
+    pointer: makeCanvasPointer(gc),
+    raf: null, lastT: 0,
+  };
+  mmNextRound();
+
+  mm.onDown = (e) => { e.preventDefault(); mmTap(mm.pointer.at(e)); };
+  gc.addEventListener('pointerdown', mm.onDown);
+
+  say('Mira la secuencia y repítela');
+  mm.raf = requestAnimationFrame(mmLoop);
+}
+
+/* La secuencia crece, no se sortea de nuevo: se apoya en lo que ya memorizaste.
+   Rehacerla entera cada ronda sería más difícil pero se siente arbitrario, y a
+   la sexta ronda ya nadie la sigue. */
+function mmNextRound(){
+  mm.round += 1;
+  const nuevas = mm.round === 1 ? MM_START_LEN : 1;
+  for (let i = 0; i < nuevas; i++){
+    mm.sequence.push(Math.floor(Math.random()*mm.lights.length));
+  }
+  mm.phase = 'showing';
+  mm.step = 0;
+  mm.lit = -1;
+  mm.wrong = -1;
+  mm.timer = 600;   // respiro antes de empezar a mostrar
+}
+
+function mmTap(pos){
+  if (!mm || mm.phase !== 'input') return;
+  const i = mm.lights.findIndex(l => Math.hypot(l.x - pos.x, l.y - pos.y) <= MM_RADIUS + 6);
+  if (i < 0) return;   // tocar el vacío no cuenta como error, simplemente no pasa nada
+
+  mm.lit = i;
+  mm.litUntil = performance.now() + 160;
+
+  if (i !== mm.sequence[mm.step]){
+    mm.wrong = i;
+    mm.phase = 'fail';
+    mm.timer = 950;
+    return;
+  }
+  mm.step += 1;
+  mm.score += 1;
+  if (mm.step >= mm.sequence.length){
+    mm.phase = 'good';
+    mm.timer = 550;
+  }
+}
+
+function mmDraw(){
+  const { ctx, gc } = mm;
+  ctx.clearRect(0, 0, gc.width, gc.height);
+
+  mm.lights.forEach((l, i) => {
+    const encendida = i === mm.lit;
+    const fallo = i === mm.wrong;
+    ctx.beginPath();
+    ctx.arc(l.x, l.y, MM_RADIUS, 0, Math.PI*2);
+    ctx.fillStyle = fallo ? 'rgba(255,90,90,.85)'
+                  : encendida ? 'rgba(255,230,109,.95)'
+                  : 'rgba(200,242,194,.12)';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = fallo ? '#ff6b6b' : encendida ? '#fff3b0' : 'rgba(200,242,194,.35)';
+    ctx.stroke();
+  });
+
+  ctx.font = '11px monospace';
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('💡 ' + mm.score, 8, 16);
+  ctx.textAlign = 'right';
+  ctx.fillText(`ronda ${mm.round} · ${mm.sequence.length}`, gc.width - 8, 16);
+
+  ctx.textAlign = 'center';
+  if (mm.phase === 'showing'){
+    ctx.fillStyle = 'rgba(255,255,255,.75)';
+    ctx.fillText('mirá…', gc.width/2, 16);
+  } else if (mm.phase === 'input'){
+    ctx.fillStyle = '#ffe66d';
+    ctx.fillText(`tu turno  ${mm.step}/${mm.sequence.length}`, gc.width/2, 16);
+  } else if (mm.phase === 'fail'){
+    ctx.fillStyle = '#ff8f8f';
+    ctx.fillText('¡esa no era!', gc.width/2, 16);
+  }
+}
+
+function mmLoop(t){
+  if (activeMinigame !== 'memory' || !mm) return;
+  const dtMs = Math.min(120, t - (mm.lastT || t));
+  mm.lastT = t;
+  mm.timer -= dtMs;
+
+  if (mm.phase === 'showing'){
+    /* Acelera con la ronda: la secuencia larga además se muestra más rápido. */
+    const onMs  = Math.max(200, 420 - mm.round*18);
+    const offMs = Math.max(90,  180 - mm.round*8);
+    if (mm.timer <= 0){
+      if (mm.lit >= 0){
+        mm.lit = -1;
+        mm.step += 1;
+        mm.timer = offMs;
+        if (mm.step >= mm.sequence.length){ mm.phase = 'input'; mm.step = 0; }
+      } else {
+        mm.lit = mm.sequence[mm.step];
+        mm.timer = onMs;
+      }
+    }
+  } else if (mm.phase === 'input'){
+    if (mm.lit >= 0 && performance.now() >= mm.litUntil) mm.lit = -1;
+  } else if (mm.phase === 'good'){
+    if (mm.timer <= 0) mmNextRound();
+  } else if (mm.phase === 'fail'){
+    if (mm.timer <= 0){ endMemoryGame(); return; }
+  }
+
+  mmDraw();
+  mm.raf = requestAnimationFrame(mmLoop);
+}
+
+function mmDispose(){
+  if (!mm) return;
+  mm.gc.removeEventListener('pointerdown', mm.onDown);
+  mm.pointer.dispose();
+  if (mm.raf) cancelAnimationFrame(mm.raf);
+}
+
+function endMemoryGame(){
+  const score = mm ? mm.score : 0;
+  const rondas = mm ? mm.round - 1 : 0;   // la ronda en curso no se completó
+  mmDispose();
+  mm = null;
+
+  const message = rondas > 0 ? `${rondas} rondas · ${score} luces` : 'Se perdió en la primera';
+  finishMinigame('memory', { score, merit: score * 1.2, energyCost: 18, message });
+}
+
 /* ===================== Overlay / setup ===================== */
 
 function showOverlay(html){
@@ -2004,6 +2389,8 @@ function renderDebugPanel(){
           <button class="debug-btn" id="dbgBasketball">🏀 Baloncesto</button>
           <button class="debug-btn" id="dbgReflex">🎯 Reflejos</button>
           <button class="debug-btn" id="dbgTap">🎵 Tap rítmico</button>
+          <button class="debug-btn" id="dbgSnake">🐍 Snake</button>
+          <button class="debug-btn" id="dbgMemory">💡 Memorice</button>
         </div>
       </div>
       <div class="debug-section">
@@ -2048,6 +2435,8 @@ function renderDebugPanel(){
   document.getElementById('dbgBasketball').addEventListener('click', () => { closeDebugPanel(); startBasketballGame(); });
   document.getElementById('dbgReflex').addEventListener('click', () => { closeDebugPanel(); startReflexGame(); });
   document.getElementById('dbgTap').addEventListener('click', () => { closeDebugPanel(); startTapGame(); });
+  document.getElementById('dbgSnake').addEventListener('click', () => { closeDebugPanel(); startSnakeGame(); });
+  document.getElementById('dbgMemory').addEventListener('click', () => { closeDebugPanel(); startMemoryGame(); });
   document.getElementById('dbgPoop').addEventListener('click', () => {
     state.poop = true; saveState(); render(); renderDebugPanel();
   });
