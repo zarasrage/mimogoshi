@@ -59,18 +59,22 @@ segunda cara dibujada encima.
 La cadena está calibrada así y **no hay que romperla**:
 
 - El arte es de 32x32 por frame.
-- `CANVAS_W`/`CANVAS_H` = **64** → `pixelScale()` da 2 (64/32), el sprite llena
+- `CANVAS_W`/`CANVAS_H` = **96** → `pixelScale()` da 3 (96/32), el sprite llena
   el canvas justo.
-- `#petCanvas` en CSS mide **64x64**, o sea 1:1 con su backing store del HTML.
+- `#petCanvas` en CSS mide **96x96**, o sea 1:1 con su backing store del HTML.
   Así la única escala que queda es la del dispositivo (2x/3x), que ya es entera.
 
-Si algún día hay que agrandar la mascota, subir de a múltiplos (128, 192) y
-mantener canvas y CSS en la misma proporción. Poner `width:50px` sobre un canvas
-de 80 (como estaba antes) reescala por 0.625 y arruina todo el pixel art.
+Para cambiarle el tamaño a la mascota hay que mover **los tres a la vez**
+(`CANVAS_W`/`CANVAS_H`, el `width`/`height` del `<canvas>` en el HTML y el CSS) y
+solo a múltiplos de 32: 64, 96, 128, 192. Poner `width:50px` sobre un canvas de
+80 (como estaba antes) reescala por 0.625 y arruina todo el pixel art.
 
-Lo mismo aplica a las miniaturas del selector (`speciesThumbStyle()` usa `s=2`)
+Lo mismo aplica a las miniaturas del selector (`speciesThumbStyle()` usa `s=3`)
 y al mono del minijuego de baloncesto, que se dibuja 1:1 con `ctx.translate()`
 y **sin** `ctx.scale()`.
+
+`drawEgg()` dibuja sus radios como fracción de `CANVAS_W`/`CANVAS_H`, no en
+píxeles fijos: si no, al agrandar la mascota el huevo se queda chico abajo.
 
 `ctx.imageSmoothingEnabled = false` y `image-rendering:pixelated` en el CSS son
 necesarios pero **no** suficientes: no arreglan una escala fraccionaria.

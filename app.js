@@ -6,13 +6,14 @@
    con {frames:[nombres], durations_ms:[...]}.
    El único dibujo procedural que queda es el huevo: para esa etapa no vino arte. */
 
-/* 64x64 a propósito: es múltiplo entero del tamaño nativo del arte (32px → x2), y
-   el CSS muestra el canvas 1:1 (64px), así que la única escala que queda es la del
+/* 96x96 a propósito: es múltiplo entero del tamaño nativo del arte (32px → x3), y
+   el CSS muestra el canvas 1:1 (96px), así que la única escala que queda es la del
    dispositivo (2x/3x), que es entera. Con medidas que no calzan unos píxeles del
    arte salen de 2 y otros de 3, y en una cara de 32x32 eso junta los ojos con la
-   boca en un borrón que parece una segunda cara. */
-const CANVAS_W = 64;
-const CANVAS_H = 64;
+   boca en un borrón que parece una segunda cara.
+   Los tamaños válidos son los múltiplos de 32: 64, 96, 128, 192. */
+const CANVAS_W = 96;
+const CANVAS_H = 96;
 
 /* Solo para el huevo. Los sprites se dibujan tal cual vienen del PNG: son la
    ilustración completa, así que no se les aplica ningún tinte encima. */
@@ -126,7 +127,7 @@ function speciesById(id){ return SPECIES[id] || SPECIES[DEFAULT_SPECIES]; }
    el canvas: a escala fraccionaria el pixel art se embarra. */
 function speciesThumbStyle(id){
   const raw = SPECIES_RAW[id];
-  const s = 2;
+  const s = 3;   // entero sí o sí, igual que pixelScale()
   const f = raw.frames.normal;
   return [
     `width:${raw.tileWidth*s}px`, `height:${raw.tileHeight*s}px`,
@@ -185,7 +186,9 @@ function pickAnimation(species, mood, walkFrame, now){
 
 function drawEgg(ctx){
   const pal = PALETTES.egg;
-  const rx = 16, ry = 20;
+  /* Proporcional al canvas y no en píxeles fijos: si no, al agrandar la mascota
+     el huevo se queda chico y descolocado abajo. */
+  const rx = CANVAS_W * 0.25, ry = CANVAS_H * 0.3125;
   const cx = CANVAS_W/2, cy = CANVAS_H - ry - 2; // apoyado en el piso, igual que los sprites
   ctx.fillStyle = pal.O;
   ctx.beginPath();
@@ -1159,9 +1162,9 @@ const BB_TOTAL_SHOTS = 3;
    más alto se aprieta TIRAR — las zonas de acierto no se muestran, solo están codificadas
    como umbrales de altura (0 = abajo, 1 = arriba del todo). Se endurece por tiro. */
 const BB_DIFFICULTY = [
-  { peak: 0.90, near: 0.80, speed: 1.0 },
-  { peak: 0.95, near: 0.85, speed: 1.25 },
-  { peak: 0.98, near: 0.90, speed: 1.5 },
+  { peak: 0.90, near: 0.80, speed: 1.5 },
+  { peak: 0.95, near: 0.85, speed: 1.875 },
+  { peak: 0.98, near: 0.90, speed: 2.25 },
 ];
 
 /* Posiciones como fracción del tamaño real del canvas (se recalculan al empezar
