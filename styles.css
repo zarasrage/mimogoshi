@@ -24,7 +24,6 @@
 *{box-sizing:border-box;}
 
 html,body{
-  height:100%;
   margin:0;
   background:
     radial-gradient(120% 100% at 50% -10%, var(--bg-2), transparent 60%),
@@ -34,15 +33,23 @@ html,body{
   overflow-x:hidden;
 }
 
+html{height:100%;}
+
+/* Ojo con centrar verticalmente acá. Con `align-items:center` y un contenido más
+   alto que la pantalla, el sobrante se reparte arriba Y abajo, y la parte de
+   arriba queda fuera del área que se puede scrollear: en el teléfono el aparato
+   aparecía cortado por arriba y no había forma de llegar. El centrado va con
+   `margin:auto` en el hijo, que centra cuando sobra espacio y se apoya arriba
+   cuando no. */
 body{
   min-height:100%;
   display:flex;
-  align-items:center;
   justify-content:center;
-  padding:32px 16px;
+  padding:18px 16px;
 }
 
 #stage{
+  margin:auto;
   display:flex;
   flex-direction:column;
   align-items:center;
@@ -189,7 +196,10 @@ body{
   border-radius:14px;
   overflow:hidden;
   padding:10px 10px 12px;
-  min-height:420px;
+  /* Alto fijo no sirve: 420px es lindo en escritorio pero en un teléfono empuja
+     los botones fuera de la pantalla. Se achica con la ventana y no baja de 290,
+     que es lo que necesitan la mascota de 96px y las cinco barras. */
+  min-height:clamp(290px, 42vh, 420px);
   display:flex;
   flex-direction:column;
   box-shadow:0 0 0 3px #0a1109 inset;
@@ -594,6 +604,20 @@ body{
 @keyframes fxRise{
   0%{opacity:1; transform:translate(-50%,0) scale(.8);}
   100%{opacity:0; transform:translate(-50%,-40px) scale(1.2);}
+}
+
+/* Pantallas bajas (teléfono con la barra del navegador a la vista): se recorta
+   todo el aire que no es contenido para que el aparato entre entero sin scroll.
+   Lo que se achica es separación y relleno, nunca la mascota ni los botones. */
+@media (max-height: 760px){
+  body{padding:10px 12px;}
+  #stage{gap:8px;}
+  .footnote{display:none;}
+  .device{padding:14px 16px 18px;}
+  .device-top{padding:0 4px 10px;}
+  .screen-bezel{padding:10px;}
+  .controls{margin-top:12px; gap:7px;}
+  .speaker{margin-top:10px;}
 }
 
 @media (prefers-reduced-motion: reduce){
