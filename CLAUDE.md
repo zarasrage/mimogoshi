@@ -172,8 +172,18 @@ esto.
 4. Listo: el selector, el panel de prueba y las miniaturas se arman solos desde
    `SPECIES_IDS`.
 
-El selector es una fila con scroll horizontal (`.species-list`). Si se apilan en
-vertical, con tres o más especies el botón "Empezar" se sale de la pantalla.
+El selector (`.species-list`) es una **rejilla de 3 columnas**, sin ningún scroll.
+Las otras dos formas ya se probaron y fallan: apiladas en vertical la lista crece
+más que la pantalla y empuja el botón "Empezar" fuera de vista; en fila con scroll
+horizontal el gesto pelea con el scroll vertical del overlay y las especies que
+quedan pasado el borde no dan ninguna señal de existir.
+
+Por eso `speciesThumbStyle(id, s)` usa `s = 2` (miniatura de 64px): con `s = 3` no
+entran tres columnas. La escala tiene que seguir siendo **entera**.
+
+La pantalla de inicio **no** enfoca el campo del nombre al abrirse: en el teléfono
+el teclado aparecía de una y tapaba justo el selector de especies, que es lo
+primero que hay que elegir.
 
 ## Estado del juego
 

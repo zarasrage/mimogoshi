@@ -125,9 +125,11 @@ function speciesById(id){ return SPECIES[id] || SPECIES[DEFAULT_SPECIES]; }
    el selector, recortando su spritesheet real vía background-position en vez de
    tener que precortar archivos aparte. Se escala x2 (entero) por lo mismo que
    el canvas: a escala fraccionaria el pixel art se embarra. */
-function speciesThumbStyle(id){
+/* `s` es la escala de la miniatura: entera sí o sí, igual que pixelScale(). Con 2
+   la miniatura mide 64px, que es lo que permite tres columnas en la rejilla del
+   selector sin que se desborde. */
+function speciesThumbStyle(id, s = 2){
   const raw = SPECIES_RAW[id];
-  const s = 3;   // entero sí o sí, igual que pixelScale()
   const f = raw.frames.normal;
   return [
     `width:${raw.tileWidth*s}px`, `height:${raw.tileHeight*s}px`,
@@ -1859,12 +1861,14 @@ function renderSpeciesPicker(){
 
 function askName(){
   pickedSpecies = DEFAULT_SPECIES;
+  /* Sin `autofocus`: en el teléfono abría el teclado apenas cargaba la pantalla,
+     y el teclado tapa justo el selector de especies — que es lo primero que hay
+     que elegir. El campo se enfoca cuando el jugador lo toca. */
   showOverlay(`
     <h3>🥚 Un nuevo Mimogoshi</h3>
     <p>¿Qué especie va a ser?</p>
     <div class="menu-list species-list" id="speciesList">${renderSpeciesPicker()}</div>
-    <p>¿Cómo se va a llamar?</p>
-    <div><input id="nameInput" maxlength="14" placeholder="Nombre" autofocus></div>
+    <div><input id="nameInput" maxlength="14" placeholder="Nombre"></div>
     <button class="overlay-btn" id="btnStart">Empezar</button>
   `);
   const input = document.getElementById('nameInput');
@@ -1891,7 +1895,6 @@ function askName(){
   };
   document.getElementById('btnStart').addEventListener('click', start);
   input.addEventListener('keydown', e => { if (e.key === 'Enter') start(); });
-  input.focus();
 }
 
 /* ===================== Modo prueba (debug) ===================== */

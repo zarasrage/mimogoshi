@@ -297,7 +297,8 @@ body{
 
 .bubble{
   position:absolute;
-  top:6px;
+  /* Bajo la topbar, no encima: a 6px tapaba el nombre y las monedas. */
+  top:26px;
   left:50%;
   transform:translateX(-50%) scale(.8);
   background:#fff;
@@ -310,7 +311,12 @@ body{
   opacity:0;
   pointer-events:none;
   transition:opacity .2s ease, transform .2s ease;
-  white-space:nowrap;
+  /* Antes era nowrap: los mensajes largos ("¡RÉCORD! 96 pts (combo 12) · +15
+     felicidad · 🪙 +10") se hacían más anchos que la pantalla y el overflow
+     hidden de .screen les cortaba las puntas. Ahora envuelven. */
+  max-width:calc(100% - 24px);
+  text-align:center;
+  line-height:1.35;
   box-shadow:0 4px 10px rgba(0,0,0,.25);
   z-index:5;
 }
@@ -472,29 +478,28 @@ body{
 .menu-item.locked{opacity:.4; cursor:not-allowed;}
 .menu-item:not(.locked):hover{background:rgba(255,255,255,.15);}
 
-/* Las especies van en fila y con la miniatura arriba del nombre: apiladas en
-   vertical la lista crecía más que la pantalla y dejaba el botón de Empezar
-   fuera de vista. En columna cada tarjeta mide ~74px y entran dos o tres a lo
-   ancho. El tope de altura con scroll propio es para que la lista pueda crecer
-   con más especies sin volver a empujar el botón fuera de la pantalla. */
+/* Rejilla, no fila con scroll horizontal. La fila scrolleable era incómoda de
+   usar en el teléfono: el gesto competía con el scroll vertical del overlay, y
+   las especies que quedaban fuera del borde no daban ninguna señal de estar ahí,
+   así que parecía que solo había tres. En rejilla de 3 columnas las cinco se ven
+   de una y no hay ningún scroll que pelear.
+   Apiladas en vertical (una por fila) tampoco servía: la lista crecía más que la
+   pantalla y empujaba el botón de Empezar fuera de vista. */
 .species-list{
-  flex-direction:row;
-  flex-wrap:nowrap;
+  display:grid;
+  grid-template-columns:repeat(3, 1fr);
   gap:8px;
-  overflow-x:auto;
-  overflow-y:hidden;
-  padding-bottom:2px;
-  scroll-snap-type:x proximity;
 }
-.species-list .species-item{scroll-snap-align:center;}
 .species-list .species-item{
-  flex:0 0 auto;
   flex-direction:column;
-  justify-content:center;
-  gap:4px;
-  padding:6px 8px;
+  justify-content:flex-start;
+  align-items:center;
+  gap:5px;
+  padding:8px 4px;
+  text-align:center;
 }
-.species-list .species-item .info{align-items:center;}
+.species-list .species-item .info{align-items:center; min-width:0;}
+.species-list .species-item .info b{font-size:11px; line-height:1.25;}
 .species-thumb{flex-shrink:0; background-repeat:no-repeat;}
 
 .debug-panel{width:100%;}
