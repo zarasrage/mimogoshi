@@ -70,8 +70,8 @@ solo a múltiplos de 32: 64, 96, 128, 192. Poner `width:50px` sobre un canvas de
 80 (como estaba antes) reescala por 0.625 y arruina todo el pixel art.
 
 Lo mismo aplica a las miniaturas del selector (`speciesThumbStyle()` usa `s=2`)
-y al mono del minijuego de baloncesto, que se dibuja 1:1 con `ctx.translate()`
-y **sin** `ctx.scale()`.
+y a la mascota dentro de los minijuegos, que se dibuja con `drawPetAt()` a escala
+2 usando `ctx.translate()` y **sin** `ctx.scale()`.
 
 `drawEgg()` dibuja sus radios como fracción de `CANVAS_W`/`CANVAS_H`, no en
 píxeles fijos: si no, al agrandar la mascota el huevo se queda chico abajo.
@@ -257,7 +257,8 @@ sprite: entre las dos etapas que quedan no hay ninguna otra diferencia visual.
 Seis, todos sobre `#gameCanvas`, que se redimensiona con `fitGameCanvas()` a
 su tamaño real en pantalla para que nada salga estirado:
 
-- **Atrapa estrellas** (`sg`): mover la canasta, esquivar la caca. 20 segundos
+- **Atrapa estrellas** (`sg`): mover a la mascota con el deslizador de abajo
+  para atrapar lo que cae, esquivando la caca. 20 segundos
   con dificultad creciente (caen más seguido, más rápido y con más caca). El
   combo multiplica hasta x4 y se corta tanto al comer caca como al dejar caer
   una estrella.
@@ -291,12 +292,24 @@ puntaje fue positivo.
 
 ### Cómo se arma un minijuego
 
+**Los mandos van abajo, no encima de la pantalla.** `showGameControls(html)`
+esconde `.controls` (comer, limpiar, tienda...) y pone en su lugar los botones
+del juego; `exitMinigame()` y `forceCloseMinigames()` los sacan. Los usan
+estrellas (deslizador), baloncesto (TIRAR), snake (cruceta) y tap rítmico (un
+botón por carril). Reflejos y memorice **no**: se juegan tocando la pantalla.
+`wireGameButton()` los ata con `pointerdown` y no con `click` porque en el
+teléfono el click llega bastante después del toque.
+
 Lo compartido está justo debajo de `fitGameCanvas()` y conviene reusarlo:
 
 - `enterMinigame(id)` / `exitMinigame()`: alta y baja del canvas (esconder al
   monito, mostrar el canvas, `catchUp()`, `activeMinigame`).
 - `finishMinigame(id, {...})`: aplica premio y costo, guarda el récord y avisa
   "¡RÉCORD!" si corresponde.
+- `drawPetAt(ctx, x, suelo, mood, escala)`: dibuja a la mascota dentro del canvas
+  de un minijuego (la canasta de estrellas y el jugador de baloncesto son el
+  sprite real). La `escala` **tiene que ser entera**: se usa 2 (64px) porque el
+  tamaño de la vista normal, 96px, se come el cuadro de un minijuego.
 - `drawEmoji()`: **usar siempre esto en vez de `ctx.fillText()` con un emoji.**
   `fillText` rasteriza el glifo de color en cada llamada y en una partida hay
   decenas por frame; `emojiSprite()` lo cachea en un canvas chico y después solo

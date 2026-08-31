@@ -260,7 +260,7 @@ body{
   filter:drop-shadow(0 2px 2px rgba(0,0,0,.4));
 }
 
-.creature-floor.hidden, #gameCanvas.hidden, .shoot-btn.hidden, .poop-fx.hidden{display:none;}
+.creature-floor.hidden, #gameCanvas.hidden, .poop-fx.hidden{display:none;}
 
 #gameCanvas{
   image-rendering:pixelated;
@@ -274,26 +274,6 @@ body{
      es un scroll y los juegos de tocar (reflejos, tap rítmico) responden tarde. */
   touch-action:none;
 }
-
-.shoot-btn{
-  position:absolute;
-  width:38px;
-  height:38px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-size:18px;
-  color:var(--ink);
-  background:var(--amber);
-  border:none;
-  border-radius:10px;
-  padding:0;
-  cursor:pointer;
-  box-shadow:0 3px 0 #b8850a;
-  transition:transform .08s ease, box-shadow .08s ease;
-  z-index:4;
-}
-.shoot-btn:active{transform:translateY(2px); box-shadow:0 1px 0 #b8850a;}
 
 .bubble{
   position:absolute;
@@ -576,6 +556,88 @@ body{
   background:rgba(255,255,255,.55);
   color:var(--ink-soft);
   box-shadow:0 4px 0 rgba(122,31,66,.4);
+}
+
+/* ---------- mandos de los minijuegos ---------- */
+
+/* Ocupan el lugar de .controls mientras se juega. El min-height evita que el
+   aparato pegue un salto de alto al entrar y salir de una partida. */
+.game-controls{
+  margin-top:16px;
+  min-height:120px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap:8px;
+}
+.game-controls.hidden, .controls.hidden{display:none;}
+
+.gbtn{
+  font-family:var(--font-ui);
+  font-weight:800;
+  font-size:14px;
+  color:var(--ink);
+  background:var(--btn);
+  border:none;
+  border-radius:14px;
+  padding:14px 8px;
+  cursor:pointer;
+  box-shadow:0 4px 0 var(--btn-shadow);
+  transition:transform .06s ease, box-shadow .06s ease;
+  /* Sin esto el navegador espera a ver si el toque es un doble tap y los mandos
+     responden tarde, que en estos juegos se nota. */
+  touch-action:manipulation;
+  user-select:none;
+}
+.gbtn:active{transform:translateY(3px); box-shadow:0 1px 0 var(--btn-shadow);}
+.gbtn-lg{font-size:16px; padding:20px 8px;}
+
+/* Fila de carriles del tap rítmico */
+.gbtn-row{display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;}
+.gbtn-row .gbtn{font-size:24px; padding:18px 4px;}
+
+/* Cruceta de snake: colocación explícita, si no el autoflow manda las flechas
+   de abajo a la primera fila. */
+.gpad{display:grid; grid-template-columns:repeat(3, 1fr); gap:6px;}
+.gpad .gbtn{font-size:20px; padding:13px 4px;}
+.gpad .up   {grid-column:2; grid-row:1;}
+.gpad .left {grid-column:1; grid-row:2;}
+.gpad .down {grid-column:2; grid-row:2;}
+.gpad .right{grid-column:3; grid-row:2;}
+
+/* Deslizador de la canasta en atrapa estrellas */
+.game-slider{
+  -webkit-appearance:none; appearance:none;
+  width:100%;
+  height:46px;          /* área de toque cómoda, más alta que la barra visible */
+  background:transparent;
+  cursor:pointer;
+  touch-action:none;
+  margin:0;
+}
+.game-slider::-webkit-slider-runnable-track{
+  height:12px; border-radius:6px;
+  background:rgba(255,255,255,.45);
+}
+.game-slider::-webkit-slider-thumb{
+  -webkit-appearance:none; appearance:none;
+  width:52px; height:34px; margin-top:-11px;
+  border-radius:11px;
+  background:var(--btn);
+  box-shadow:0 3px 0 var(--btn-shadow);
+}
+.game-slider::-moz-range-track{height:12px; border-radius:6px; background:rgba(255,255,255,.45);}
+.game-slider::-moz-range-thumb{
+  width:52px; height:34px; border:none; border-radius:11px;
+  background:var(--btn); box-shadow:0 3px 0 var(--btn-shadow);
+}
+
+.game-hint{
+  font-family:var(--font-ui);
+  font-weight:800;
+  font-size:11px;
+  color:rgba(255,255,255,.75);
+  text-align:center;
 }
 
 .speaker{

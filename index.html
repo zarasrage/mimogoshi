@@ -43,7 +43,6 @@
         <div class="bubble" id="bubble"></div>
 
         <canvas id="gameCanvas" width="256" height="150" class="hidden"></canvas>
-        <button class="shoot-btn hidden" id="btnShoot">🏀</button>
 
         <div class="stats" id="stats">
           <div class="stat" data-stat="hunger">
@@ -74,7 +73,7 @@
       </div>
     </div>
 
-    <div class="controls">
+    <div class="controls" id="controls">
       <button class="btn" id="btnFeed" title="Alimentar">
         <span class="btn-icon" id="feedIcon">🍬</span><span class="btn-label">Comer</span>
       </button>
@@ -97,6 +96,10 @@
         <span class="btn-icon">↺</span><span class="btn-label">Reiniciar</span>
       </button>
     </div>
+
+    <!-- Reemplaza a .controls mientras dura un minijuego: los mandos del juego
+         viven acá abajo y no encima de la pantalla. -->
+    <div class="game-controls hidden" id="gameControls"></div>
 
     <div class="speaker">
       <span></span><span></span><span></span><span></span><span></span>

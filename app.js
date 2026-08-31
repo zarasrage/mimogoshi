@@ -218,7 +218,9 @@ function currentSpeciesId(){
          (state && state.species) || DEFAULT_SPECIES;
 }
 
-function drawSprite(ctx, stage, mood, walkFrame, noClear){
+/* `scaleOverride` deja dibujar la mascota más chica dentro de un minijuego. Tiene
+   que ser un entero: es exactamente la regla que rompe el pixel art si se ignora. */
+function drawSprite(ctx, stage, mood, walkFrame, noClear, scaleOverride){
   if (!noClear) ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
   ctx.imageSmoothingEnabled = false;
 
@@ -234,7 +236,7 @@ function drawSprite(ctx, stage, mood, walkFrame, noClear){
   const { name, startedAt } = pickAnimation(species, mood, walkFrame, now);
   const frame = frameAtElapsed(species, name, now - startedAt);
 
-  const scale = pixelScale(frame);
+  const scale = scaleOverride || pixelScale(frame);
   const dw = frame.w * scale, dh = frame.h * scale;
   const dx = Math.round((CANVAS_W - dw) / 2);
   const dy = CANVAS_H - dh; // apoyado en el piso
@@ -501,7 +503,6 @@ function forceCloseMinigames(){
   snDispose();
   mmDispose();
   if (bb && bb.raf) cancelAnimationFrame(bb.raf);
-  if (bb && bb.onShoot) document.getElementById('btnShoot').removeEventListener('click', bb.onShoot);
   sg = null;
   bb = null;
   rx = null;
@@ -510,8 +511,8 @@ function forceCloseMinigames(){
   mm = null;
   activeMinigame = null;
   document.getElementById('gameCanvas').classList.add('hidden');
-  document.getElementById('btnShoot').classList.add('hidden');
   document.getElementById('creatureFloor').classList.remove('hidden');
+  hideGameControls();
 }
 
 /* Devuelve true si la acción puede proceder (y despierta a la mascota si corresponde) */
@@ -943,6 +944,31 @@ function saveBestScore(id, score){
   return true;
 }
 
+/* Mientras dura una partida, los mandos del juego reemplazan a los botones de
+   cuidado de abajo. Así la pantalla queda libre para el juego en vez de tener
+   controles encima, y de paso los botones quedan donde está el pulgar. Reflejos
+   y memorice no usan esto: se juegan tocando la pantalla sí o sí. */
+function showGameControls(html){
+  const cont = document.getElementById('gameControls');
+  cont.innerHTML = html;
+  cont.classList.remove('hidden');
+  document.getElementById('controls').classList.add('hidden');
+  return cont;
+}
+
+function hideGameControls(){
+  const cont = document.getElementById('gameControls');
+  cont.innerHTML = '';   // se lleva los listeners junto con los nodos
+  cont.classList.add('hidden');
+  document.getElementById('controls').classList.remove('hidden');
+}
+
+/* Ata una acción a un botón de mando. Va en pointerdown y no en click: en el
+   teléfono el click llega bastante después del toque y en estos juegos se nota. */
+function wireGameButton(el, fn){
+  el.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); });
+}
+
 /* Alta y baja del canvas de minijuego: las dos mitades que todos repiten igual. */
 function enterMinigame(id){
   catchUp();
@@ -959,7 +985,18 @@ function enterMinigame(id){
 function exitMinigame(){
   document.getElementById('gameCanvas').classList.add('hidden');
   document.getElementById('creatureFloor').classList.remove('hidden');
+  hideGameControls();
   activeMinigame = null;
+}
+
+/* Dibuja a la mascota dentro de otro canvas, apoyada en (x, suelo). `escala`
+   tiene que ser entera igual que en pixelScale(): con 2 el sprite mide 64px, que
+   es lo que calza en el canvas de un minijuego sin comerse media pantalla. */
+function drawPetAt(ctx, x, suelo, mood, escala){
+  ctx.save();
+  ctx.translate(Math.round(x - CANVAS_W/2), Math.round(suelo - CANVAS_H));
+  drawSprite(ctx, displayStage(), mood, 0, true, escala);
+  ctx.restore();
 }
 
 /* El "mérito" es el puntaje del juego llevado a una escala común: ~45 para una
@@ -1006,7 +1043,11 @@ function finishMinigame(id, { score, merit, energyCost, hygieneCost = 0, message
    puntaje no es atrapar mucho sino no romper la racha. */
 
 const SG_DURATION = 20;
-const SG_BASKET_HALF = 18;
+/* Media anchura de la zona que atrapa. Está ajustada al ancho del cuerpo de la
+   mascota dibujada a escala 2 (~44px): si fuera más angosta que lo que se ve,
+   las atrapadas de borde se sentirían robadas. */
+const SG_BASKET_HALF = 22;
+const SG_PET_SCALE = 2;   // entero, igual que pixelScale()
 const SG_CHAR = { star:'⭐', gold:'🌟', poop:'💩' };
 
 let sg = null;
@@ -1036,7 +1077,6 @@ function startStarsGame(){
     timeLeft: SG_DURATION,
     spawnIn: 0.4,
     keys: { left:false, right:false },
-    pointer: makeCanvasPointer(gc),
     bg: sgBackground(gc.width, gc.height),
     raf: null,
     lastT: 0,
@@ -1051,14 +1091,31 @@ function startStarsGame(){
   window.addEventListener('keydown', sg.onKeyDown);
   window.addEventListener('keyup', sg.onKeyUp);
 
-  sg.onMove = (e) => {
-    const { x } = sg.pointer.at(e);
-    sg.basketX = Math.max(SG_BASKET_HALF, Math.min(gc.width - SG_BASKET_HALF, x));
-  };
-  gc.addEventListener('pointermove', sg.onMove);
+  /* El deslizador vive abajo, con los botones, no encima de la pantalla. */
+  const cont = showGameControls(`
+    <div class="game-hint">Mueve a tu mascota para atrapar las estrellas</div>
+    <input type="range" class="game-slider" id="sgSlider" min="0" max="1000" value="500">
+  `);
+  sg.slider = cont.querySelector('#sgSlider');
+  sg.onSlide = () => { sg.basketX = sgSliderToX(+sg.slider.value); };
+  sg.slider.addEventListener('input', sg.onSlide);
+  sg.onSlide();
 
   say('¡Atrapa las estrellas!');
   sg.raf = requestAnimationFrame(sgLoop);
+}
+
+function sgSliderToX(v){
+  const min = SG_BASKET_HALF, max = sg.gc.width - SG_BASKET_HALF;
+  return min + (max - min) * (v / 1000);
+}
+
+/* Al mover con el teclado hay que devolverle la posición al deslizador, si no
+   el próximo toque en él pega un salto desde donde quedó la perilla. */
+function sgSyncSlider(){
+  if (!sg.slider) return;
+  const min = SG_BASKET_HALF, max = sg.gc.width - SG_BASKET_HALF;
+  sg.slider.value = Math.round((sg.basketX - min) / (max - min) * 1000);
 }
 
 function sgMultiplier(){
@@ -1094,8 +1151,11 @@ function sgLoop(t){
   const gc = sg.gc, ctx = sg.ctx;
   const progress = 1 - Math.max(0, sg.timeLeft) / SG_DURATION; // 0 al empezar, 1 al final
 
-  if (sg.keys.left)  sg.basketX = Math.max(SG_BASKET_HALF, sg.basketX - 260*dt);
-  if (sg.keys.right) sg.basketX = Math.min(gc.width - SG_BASKET_HALF, sg.basketX + 260*dt);
+  if (sg.keys.left || sg.keys.right){
+    if (sg.keys.left)  sg.basketX = Math.max(SG_BASKET_HALF, sg.basketX - 260*dt);
+    if (sg.keys.right) sg.basketX = Math.min(gc.width - SG_BASKET_HALF, sg.basketX + 260*dt);
+    sgSyncSlider();
+  }
 
   sg.spawnIn -= dt;
   if (sg.spawnIn <= 0){
@@ -1143,13 +1203,7 @@ function sgLoop(t){
   }
   ctx.globalAlpha = 1;
 
-  ctx.fillStyle = '#ffe66d';
-  ctx.beginPath();
-  ctx.moveTo(sg.basketX - SG_BASKET_HALF, gc.height - 6);
-  ctx.lineTo(sg.basketX + SG_BASKET_HALF, gc.height - 6);
-  ctx.lineTo(sg.basketX, gc.height - 26);
-  ctx.closePath();
-  ctx.fill();
+  drawPetAt(ctx, sg.basketX, gc.height, sg.combo >= 4 ? 'happy' : 'normal', SG_PET_SCALE);
 
   ctx.font = '11px monospace';
   ctx.textBaseline = 'alphabetic';
@@ -1173,8 +1227,6 @@ function sgDispose(){
   if (!sg) return;
   window.removeEventListener('keydown', sg.onKeyDown);
   window.removeEventListener('keyup', sg.onKeyUp);
-  sg.gc.removeEventListener('pointermove', sg.onMove);
-  sg.pointer.dispose();
   if (sg.raf) cancelAnimationFrame(sg.raf);
 }
 
@@ -1221,18 +1273,11 @@ function bbBallHeight(phase){
 }
 
 function startBasketballGame(){
-  catchUp();
-  activeMinigame = 'basketball';
-  document.getElementById('creatureFloor').classList.add('hidden');
-  const gc = document.getElementById('gameCanvas');
-  gc.classList.remove('hidden');
-  const shootBtn = document.getElementById('btnShoot');
-  shootBtn.classList.remove('hidden');
-  fitGameCanvas(gc);
+  const { gc, ctx } = enterMinigame('basketball');
 
   const w = gc.width, h = gc.height;
   bb = {
-    ctx: gc.getContext('2d'),
+    ctx,
     gc, w, h,
     groundY: h - 4, // mismo margen que el piso normal (petCanvas usa bottom:4px)
     ballTopY: h*BB_BALL_TOP_FRAC,
@@ -1255,20 +1300,14 @@ function startBasketballGame(){
     raf: null,
     lastT: 0,
   };
-  bb.ctx.imageSmoothingEnabled = false;
-
-  // Botón TIRAR: chico, cuadrado, pegado al suelo justo debajo del aro.
-  const gcRect = gc.getBoundingClientRect();
-  const screenRect = document.getElementById('screen').getBoundingClientRect();
-  const btnSize = 38;
-  shootBtn.style.left = Math.round(gcRect.left - screenRect.left + bb.hoopX - btnSize/2) + 'px';
-  shootBtn.style.top = Math.round(gcRect.top - screenRect.top + bb.groundY + 6) + 'px';
-
-  bb.onShoot = () => resolveShot();
-  shootBtn.addEventListener('click', bb.onShoot);
+  /* El botón vivía flotando sobre la pantalla, con su posición calculada a mano
+     desde getBoundingClientRect() una sola vez: si el layout cambiaba, quedaba
+     descolocado. Ahora es un botón normal abajo, con los demás mandos. */
+  const cont = showGameControls(`<button class="gbtn gbtn-lg" id="btnShoot">🏀 TIRAR</button>`);
+  wireGameButton(cont.querySelector('#btnShoot'), () => resolveShot());
 
   say('¡Encesta en el momento justo!');
-  bbLoop(performance.now());
+  bb.raf = requestAnimationFrame(bbLoop);
 }
 
 function resolveShot(){
@@ -1393,12 +1432,10 @@ function drawBasketball(){
 
   drawHoop(ctx);
 
-  // Mismo tamaño y mismo piso que la mascota fuera de los minijuegos. Sin
-  // ctx.scale(): se dibuja 1:1 para no reintroducir una escala fraccionaria.
-  ctx.save();
-  ctx.translate(Math.round(bb.monoX - CANVAS_W/2), Math.round(bb.groundY - CANVAS_H));
-  drawSprite(ctx, displayStage(), debugForcedMood || (state.sick ? 'sick' : 'happy'), 0, true);
-  ctx.restore();
+  /* A escala 2 (64px) y no al tamaño de la vista normal (96px): en la cancha, con
+     el aro al otro extremo, la mascota a 96 se come el cuadro. Sigue siendo una
+     escala entera, que es lo que importa. */
+  drawPetAt(ctx, bb.monoX, bb.groundY, debugForcedMood || (state.sick ? 'sick' : 'happy'), 2);
 
   const ballPos = bbBallPos();
   ctx.font = '16px sans-serif';
@@ -1433,8 +1470,6 @@ function drawHoop(ctx){
 
 function endBasketballGame(){
   const score = bb ? bb.score : 0;
-  document.getElementById('btnShoot').removeEventListener('click', bb.onShoot);
-  document.getElementById('btnShoot').classList.add('hidden');
   if (bb && bb.raf) cancelAnimationFrame(bb.raf);
   bb = null;
 
@@ -1698,12 +1733,23 @@ function startTapGame(){
   };
   tr.speed = (tr.hitY + 26) / TR_APPROACH; // px/s para que la nota tarde TR_APPROACH
 
+  /* Un botón por carril, abajo. Tocar la pantalla sigue funcionando para quien
+     prefiera apuntar al carril directamente. */
   tr.onDown = (e) => {
     e.preventDefault();
     const { x } = tr.pointer.at(e);
     trHit(Math.max(0, Math.min(TR_LANES-1, Math.floor(x / tr.laneW))));
   };
   gc.addEventListener('pointerdown', tr.onDown);
+
+  const cont = showGameControls(`
+    <div class="gbtn-row">
+      ${TR_LANE_CHAR.map((c, i) => `<button class="gbtn" data-lane="${i}">${c}</button>`).join('')}
+    </div>
+  `);
+  cont.querySelectorAll('[data-lane]').forEach(el => {
+    wireGameButton(el, () => trHit(+el.dataset.lane));
+  });
 
   tr.onKeyDown = (e) => {
     const idx = { '1':0, '2':1, '3':2, a:0, s:1, d:2, ArrowLeft:0, ArrowDown:1, ArrowRight:2 }[e.key];
@@ -1917,6 +1963,9 @@ function startSnakeGame(){
   };
   window.addEventListener('keydown', sn.onKeyDown);
 
+  /* La cruceta va abajo con los mandos. Se deja además el deslizamiento sobre la
+     pantalla porque a mucha gente le sale más natural en snake, pero ya no es la
+     única forma de jugar. */
   sn.onDown = (e) => { e.preventDefault(); sn.swipeFrom = sn.pointer.at(e); };
   sn.onMove = (e) => {
     if (!sn.swipeFrom) return;
@@ -1933,7 +1982,20 @@ function startSnakeGame(){
   gc.addEventListener('pointerup', sn.onUp);
   gc.addEventListener('pointercancel', sn.onUp);
 
-  say('¡Desliza para girar!');
+  const cont = showGameControls(`
+    <div class="gpad">
+      <button class="gbtn up"    data-dir="0,-1">▲</button>
+      <button class="gbtn left"  data-dir="-1,0">◀</button>
+      <button class="gbtn down"  data-dir="0,1">▼</button>
+      <button class="gbtn right" data-dir="1,0">▶</button>
+    </div>
+  `);
+  cont.querySelectorAll('[data-dir]').forEach(el => {
+    const [dx, dy] = el.dataset.dir.split(',').map(Number);
+    wireGameButton(el, () => snTurn(dx, dy));
+  });
+
+  say('¡Usa la cruceta para girar!');
   sn.raf = requestAnimationFrame(snLoop);
 }
 
@@ -2475,7 +2537,7 @@ function wireButtons(){
   });
 
   document.getElementById('screen').addEventListener('click', (e) => {
-    if (e.target.closest('.overlay') || e.target.closest('#gameCanvas') || e.target.closest('#btnShoot')) return;
+    if (e.target.closest('.overlay') || e.target.closest('#gameCanvas')) return;
     if (state.poop) { btnClean(); return; }
   });
 }
