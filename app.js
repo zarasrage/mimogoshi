@@ -1246,13 +1246,55 @@ function endStarsGame(){
 
 const BB_TOTAL_SHOTS = 3;
 /* La pelota sube y baja junto a la mascota. El acierto depende de qué tan cerca del punto
-   más alto se aprieta TIRAR — las zonas de acierto no se muestran, solo están codificadas
+   más alto se aprieta Bandeja — las zonas de acierto no se muestran, solo están codificadas
    como umbrales de altura (0 = abajo, 1 = arriba del todo). Se endurece por tiro. */
 const BB_DIFFICULTY = [
   { peak: 0.90, near: 0.80, speed: 1.5 },
   { peak: 0.95, near: 0.85, speed: 1.875 },
   { peak: 0.98, near: 0.90, speed: 2.25 },
 ];
+
+/* Probabilidad, por tiro, de que un acierto NO se quede así de fácil:
+   - un switch (h >= peak) tiene esta chance de rebotar igual y pasar a Bandeja
+   - una Bandeja ya conseguida tiene esta MISMA chance de rebotar y pasar a Slam
+     Dunk (no la pidieron por separado, se reusa el mismo número: es una sola
+     perilla fácil de tocar en vez de cuatro sueltas). */
+const BB_REBOUND_CHANCE = [0.05, 0.15, 0.40];
+
+/* Tocar el aro (near <= h < peak) ya no es "0 puntos": ahora SIEMPRE manda a
+   Bandeja. Antes ese umbral decidía un resultado muerto; ahora decide el inicio
+   de una cadena, así que el nombre importa: "near" pasa a ser el piso de "algo
+   pasa", no el piso de encestar. */
+
+/* Puntos según de qué encadenamiento vengan. El dunk que viene de un switch vale
+   más (4) porque ya evitó rebotar dos veces seguidas; el que viene de tocar el
+   aro vale lo mismo que un switch limpio (3), como consuelo por la mala suerte
+   inicial. */
+const BB_POINTS = {
+  swish: 3,
+  layup: { swish: 3, rim: 2 },
+  dunk:  { swish: 4, rim: 3 },
+};
+
+/* "No alcanza" normalmente no hace nada — pero hay una chance rara de que la
+   pelota se pinche ahí mismo y termine la partida de golpe, con lo acumulado
+   hasta ese momento. Es la única forma de perder tiros sin haberlos jugado. */
+const BB_POP_CHANCE = 0.02;
+
+/* Bandeja y Slam Dunk son su propio mini-juego de timing, igual que el tiro
+   pero con la mascota saltando en vez de la pelota subiendo. threshold es
+   único (no hay zona de "casi"): o cae dentro o no cae. */
+const BB_LAYUP_THRESHOLD = 0.55;
+const BB_LAYUP_SPEED = 1.4;
+const BB_LAYUP_JUMP_PX = 26;     // "no alcanza a llegar por sobre el aro, salta un poquito"
+const BB_LAYUP_X_FRAC = 0.62;    // se acerca al aro, pero no queda debajo
+
+const BB_DUNK_THRESHOLD = 0.72;  // más angosto que la bandeja: es la última chance
+const BB_DUNK_SPEED = 1.7;
+const BB_DUNK_JUMP_PX = 54;      // salta bastante más alto, "se cuelga del aro"
+const BB_DUNK_X_FRAC = 0.90;     // prácticamente debajo del aro
+
+const BB_APPROACH_MS = 320;      // lo que tarda en correr hacia el aro antes de saltar
 
 /* Posiciones como fracción del tamaño real del canvas (se recalculan al empezar
    cada partida con fitGameCanvas, así nunca queda estirado ni con huecos). */
@@ -1286,10 +1328,21 @@ function startBasketballGame(){
     hoopY: h*BB_HOOP_Y_FRAC,
     monoX: w*BB_MONO_X_FRAC,
     ballX: w*BB_BALL_X_FRAC,
+    layupX: w*BB_LAYUP_X_FRAC,
+    dunkX: w*BB_DUNK_X_FRAC,
     shot: 0,
     score: 0,
     phase: 0,
-    state: 'aim',       // 'aim' | 'flight' | 'settle' | 'result'
+    state: 'aim',       // 'aim' | 'approach' | 'jump_aim' | 'flight' | 'settle' | 'result'
+    chain: null,        // null | 'swish' | 'rim' — de dónde viene la cadena actual
+    jumpKind: null,     // null | 'layup' | 'dunk' — qué mini-juego de salto está activo
+    jumpPhase: 0,
+    jumpX: 0,           // dónde está parado el monito durante el salto
+    jumpPxMax: 0,
+    approachFrom: 0,
+    approachTo: 0,
+    approachStart: 0,
+    popped: false,      // true si se acabó por la pelota pinchada, no por agotar tiros
     flightStart: 0,
     flightFrom: null,
     flightTo: null,
@@ -1300,14 +1353,53 @@ function startBasketballGame(){
     raf: null,
     lastT: 0,
   };
-  /* El botón vivía flotando sobre la pantalla, con su posición calculada a mano
-     desde getBoundingClientRect() una sola vez: si el layout cambiaba, quedaba
-     descolocado. Ahora es un botón normal abajo, con los demás mandos. */
-  const cont = showGameControls(`<button class="gbtn gbtn-lg" id="btnShoot">🏀 TIRAR</button>`);
-  wireGameButton(cont.querySelector('#btnShoot'), () => resolveShot());
+  /* Los botones vivían flotando sobre la pantalla, con su posición calculada a
+     mano desde getBoundingClientRect() una sola vez: si el layout cambiaba,
+     quedaban descolocados. Ahora son botones normales abajo, con los demás
+     mandos, y los dos quedan visibles todo el partido — solo el que sirve en
+     el momento está habilitado, así nunca hay duda de cuál apretar. */
+  const cont = showGameControls(`
+    <div class="game-hint" id="bbHint">¡Encesta en el momento justo!</div>
+    <div class="gbtn-row2">
+      <button class="gbtn gbtn-lg" id="btnLayup">🏀 Bandeja</button>
+      <button class="gbtn gbtn-lg" id="btnDunk">🔥 Slam Dunk</button>
+    </div>
+  `);
+  bb.hintEl = cont.querySelector('#bbHint');
+  wireGameButton(cont.querySelector('#btnLayup'), () => bbPress('layup'));
+  wireGameButton(cont.querySelector('#btnDunk'), () => bbPress('dunk'));
+  bbSyncButtons();
 
-  say('¡Encesta en el momento justo!');
   bb.raf = requestAnimationFrame(bbLoop);
+}
+
+/* Botón único por etapa: en 'aim' el tiro normal también sale por Bandeja (es
+   el mismo gesto — lanzar), y durante 'jump_aim' cada botón solo responde a su
+   propio jumpKind. El disabled del HTML ya bloquea el pointerdown del que no
+   toca, esto es la segunda capa de seguridad. */
+function bbPress(which){
+  if (!bb) return;
+  if (bb.state === 'aim' && which === 'layup'){ resolveShot(); return; }
+  if (bb.state === 'jump_aim' && bb.jumpKind === which){ resolveJumpShot(); return; }
+}
+
+function bbSyncButtons(){
+  if (!bb) return;
+  const cont = document.getElementById('gameControls');
+  const layupBtn = cont.querySelector('#btnLayup');
+  const dunkBtn = cont.querySelector('#btnDunk');
+  if (!layupBtn || !dunkBtn) return;
+  const layupOn = bb.state === 'aim' || (bb.state === 'jump_aim' && bb.jumpKind === 'layup');
+  const dunkOn = bb.state === 'jump_aim' && bb.jumpKind === 'dunk';
+  layupBtn.disabled = !layupOn;
+  dunkBtn.disabled = !dunkOn;
+  if (bb.hintEl){
+    bb.hintEl.textContent =
+      bb.state === 'aim' ? '¡Encesta en el momento justo!' :
+      dunkOn ? '¡Se cuelga del aro… clávala!' :
+      layupOn && bb.state === 'jump_aim' ? '¡Salta y suéltala!' :
+      '';
+  }
 }
 
 function resolveShot(){
@@ -1316,37 +1408,107 @@ function resolveShot(){
   const h = bbBallHeight(bb.phase);
   const aim = { x: bb.ballX, y: bb.ballBottomY - h*(bb.ballBottomY-bb.ballTopY) };
 
-  let points = 0, text = '', fx = '', flightTo, settleTo;
-  if (h >= diff.peak){
-    points = h >= (diff.peak + (1-diff.peak)*0.5) ? 3 : 2;
-    text = points === 3 ? '¡SWISH!' : '¡ENCESTÓ!';
-    fx = '🏀';
-    flightTo = { x: bb.hoopX, y: bb.hoopY-4 };
-    settleTo = { x: bb.hoopX, y: bb.hoopY+18 };
-  } else if (h >= diff.near){
-    points = 0;
-    text = 'Rebota en el aro…';
-    fx = '〰️';
-    flightTo = { x: bb.hoopX, y: bb.hoopY-2 };
-    settleTo = { x: bb.hoopX-30, y: bb.hoopY+26 };
-  } else {
-    points = 0;
-    text = 'No alcanza';
-    fx = '💨';
+  if (h < diff.near){
+    // "No alcanza": normalmente no pasa nada, pero hay una chance de que la
+    // pelota se pinche ahí mismo y listo, se acabó la partida.
+    bb.popped = Math.random() < BB_POP_CHANCE;
     const shortX = bb.monoX + (bb.hoopX-bb.monoX) * (0.35 + h*0.25);
-    flightTo = { x: shortX, y: bb.groundY-30 };
-    settleTo = { x: shortX+10, y: bb.groundY };
+    bbGoToFlight(aim, { x: shortX, y: bb.groundY-30 }, { x: shortX+10, y: bb.groundY },
+      bb.popped ? '¡Se pinchó la pelota!' : 'No alcanza', bb.popped ? '💥' : '💨', 0);
+    return;
   }
 
-  bb.score += points;
-  bb.resultText = `${text} (+${points})`;
+  if (h >= diff.peak){
+    // Switch: casi siempre entra derecho. La chance de rebotar igual es la
+    // que lo hace interesante — ni un tiro perfecto es 100% seguro.
+    if (Math.random() < BB_REBOUND_CHANCE[bb.shot]){
+      bbGoToRebound(aim, 'swish');
+      return;
+    }
+    bbGoToFlight(aim, { x: bb.hoopX, y: bb.hoopY-4 }, { x: bb.hoopX, y: bb.hoopY+18 },
+      '¡SWISH!', '🏀', BB_POINTS.swish);
+    return;
+  }
+
+  // Toca el aro (near <= h < peak): ya no es "0 puntos" — siempre pasa a Bandeja.
+  bbGoToRebound(aim, 'rim');
+}
+
+/* Comparte la animación de "toca el aro y sale disparada" con lo que antes era
+   el resultado final de esa zona; ahora en vez de terminar en 'result' arranca
+   la cadena de Bandeja al llegar al 'settle'. */
+function bbGoToRebound(aim, chain){
+  bb.chain = chain;
+  bb.pendingJump = 'layup';
+  bbGoToFlight(aim, { x: bb.hoopX, y: bb.hoopY-2 }, { x: bb.hoopX-30, y: bb.hoopY+26 },
+    'Rebota…', '〰️', null);
+}
+
+function bbGoToFlight(from, flightTo, settleTo, text, fx, points){
+  if (points !== null){
+    bb.score += points;
+    bb.resultText = points > 0 ? `${text} (+${points})` : text;
+  } else {
+    bb.resultText = text;   // resultado provisorio, todavía no hay puntos definidos
+  }
   bb.state = 'flight';
   bb.flightStart = performance.now();
-  bb.flightFrom = aim;
+  bb.flightFrom = from;
   bb.flightTo = flightTo;
   bb.settleFrom = flightTo;
   bb.settleTo = settleTo;
   floatFx(fx);
+}
+
+/* Arranca la aproximación hacia el aro antes de saltar. Se llama al terminar el
+   'settle' de un rebote (ver bbLoop) o al terminar el de un salto fallido que
+   igual sigue la cadena (no aplica hoy, pero deja el gancho listo). */
+function bbStartApproach(kind){
+  bb.jumpKind = kind;
+  bb.approachFrom = bb.monoAtX ?? bb.monoX;
+  bb.approachTo = kind === 'layup' ? bb.layupX : bb.dunkX;
+  bb.approachStart = performance.now();
+  bb.state = 'approach';
+}
+
+function bbStartJumpAim(){
+  bb.monoAtX = bb.jumpKind === 'layup' ? bb.layupX : bb.dunkX;
+  bb.jumpX = bb.monoAtX;
+  bb.jumpPxMax = bb.jumpKind === 'layup' ? BB_LAYUP_JUMP_PX : BB_DUNK_JUMP_PX;
+  bb.jumpPhase = 0;
+  bb.jumpStart = performance.now();
+  bb.state = 'jump_aim';
+  bbSyncButtons();
+}
+
+function resolveJumpShot(){
+  if (!bb || bb.state !== 'jump_aim') return;
+  const threshold = bb.jumpKind === 'layup' ? BB_LAYUP_THRESHOLD : BB_DUNK_THRESHOLD;
+  const h = bbBallHeight(bb.jumpPhase);
+  const jumpOffset = h * bb.jumpPxMax;
+  const handPos = { x: bb.jumpX, y: bb.groundY - jumpOffset - 34 };
+
+  if (h < threshold){
+    // Falló el salto: nada de vuelo vistoso, solo un rebote cortito hacia abajo.
+    bbGoToFlight(handPos, { x: bb.jumpX+8, y: bb.groundY-6 }, { x: bb.jumpX+8, y: bb.groundY },
+      bb.jumpKind === 'layup' ? 'No alcanzó la bandeja' : 'Falló el slam dunk', '💨', 0);
+    bb.jumpKind = null;
+    return;
+  }
+
+  if (bb.jumpKind === 'layup' && Math.random() < BB_REBOUND_CHANCE[bb.shot]){
+    // La bandeja también rebota: sube la apuesta al slam dunk.
+    bbGoToFlight(handPos, { x: bb.hoopX, y: bb.hoopY-2 }, { x: bb.hoopX-24, y: bb.hoopY+20 },
+      'Rebota…', '〰️', null);
+    bb.pendingJump = 'dunk';
+    return;
+  }
+
+  const points = BB_POINTS[bb.jumpKind][bb.chain];
+  const text = bb.jumpKind === 'layup' ? '¡BANDEJA!' : '¡SLAM DUNK!';
+  bbGoToFlight(handPos, { x: bb.hoopX, y: bb.hoopY-4 }, { x: bb.hoopX, y: bb.hoopY+18 },
+    text, bb.jumpKind === 'dunk' ? '🔥' : '🏀', points);
+  bb.jumpKind = null;
 }
 
 /* Arco parabólico real: interpola en línea recta entre p0 y p1, y le resta una
@@ -1366,6 +1528,13 @@ function bbLoop(t){
   if (bb.state === 'aim'){
     const diff = BB_DIFFICULTY[bb.shot];
     bb.phase += dt * 2.6 * diff.speed;
+  } else if (bb.state === 'approach'){
+    const t2 = Math.min(1, (now - bb.approachStart) / BB_APPROACH_MS);
+    bb.monoAtX = bb.approachFrom + (bb.approachTo - bb.approachFrom) * t2;
+    if (t2 >= 1) bbStartJumpAim();
+  } else if (bb.state === 'jump_aim'){
+    const speed = bb.jumpKind === 'layup' ? BB_LAYUP_SPEED : BB_DUNK_SPEED;
+    bb.jumpPhase += dt * 2.6 * speed;
   } else if (bb.state === 'flight'){
     if (now - bb.flightStart >= BB_FLIGHT_MS){
       bb.state = 'settle';
@@ -1373,12 +1542,24 @@ function bbLoop(t){
     }
   } else if (bb.state === 'settle'){
     if (now - bb.settleStart >= BB_SETTLE_MS){
-      bb.state = 'result';
-      bb.resultUntil = now + BB_RESULT_MS;
+      if (bb.pendingJump){
+        // El rebote terminó de animarse: ahí arranca la cadena de verdad.
+        const kind = bb.pendingJump;
+        bb.pendingJump = null;
+        bbStartApproach(kind);
+      } else {
+        bb.state = 'result';
+        bb.resultUntil = now + BB_RESULT_MS;
+      }
     }
   } else if (bb.state === 'result'){
     if (now > bb.resultUntil){
+      if (bb.popped){
+        endBasketballGame();
+        return;
+      }
       bb.shot += 1;
+      bb.chain = null;
       if (bb.shot >= BB_TOTAL_SHOTS){
         endBasketballGame();
         return;
@@ -1388,6 +1569,7 @@ function bbLoop(t){
     }
   }
 
+  bbSyncButtons();
   drawBasketball();
   bb.raf = requestAnimationFrame(bbLoop);
 }
@@ -1396,6 +1578,10 @@ function bbBallPos(){
   if (bb.state === 'aim'){
     const h = bbBallHeight(bb.phase);
     return { x: bb.ballX, y: bb.ballBottomY - h*(bb.ballBottomY-bb.ballTopY) };
+  }
+  if (bb.state === 'jump_aim'){
+    const h = bbBallHeight(bb.jumpPhase);
+    return { x: bb.jumpX, y: bb.groundY - h*bb.jumpPxMax - 34 };
   }
   if (bb.state === 'flight'){
     const t = Math.min(1, (performance.now()-bb.flightStart)/BB_FLIGHT_MS);
@@ -1434,15 +1620,24 @@ function drawBasketball(){
 
   /* A escala 2 (64px) y no al tamaño de la vista normal (96px): en la cancha, con
      el aro al otro extremo, la mascota a 96 se come el cuadro. Sigue siendo una
-     escala entera, que es lo que importa. */
-  drawPetAt(ctx, bb.monoX, bb.groundY, debugForcedMood || (state.sick ? 'sick' : 'happy'), 2);
+     escala entera, que es lo que importa. El salto es procedural, no hay sprites
+     nuevos: se sube el "suelo" que usa drawPetAt() unos píxeles con la misma
+     curva que ya anima la pelota. */
+  const mood = debugForcedMood || (state.sick ? 'sick' : 'happy');
+  if (bb.state === 'jump_aim' || bb.state === 'approach'){
+    const jumping = bb.state === 'jump_aim';
+    const jumpOffset = jumping ? bbBallHeight(bb.jumpPhase) * bb.jumpPxMax : 0;
+    drawPetAt(ctx, bb.monoAtX ?? bb.monoX, bb.groundY - jumpOffset, mood, 2);
+  } else {
+    drawPetAt(ctx, bb.monoX, bb.groundY, mood, 2);
+  }
 
   const ballPos = bbBallPos();
   ctx.font = '16px sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('🏀', ballPos.x, ballPos.y);
 
-  if (bb.state === 'result'){
+  if (bb.state === 'result' || (bb.state === 'settle' && bb.resultText)){
     ctx.font = '13px monospace';
     ctx.fillStyle = '#fff';
     ctx.fillText(bb.resultText, gc.width/2, bb.hoopY + (bb.groundY-bb.hoopY)*0.55);
@@ -1470,10 +1665,13 @@ function drawHoop(ctx){
 
 function endBasketballGame(){
   const score = bb ? bb.score : 0;
+  const popped = bb ? bb.popped : false;
   if (bb && bb.raf) cancelAnimationFrame(bb.raf);
   bb = null;
 
-  const message = score > 0 ? `${score} puntos en baloncesto` : 'Ni una… la próxima';
+  const message = popped
+    ? `¡Se pinchó la pelota! ${score} puntos`
+    : score > 0 ? `${score} puntos en baloncesto` : 'Ni una… la próxima';
 
   finishMinigame('basketball', { score, merit: score * 8, energyCost: 16, message });
 }

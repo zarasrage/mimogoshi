@@ -262,9 +262,19 @@ su tamaño real en pantalla para que nada salga estirado:
   con dificultad creciente (caen más seguido, más rápido y con más caca). El
   combo multiplica hasta x4 y se corta tanto al comer caca como al dejar caer
   una estrella.
-- **Baloncesto** (`bb`): la pelota sube y baja, se aprieta TIRAR cerca del punto
+- **Baloncesto** (`bb`): la pelota sube y baja, se aprieta Bandeja cerca del punto
   más alto. 3 tiros, dificultad creciente (`BB_DIFFICULTY`). El arco es una
-  parábola real (`bbArcPos()`).
+  parábola real (`bbArcPos()`). Ni un switch limpio es 100% seguro: hay
+  `BB_REBOUND_CHANCE` (5%/15%/40% por tiro) de que rebote igual y encadene a una
+  Bandeja — el mismo mini-juego de timing pero con la mascota saltando en vez de
+  la pelota, animada subiendo el "suelo" que usa `drawPetAt()` (sin sprites
+  nuevos). Una Bandeja lograda puede a su vez encadenar a un Slam Dunk con esa
+  misma probabilidad. Puntos según de dónde venga la cadena: switch 3, bandeja
+  3(de switch)/2(de tocar el aro), dunk 4(de switch)/3(de tocar el aro) — el
+  dunk vale más viniendo de un switch porque ya evitó rebotar dos veces. Tocar
+  el aro (`near≤h<peak`) ya no es "0 puntos": siempre manda a Bandeja. Un 2%
+  de las veces que el tiro no alcanza, la pelota se pincha y termina la
+  partida ahí mismo (`BB_POP_CHANCE`).
 - **Reflejos** (`rx`): aparecen blancos que duran cada vez menos; tocar los
   buenos, no las bombas. 25 segundos y 3 vidas. Tocar el vacío corta el combo,
   así que martillar la pantalla es peor que elegir.
