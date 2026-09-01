@@ -592,14 +592,16 @@ body{
 .gbtn:active{transform:translateY(3px); box-shadow:0 1px 0 var(--btn-shadow);}
 .gbtn-lg{font-size:16px; padding:20px 8px;}
 
-/* Para cuando dos botones de mando conviven pero solo uno sirve en el momento
-   (baloncesto: Bandeja / Slam Dunk) — se ve claramente cuál apretar. */
+/* Para cuando varios botones de mando conviven pero solo uno sirve en el momento
+   (baloncesto: Tiro / Bandeja / Slam Dunk) — se ve claramente cuál apretar. */
 .gbtn:disabled{
   opacity:.35;
   cursor:default;
   box-shadow:0 4px 0 var(--btn-shadow);
 }
 .gbtn-row2{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+.gbtn-row3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;}
+.gbtn-row3 .gbtn{font-size:13px; padding:16px 4px;}
 
 /* Fila de carriles del tap rítmico */
 .gbtn-row{display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;}

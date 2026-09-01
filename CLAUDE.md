@@ -262,19 +262,29 @@ su tamaño real en pantalla para que nada salga estirado:
   con dificultad creciente (caen más seguido, más rápido y con más caca). El
   combo multiplica hasta x4 y se corta tanto al comer caca como al dejar caer
   una estrella.
-- **Baloncesto** (`bb`): la pelota sube y baja, se aprieta Bandeja cerca del punto
-  más alto. 3 tiros, dificultad creciente (`BB_DIFFICULTY`). El arco es una
-  parábola real (`bbArcPos()`). Ni un switch limpio es 100% seguro: hay
+- **Baloncesto** (`bb`): la pelota sube y baja, se aprieta Tiro cerca del punto
+  más alto. 3 tiros, dificultad creciente (`BB_DIFFICULTY`). El arco de vuelo es
+  una parábola real (`bbArcPos()`). Ni un switch limpio es 100% seguro: hay
   `BB_REBOUND_CHANCE` (5%/15%/40% por tiro) de que rebote igual y encadene a una
-  Bandeja — el mismo mini-juego de timing pero con la mascota saltando en vez de
-  la pelota, animada subiendo el "suelo" que usa `drawPetAt()` (sin sprites
-  nuevos). Una Bandeja lograda puede a su vez encadenar a un Slam Dunk con esa
+  Bandeja. Una Bandeja lograda puede a su vez encadenar a un Slam Dunk con esa
   misma probabilidad. Puntos según de dónde venga la cadena: switch 3, bandeja
   3(de switch)/2(de tocar el aro), dunk 4(de switch)/3(de tocar el aro) — el
   dunk vale más viniendo de un switch porque ya evitó rebotar dos veces. Tocar
   el aro (`near≤h<peak`) ya no es "0 puntos": siempre manda a Bandeja. Un 2%
   de las veces que el tiro no alcanza, la pelota se pincha y termina la
   partida ahí mismo (`BB_POP_CHANCE`).
+
+  Bandeja y Slam Dunk son botones propios (tres en total: Tiro / Bandeja / Slam
+  Dunk, `.gbtn-row3`) y cada uno es un salto de **una sola pasada**, no un
+  oscilador que sube y baja esperando el botón: `bbJumpPos(t)` calcula una
+  parábola real (misma forma que `bbArcPos`) sobre `BB_LAYUP_JUMP_MS`/
+  `BB_DUNK_JUMP_MS`, y solo cuenta un toque dentro de `BB_LAYUP_WINDOW`/
+  `BB_DUNK_WINDOW` (fracciones 0..1 del salto); afuera de la ventana, antes o
+  después, es fallo igual que no apretar. La bandeja avanza en x mientras salta
+  (`BB_LAYUP_DX`, "parábola hacia la derecha"); el slam dunk salta derecho hacia
+  arriba y su ventana cae después del punto más alto (`BB_DUNK_WINDOW` empieza
+  en 0.60, ya en la bajada — "al caer"). Si el salto completo transcurre sin
+  toque, `bbLoop()` lo cancela solo llamando a `resolveJumpShot(false)`.
 - **Reflejos** (`rx`): aparecen blancos que duran cada vez menos; tocar los
   buenos, no las bombas. 25 segundos y 3 vidas. Tocar el vacío corta el combo,
   así que martillar la pantalla es peor que elegir.
