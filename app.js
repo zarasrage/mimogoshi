@@ -250,13 +250,23 @@ function drawSprite(ctx, stage, mood, walkFrame, noClear, scaleOverride){
    Si toda la comida costara monedas, un jugador sin plata y con la mascota
    muerta de hambre no tendría ninguna salida. Las otras dos se compran en la
    tienda y se gastan al usarlas. */
+/* `energy` es opcional: si no está, comer da el bonus de energía plano de
+   siempre (4). La Red Bull es la única que lo pisa — poca hambre, mucha
+   energía, al revés que el resto. */
 const FOODS = [
   { id:'simple',   name:'Bocadillo simple', emoji:'🍬', restore:15, price:  0 },
   { id:'rica',     name:'Comida rica',      emoji:'🍗', restore:30, price: 12 },
   { id:'especial', name:'Comida especial',  emoji:'🍰', restore:50, price: 25 },
+  { id:'redbull',  name:'Red Bull',         emoji:'⚡', restore: 2, energy: 20, price: 20 },
 ];
 
 function foodById(id){ return FOODS.find(f => f.id === id) || FOODS[0]; }
+
+const FOOD_ENERGY_DEFAULT = 4;
+function foodDesc(f){
+  const energy = f.energy ?? FOOD_ENERGY_DEFAULT;
+  return `+${f.restore} de hambre` + (energy !== FOOD_ENERGY_DEFAULT ? ` · +${energy} de energía` : '');
+}
 
 /* Cuántas porciones quedan. El bocadillo simple no se cuenta: nunca se acaba. */
 function foodStock(id){
@@ -692,7 +702,7 @@ const btnFeed = () => {
   if (food.price > 0) state.pantry[food.id] = (state.pantry[food.id] || 0) - 1;
 
   state.hunger = clamp(state.hunger + food.restore);
-  state.energy = clamp(state.energy + 4);
+  state.energy = clamp(state.energy + (food.energy ?? FOOD_ENERGY_DEFAULT));
   floatFx(food.emoji);
   say(seAcabo ? `Se acabó ${seAcabo}, le doy un bocadillo` : '¡Ñam ñam!');
   triggerPetAction('eat');
@@ -749,7 +759,7 @@ function openFoodMenu(){
         <span class="emoji">${f.emoji}</span>
         <div class="info">
           <b>${escapeHtml(f.name)}</b>
-          <small>+${f.restore} de hambre · ${hay ? cuanto : 'sin porciones'}</small>
+          <small>${foodDesc(f)} · ${hay ? cuanto : 'sin porciones'}</small>
         </div>
       </div>`;
   }).join('');
@@ -787,7 +797,7 @@ function openShop(aviso){
         <span class="emoji">${f.emoji}</span>
         <div class="info">
           <b>${escapeHtml(f.name)}</b>
-          <small>+${f.restore} de hambre · tienes ${foodStock(f.id)}</small>
+          <small>${foodDesc(f)} · tienes ${foodStock(f.id)}</small>
         </div>
         <span class="menu-record">${coinsLabel(f.price)}</span>
       </div>`;
@@ -2754,7 +2764,7 @@ function wireButtons(){
   document.getElementById('btnPlay').addEventListener('click', requireAlive(openGamesMenu));
   document.getElementById('btnClean').addEventListener('click', requireAlive(btnClean));
   document.getElementById('btnFoodMenu').addEventListener('click', requireAlive(openFoodMenu));
-  document.getElementById('btnShop').addEventListener('click', requireAlive(openShop));
+  document.getElementById('btnShop').addEventListener('click', requireAlive(() => openShop()));
   document.getElementById('btnMed').addEventListener('click', requireAlive(btnMed));
   document.getElementById('btnDebug').addEventListener('click', requireAlive(toggleDebugPanel));
   document.getElementById('btnCloseDebugSide').addEventListener('click', closeDebugPanel);

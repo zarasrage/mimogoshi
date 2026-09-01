@@ -240,6 +240,11 @@ El modelo viejo era `unlockedFoods` (desbloqueo permanente), pero nada en el
 código lo llenaba nunca: las comidas 2 y 3 eran inalcanzables. `loadState()`
 borra ese campo al migrar.
 
+Toda comida sube energía al comerla, no solo hambre: `food.energy` es opcional
+en `FOODS` y si falta usa el bonus plano de siempre (`FOOD_ENERGY_DEFAULT = 4`).
+La Red Bull es la única que lo pisa — poca hambre (`restore: 2`), mucha energía
+(`energy: 20`) — al revés que el resto, que dan poca energía y mucha hambre.
+
 **Los avisos de la tienda van dentro de la tarjeta, no con `say()`**: la burbuja
 tiene `z-index:5` y el overlay `10`, así que un `say()` con un overlay abierto
 queda tapado. Lo mismo vale para cualquier menú nuevo.
