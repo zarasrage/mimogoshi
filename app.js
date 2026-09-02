@@ -186,12 +186,14 @@ function pickAnimation(species, mood, walkFrame, now){
 /* ===================== Huevo =====================
    No vino arte para esta etapa: un óvalo chico dibujado a mano. */
 
-/* Tambaleo sutil, uno por segundo: sin esto el huevo se ve muerto en vez de a
-   punto de eclosionar. Es rotación pura sobre su propio centro con seno del
-   tiempo real (no requiere estado propio ni tocar el loop de render, que ya
-   redibuja cada frame) — no hay sprites nuevos, sigue siendo el mismo óvalo. */
-const EGG_WOBBLE_PERIOD_MS = 1000;
-const EGG_WOBBLE_MAX_RAD = 0.05; // ~3°, "muy poco"
+/* Tambaleo de lado a lado, tipo huevo a punto de eclosionar: sin esto se ve
+   muerto. El giro es sobre la base (donde apoya en el piso) y no sobre el
+   centro — si no, en vez de tambalearse parece que floppea flotando en el
+   aire, porque la punta de abajo también se corre. Puro seno del tiempo real,
+   sin estado propio (render() ya redibuja cada frame) — sigue siendo el mismo
+   óvalo, no hay sprites nuevos. */
+const EGG_WOBBLE_PERIOD_MS = 450;
+const EGG_WOBBLE_MAX_RAD = 0.175; // ~10°
 
 function drawEgg(ctx){
   const pal = PALETTES.egg;
@@ -199,12 +201,13 @@ function drawEgg(ctx){
      el huevo se queda chico y descolocado abajo. */
   const rx = CANVAS_W * 0.25, ry = CANVAS_H * 0.3125;
   const cx = CANVAS_W/2, cy = CANVAS_H - ry - 2; // apoyado en el piso, igual que los sprites
+  const baseY = cy + ry; // punto donde el huevo toca el piso: el eje del giro
 
   const wobble = Math.sin((performance.now() / EGG_WOBBLE_PERIOD_MS) * Math.PI*2) * EGG_WOBBLE_MAX_RAD;
   ctx.save();
-  ctx.translate(cx, cy);
+  ctx.translate(cx, baseY);
   ctx.rotate(wobble);
-  ctx.translate(-cx, -cy);
+  ctx.translate(-cx, -baseY);
 
   ctx.fillStyle = pal.O;
   ctx.beginPath();

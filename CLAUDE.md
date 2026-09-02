@@ -284,10 +284,12 @@ sobre la cara. Por eso `PALETTES` quedó reducido a la entrada `egg`, y por eso
 mismo `drawSprite()` solo usa `stage` para decidir si dibuja el huevo o el
 sprite: entre las dos etapas que quedan no hay ninguna otra diferencia visual.
 
-El huevo se tambalea muy poco, un ciclo por segundo (`EGG_WOBBLE_PERIOD_MS`/
-`EGG_WOBBLE_MAX_RAD` en `drawEgg()`): rotación pura sobre su propio centro con
-`Math.sin(performance.now()/…)`, sin estado propio — `render()` ya redibuja
-cada frame, así que no hace falta enganchar nada al loop.
+El huevo se tambalea de lado a lado (`EGG_WOBBLE_PERIOD_MS`/`EGG_WOBBLE_MAX_RAD`
+en `drawEgg()`, ~10° cada ~450ms): rotación pura con `Math.sin(performance.now()/…)`,
+sin estado propio — `render()` ya redibuja cada frame, así que no hace falta
+enganchar nada al loop. El eje del giro es la **base** del huevo (donde apoya
+en el piso), no su centro: girar sobre el centro corre también la punta de
+abajo y en vez de tambalearse parece flotar.
 
 ## Minijuegos
 
