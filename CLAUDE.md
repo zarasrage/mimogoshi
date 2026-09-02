@@ -258,13 +258,10 @@ al dinero.
 
 `state.pantry` guarda **porciones** por comida. Se arranca con
 `FOOD_START_STOCK = 5` de bocadillo simple (`freshState()`) y de ahí en más se
-repone en la tienda como cualquier otra comida — ya no es infinito. Sigue
-costando 0 monedas **a propósito**: es la red de seguridad, si toda la comida
-costara monedas de verdad, un jugador sin plata y con la mascota hambrienta
-quedaría sin salida; "comprarlo" gratis en la tienda sigue siendo siempre
-posible. `btnFeed()` cae solo al bocadillo si lo elegido se acabó, y si el
-bocadillo también está en 0 avisa que hay que pasar por la tienda en vez de
-alimentar de la nada.
+repone en la tienda como cualquier otra comida, a `price: 5` — ya no es
+infinito ni gratis. `btnFeed()` cae solo al bocadillo si lo elegido se acabó,
+y si el bocadillo también está en 0 avisa que hay que pasar por la tienda en
+vez de alimentar de la nada.
 
 El modelo viejo era `unlockedFoods` (desbloqueo permanente), pero nada en el
 código lo llenaba nunca: las comidas 2 y 3 eran inalcanzables. `loadState()`

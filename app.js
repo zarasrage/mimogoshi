@@ -262,13 +262,11 @@ function drawSprite(ctx, stage, mood, walkFrame, noClear, scaleOverride){
 
 /* ===================== Comida ===================== */
 
-/* El bocadillo simple ya no es infinito: se arranca con FOOD_START_STOCK
-   porciones (ver freshState) y de ahí en más se repone en la tienda como
-   cualquier otra comida — sigue costando 0 monedas, así que nunca deja al
-   jugador sin salida (siempre se puede "comprar" gratis), pero ya no evita
-   tener que pasar por la tienda. */
+/* El bocadillo simple ya no es infinito ni gratis: se arranca con
+   FOOD_START_STOCK porciones (ver freshState) y de ahí en más se repone en la
+   tienda como cualquier otra comida, a precio. */
 const FOODS = [
-  { id:'simple',   name:'Bocadillo simple', emoji:'🍬', restore:15, price:  0 },
+  { id:'simple',   name:'Bocadillo simple', emoji:'🍬', restore:15, price:  5 },
   { id:'rica',     name:'Comida rica',      emoji:'🍗', restore:30, price: 12 },
   { id:'especial', name:'Comida especial',  emoji:'🍰', restore:50, price: 25 },
   { id:'redbull',  name:'Red Bull',         emoji:'⚡', restore: 2, energy: 20, price: 20 },
@@ -810,9 +808,8 @@ function openFoodMenu(){
 
 /* ===================== Tienda =====================
    Las monedas salen de los minijuegos (ver finishMinigame). Se vende toda la
-   comida, incluido el bocadillo simple: sigue costando 0 monedas (es la red
-   de seguridad si no queda plata) pero ya no es infinito, hay que venir a
-   buscarlo igual que el resto. */
+   comida, incluido el bocadillo simple: ya no es infinito ni gratis, hay que
+   venir a comprarlo igual que el resto. */
 
 /* El aviso va dentro de la tarjeta y no con say(): la burbuja tiene z-index 5 y
    el overlay 10, así que un mensaje por say() con la tienda abierta queda tapado. */
