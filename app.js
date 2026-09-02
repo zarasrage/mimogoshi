@@ -319,7 +319,7 @@ const RED_ZONE = 25;           // bajo esto, ni alimentarlo/jugar lo despierta
    para que se lea directo cuánto tarda cada barra en vaciarse entera; con
    MS_PER_GAME_HOUR = 60000, una hora real son 60 horas de juego. */
 const DECAY_PER_HOUR = {
-  hunger:    100 / 4,     // 4 h de juego = 4 minutos reales
+  hunger:    100 / 240,   // 240 h de juego = 4 horas reales
   happiness: 100 / 300,   // 300 h de juego = 5 horas reales
   energy:    100 / 960,   // 960 h de juego = 16 horas reales
   hygiene:   100 / 120,   // 120 h de juego = 2 horas reales, pero solo si hay caca
