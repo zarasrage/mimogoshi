@@ -173,18 +173,28 @@ esto.
 4. Listo: el selector, el panel de prueba y las miniaturas se arman solos desde
    `SPECIES_IDS`.
 
-El selector (`.species-list`) es una **rejilla de 3 columnas**, sin ningún scroll.
-Las otras dos formas ya se probaron y fallan: apiladas en vertical la lista crece
-más que la pantalla y empuja el botón "Empezar" fuera de vista; en fila con scroll
-horizontal el gesto pelea con el scroll vertical del overlay y las especies que
-quedan pasado el borde no dan ninguna señal de existir.
+El selector (`.species-list`) es una **rejilla de 3 columnas**. La fila con
+scroll horizontal ya se probó y falla: ese gesto pelea con el scroll vertical
+del overlay y las especies que quedan pasado el borde no dan ninguna señal de
+existir. Apiladas en vertical (una por fila) tampoco: cada especie nueva suma
+una fila entera.
+
+El número de especies **va a seguir creciendo**, así que el selector no puede
+depender de que quepan todas de una — esa cuenta se rompe apenas se agrega la
+próxima. Por eso `.species-list` comparte la regla de `.menu-list` (la misma
+que ya usan las listas de comida y minijuegos): tope de alto + scroll propio,
+así el nombre y "Empezar" quedan siempre fijos debajo, visibles, sin importar
+cuántas especies haya. Con 6 (dos filas) todavía entran enteras sin scrollear;
+de la tercera fila en adelante aparece el scroll — y a diferencia del scroll
+horizontal de antes, una fila cortada a la mitad sí avisa que hay más abajo.
+Si se agrega una especie nueva y la rejilla ya no entra en dos filas, es
+esperable que empiece a scrollear: **no** hay que agrandar `#screen` ni el
+`min-height` de la pantalla para perseguir la lista, ya está resuelto.
 
 En la pantalla de inicio `speciesThumbStyle(id, s)` usa `s = 1` (miniatura de
-32px): con `s = 2` no entran tres columnas ni las cinco especies dos filas sin
-que el overlay tenga que scrollear internamente para llegar a "Empezar" — y con
-`s = 3` tampoco entran tres columnas. La escala tiene que seguir siendo
-**entera**; en cualquier otro lado que use `speciesThumbStyle()` la escala
-sigue siendo `s = 2` por defecto.
+32px) en vez del `s = 2` de siempre, para que quepan más especies por fila
+antes de necesitar scroll. La escala tiene que seguir siendo **entera**; en
+cualquier otro lado que use `speciesThumbStyle()` sigue siendo `s = 2`.
 
 La pantalla de inicio **no** enfoca el campo del nombre al abrirse: en el teléfono
 el teclado aparecía de una y tapaba justo el selector de especies, que es lo
