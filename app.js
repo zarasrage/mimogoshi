@@ -2573,6 +2573,12 @@ function renderSpeciesPicker(){
 
 function askName(){
   pickedSpecies = DEFAULT_SPECIES;
+  /* Los mandos (.controls) no sirven de nada todavía — no hay mascota — y sin
+     mascota guardada boot() nunca corre, así que nadie los esconde: quedan ahí
+     abajo sumando alto de más y la pantalla inicial termina más larga que el
+     viewport del teléfono, obligando a scrollear para llegar a "Empezar". Se
+     esconden acá y start() los vuelve a mostrar al arrancar boot(). */
+  document.getElementById('controls').classList.add('hidden');
   /* Sin `autofocus`: en el teléfono abría el teclado apenas cargaba la pantalla,
      y el teclado tapa justo el selector de especies — que es lo primero que hay
      que elegir. El campo se enfoca cuando el jugador lo toca. */
@@ -2603,6 +2609,7 @@ function askName(){
     state = freshState(name, pickedSpecies);
     saveState();
     hideOverlay();
+    document.getElementById('controls').classList.remove('hidden');
     boot();
   };
   document.getElementById('btnStart').addEventListener('click', start);

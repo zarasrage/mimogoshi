@@ -185,6 +185,13 @@ La pantalla de inicio **no** enfoca el campo del nombre al abrirse: en el teléf
 el teclado aparecía de una y tapaba justo el selector de especies, que es lo
 primero que hay que elegir.
 
+`askName()` también esconde `.controls` (los 7 botones de cuidado) mientras dura
+esta pantalla: sin mascota todavía no sirven de nada, pero como `boot()` nunca
+corre sin un save existente, nadie los escondía — sumaban alto de más abajo del
+overlay y la página terminaba más larga que el viewport del teléfono, obligando
+a scrollear para llegar al botón "Empezar". `start()` los vuelve a mostrar justo
+antes de llamar a `boot()`.
+
 ## Estado del juego
 
 `localStorage`, clave `SAVE_KEY = 'mimogoshi.save.v2'`.
