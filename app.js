@@ -187,13 +187,26 @@ function pickAnimation(species, mood, walkFrame, now){
    No vino arte para esta etapa: un óvalo chico dibujado a mano. */
 
 /* Tambaleo de lado a lado, tipo huevo a punto de eclosionar: sin esto se ve
-   muerto. El giro es sobre la base (donde apoya en el piso) y no sobre el
-   centro — si no, en vez de tambalearse parece que floppea flotando en el
-   aire, porque la punta de abajo también se corre. Puro seno del tiempo real,
-   sin estado propio (render() ya redibuja cada frame) — sigue siendo el mismo
-   óvalo, no hay sprites nuevos. */
-const EGG_WOBBLE_PERIOD_MS = 450;
-const EGG_WOBBLE_MAX_RAD = 0.175; // ~10°
+   muerto. No es un seno continuo (eso da un vaivén lento y parejo) sino una
+   ráfaga corta y rápida que se repite una vez por segundo y el resto del
+   tiempo queda quieto — "lo hace rápido, y después se queda quieto". Con
+   EGG_WOBBLE_HALF_CYCLES par el seno vuelve solo a 0 al final de la ráfaga,
+   sin saltos.
+   El giro es sobre la base (donde apoya en el piso) y no sobre el centro —
+   si no, en vez de tambalearse parece que floppea flotando en el aire, porque
+   la punta de abajo también se corre. Sin estado propio (render() ya redibuja
+   cada frame) — sigue siendo el mismo óvalo, no hay sprites nuevos. */
+const EGG_WOBBLE_PERIOD_MS = 1000;    // un ciclo por segundo
+const EGG_WOBBLE_ACTIVE_MS = 280;     // el tambaleo dura esto adentro de cada ciclo
+const EGG_WOBBLE_HALF_CYCLES = 4;     // dos vaivenes completos, rápido, durante lo activo
+const EGG_WOBBLE_MAX_RAD = 0.175;     // ~10°
+
+function eggWobbleAngle(now){
+  const phase = now % EGG_WOBBLE_PERIOD_MS;
+  if (phase >= EGG_WOBBLE_ACTIVE_MS) return 0; // quieto el resto del segundo
+  const t = phase / EGG_WOBBLE_ACTIVE_MS;
+  return Math.sin(EGG_WOBBLE_HALF_CYCLES * Math.PI * t) * EGG_WOBBLE_MAX_RAD;
+}
 
 function drawEgg(ctx){
   const pal = PALETTES.egg;
@@ -203,7 +216,7 @@ function drawEgg(ctx){
   const cx = CANVAS_W/2, cy = CANVAS_H - ry - 2; // apoyado en el piso, igual que los sprites
   const baseY = cy + ry; // punto donde el huevo toca el piso: el eje del giro
 
-  const wobble = Math.sin((performance.now() / EGG_WOBBLE_PERIOD_MS) * Math.PI*2) * EGG_WOBBLE_MAX_RAD;
+  const wobble = eggWobbleAngle(performance.now());
   ctx.save();
   ctx.translate(cx, baseY);
   ctx.rotate(wobble);
