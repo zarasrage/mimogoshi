@@ -226,9 +226,33 @@ Simulación por ticks (`TICK_MS = 4000`, `MS_PER_GAME_HOUR = 60000`): hambre,
 felicidad, energía, higiene y salud bajan solas; `catchUp()` recupera el tiempo
 que pasó con la pestaña cerrada (con tope de 3 días).
 
-La caca aparece con `POOP_CHANCE_PER_HOUR` (0.0115 por hora de juego): calibrada
-para que la primera salga en mediana a la hora real. La higiene no baja sola —
-solo mientras haya caca sin limpiar (ver `DECAY_PER_HOUR.hygiene`).
+Todos los ritmos de decaimiento (`DECAY_PER_HOUR`, `HEALTH_DECAY_PER_HOUR`,
+`POOP_CHANCE_PER_HOUR`, `SICK_CHANCE_PER_HOUR*`) están escalados por el mismo
+factor (~3.54x) para que, totalmente descuidada y fuera del horario nocturno,
+la mascota muera en una mediana de ~12 horas reales — sin tocar los umbrales
+(`DISTRESS_AT`, `HEALTH_RISK_AT`, `SICK_LOW_HEALTH_AT`), que son valores de
+barra y no de tiempo, así que no hace falta escalarlos para mantener las
+proporciones. Si se vuelve a recalibrar el tiempo hasta la muerte, hay que
+volver a escalar **todos** estos números juntos, no uno solo — si no se
+rompen las proporciones entre barras.
+
+La caca aparece con `POOP_CHANCE_PER_HOUR`: calibrada (dentro de ese mismo
+escalado) para que la primera salga en mediana a las ~3.5 horas reales. La
+higiene no baja sola — solo mientras haya caca sin limpiar (ver
+`DECAY_PER_HOUR.hygiene`).
+
+**Modo nocturno** (`isNightMode()`, 00:00 a 06:00 **hora real** del
+dispositivo — es de noche para quien juega, no para la mascota): todo decae a
+la mitad de velocidad (`NIGHT_DECAY_FACTOR`, aplicado junto a `sleepFactor` en
+`applyDecay()` — solo frena el decaimiento, no la recuperación) y
+`maybeAutoSleep()` cambia a un sube-y-baja de sueño propio en vez del gatillo
+por energía baja: `NIGHT_SLEEP_ENTER_CHANCE`/`NIGHT_SLEEP_EXIT_CHANCE` por
+tick, en proporción 3:1, dan una fracción de tiempo dormida en el largo plazo
+de `enter/(enter+exit) = 75%`. Limitación conocida y aceptada: `catchUp()`
+puede entregar de una un rango de horas que cruza medianoche, y como
+`applyDecay()` solo mira la hora ACTUAL al aplicarlas (no hora por hora), un
+tramo nocturno adentro de un catchUp largo no se trata distinto del resto —
+el mismo compromiso que ya hace `sleepFactor` con horas acumuladas.
 
 - **Etapas** (`ALL_STAGES`): solo dos, `egg → grown` (`EGG_HOURS = 0.1`, o sea
   ~6 s reales de huevo). Había una escalera de edades

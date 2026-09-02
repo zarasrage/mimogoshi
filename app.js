@@ -317,37 +317,72 @@ const RED_ZONE = 25;           // bajo esto, ni alimentarlo/jugar lo despierta
 
 /* Desgaste en puntos por hora de juego. Van escritos como 100 / <horas de juego>
    para que se lea directo cuánto tarda cada barra en vaciarse entera; con
-   MS_PER_GAME_HOUR = 60000, una hora real son 60 horas de juego. */
-const DECAY_PER_HOUR = {
-  hunger:    100 / 240,   // 240 h de juego = 4 horas reales
-  happiness: 100 / 300,   // 300 h de juego = 5 horas reales
-  energy:    100 / 960,   // 960 h de juego = 16 horas reales
-  hygiene:   100 / 120,   // 120 h de juego = 2 horas reales, pero solo si hay caca
-};
-const ENERGY_RECOVER_PER_HOUR = 100 / 60;  // durmiendo: barra entera en 1 hora real
+   MS_PER_GAME_HOUR = 60000, una hora real son 60 horas de juego.
 
-/* Probabilidad de que aparezca caca, por hora de juego. Calibrada para que la
-   primera aparezca en mediana a la hora real (no compuesta como sickChance()
-   porque nunca hace falta más de un evento — una vez que hay caca,
-   state.poop ya no vuelve a tirar el dado). */
-const POOP_CHANCE_PER_HOUR = 0.0115;
+   Todos los ritmos de esta sección (decaimiento, probabilidad de caca,
+   probabilidad de enfermarse) están escalados por el mismo factor (~3.54x)
+   respecto de sus valores "naturales", para que la mascota totalmente
+   descuidada (sin comer/limpiar/jugar, fuera del horario nocturno) muera en
+   una mediana de ~12 horas reales en vez de ~3.4 — manteniendo intactas las
+   proporciones entre barras y entre causas: la que antes tardaba el doble en
+   vaciarse sigue tardando el doble ahora. Los umbrales (DISTRESS_AT,
+   HEALTH_RISK_AT, SICK_LOW_HEALTH_AT, DISTRESS_MULT) NO se tocan: son valores
+   de barra, no de tiempo, y no necesitan escalarse para que la proporción se
+   mantenga. */
+const DECAY_PER_HOUR = {
+  hunger:    100 / 849,    // 849 h de juego ≈ 14.1 horas reales
+  happiness: 100 / 1061,   // 1061 h de juego ≈ 17.7 horas reales
+  energy:    100 / 3395,   // 3395 h de juego ≈ 56.6 horas reales
+  hygiene:   100 / 424,    // 424 h de juego ≈ 7.1 horas reales, pero solo si hay caca
+};
+const ENERGY_RECOVER_PER_HOUR = 100 / 212;  // durmiendo: barra entera en ~3.5 horas reales
+
+/* Probabilidad de que aparezca caca, por hora de juego. Antes daba mediana a
+   la hora real; escalada al mismo ~3.54x da mediana a las ~3.5 horas reales
+   (no compuesta como sickChance() porque nunca hace falta más de un evento —
+   una vez que hay caca, state.poop ya no vuelve a tirar el dado). */
+const POOP_CHANCE_PER_HOUR = 0.00325;
 
 /* Bajo estos valores la barra entra en "apuro" y se vacía más rápido — el bajón
-   se acelera solo cuando ya va mal. */
+   se acelera solo cuando ya va mal. Son valores de barra (0-100), no de
+   tiempo: no se escalan con el resto. */
 const DISTRESS_AT = { hunger: 20, happiness: 20, hygiene: 20, energy: 10 };
 const DISTRESS_MULT = 1.5;
 
 /* La salud tiene dos causas de daño independientes que se suman: que alguna de
    las otras barras esté bajo HEALTH_RISK_AT, y estar enfermo. Con las dos a la
-   vez la salud cae al doble (una hora real de 100 a 0). */
+   vez la salud cae al doble. */
 const HEALTH_RISK_AT = 30;
-const HEALTH_DECAY_PER_HOUR = 100 / 120;   // 2 horas reales por cada causa
-const HEALTH_RECOVER_PER_HOUR = 1.5;       // solo si no hay ninguna causa activa
+const HEALTH_DECAY_PER_HOUR = 100 / 424;   // ~7.1 horas reales por cada causa sola
+const HEALTH_RECOVER_PER_HOUR = 0.424;     // solo si no hay ninguna causa activa
 
 /* Probabilidad de enfermarse, por hora de juego. */
-const SICK_CHANCE_PER_HOUR = 0.002;
-const SICK_CHANCE_PER_HOUR_LOW = 0.01;
+const SICK_CHANCE_PER_HOUR = 0.000566;
+const SICK_CHANCE_PER_HOUR_LOW = 0.00283;
 const SICK_LOW_HEALTH_AT = 60;
+
+/* Modo nocturno: de 00:00 a 06:00 hora REAL del dispositivo (no de juego —
+   es "de noche" para quien está jugando, no para la mascota), todo decae
+   50% más lento y la mascota tiende a estar dormida ~75% del tiempo.
+   Limitación conocida: catchUp() puede entregar de una un rango de horas
+   que cruza medianoche; como applyDecay() solo mira la hora ACTUAL al
+   aplicarlas (no hora por hora), un tramo nocturno adentro de un catchUp
+   largo no se trata distinto del resto — el mismo compromiso que ya hace
+   sleepFactor con horas acumuladas. */
+const NIGHT_START_HOUR = 0;
+const NIGHT_END_HOUR = 6;
+const NIGHT_DECAY_FACTOR = 0.5;
+/* Por tick (TICK_MS), no por hora: maybeAutoSleep() ya se llama una vez por
+   tick sin escalar por horas, igual que su rama diurna de abajo. La
+   proporción 3:1 (entra:sale) da una fracción de tiempo dormida de
+   enter/(enter+exit) = 0.75 en el largo plazo. */
+const NIGHT_SLEEP_ENTER_CHANCE = 0.03;
+const NIGHT_SLEEP_EXIT_CHANCE = 0.01;
+
+function isNightMode(){
+  const h = new Date().getHours();
+  return h >= NIGHT_START_HOUR && h < NIGHT_END_HOUR;
+}
 
 let state = null;
 let tickTimer = null;
@@ -461,24 +496,27 @@ function applyDecay(hours){
   }
 
   const sleepFactor = state.sleeping ? 0.25 : 1;
-  state.hunger   = clamp(state.hunger   - hours * decayRate('hunger',    state.hunger)    * sleepFactor);
-  state.happiness= clamp(state.happiness- hours * decayRate('happiness', state.happiness) * sleepFactor);
+  /* Solo frena el decaimiento (la mitad de lento), no la recuperación —
+     dormir de noche ya recupera energía a su ritmo normal. */
+  const nightFactor = isNightMode() ? NIGHT_DECAY_FACTOR : 1;
+  state.hunger   = clamp(state.hunger   - hours * decayRate('hunger',    state.hunger)    * sleepFactor * nightFactor);
+  state.happiness= clamp(state.happiness- hours * decayRate('happiness', state.happiness) * sleepFactor * nightFactor);
   state.energy   = clamp(state.energy   + (state.sleeping
     ? hours * ENERGY_RECOVER_PER_HOUR
-    : -hours * decayRate('energy', state.energy)));
+    : -hours * decayRate('energy', state.energy) * nightFactor));
 
   if (!state.poop && Math.random() < hours * POOP_CHANCE_PER_HOUR) state.poop = true;
   /* La higiene NO baja sola: solo se ensucia mientras haya caca sin limpiar. Así
      limpiar deja de ser un trámite periódico y pasa a ser la respuesta a algo
      que el jugador ve en pantalla. */
-  if (state.poop) state.hygiene = clamp(state.hygiene - hours * decayRate('hygiene', state.hygiene));
+  if (state.poop) state.hygiene = clamp(state.hygiene - hours * decayRate('hygiene', state.hygiene) * nightFactor);
 
   /* Salud: las dos causas se suman, y solo se recupera si no hay ninguna. */
   const enRiesgo = state.hunger    < HEALTH_RISK_AT || state.happiness < HEALTH_RISK_AT ||
                    state.energy    < HEALTH_RISK_AT || state.hygiene   < HEALTH_RISK_AT;
   let healthDelta = 0;
-  if (enRiesgo)   healthDelta -= HEALTH_DECAY_PER_HOUR;
-  if (state.sick) healthDelta -= HEALTH_DECAY_PER_HOUR;
+  if (enRiesgo)   healthDelta -= HEALTH_DECAY_PER_HOUR * nightFactor;
+  if (state.sick) healthDelta -= HEALTH_DECAY_PER_HOUR * nightFactor;
   if (healthDelta === 0) healthDelta = HEALTH_RECOVER_PER_HOUR;
   state.health = clamp(state.health + hours * healthDelta);
 
@@ -511,6 +549,17 @@ function catchUp(){
 
 function maybeAutoSleep(){
   if (gameOver || state.stage === 'egg') return;
+  /* De noche el sueño no depende de la energía: es una tendencia horaria
+     aparte, con su propia probabilidad de entrar y salir (ver
+     NIGHT_SLEEP_ENTER_CHANCE / NIGHT_SLEEP_EXIT_CHANCE más arriba). */
+  if (isNightMode()){
+    if (state.sleeping){
+      if (Math.random() < NIGHT_SLEEP_EXIT_CHANCE) state.sleeping = false;
+    } else if (Math.random() < NIGHT_SLEEP_ENTER_CHANCE){
+      state.sleeping = true;
+    }
+    return;
+  }
   if (state.sleeping){
     if (state.energy >= 90) state.sleeping = false;
     return;
