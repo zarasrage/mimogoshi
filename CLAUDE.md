@@ -420,6 +420,34 @@ rellena vacíos para saves viejos). Se muestran como insignia en el menú de Jug
 si van dentro del texto de la descripción, esta pasa a dos líneas y con cuatro
 juegos la lista deja el botón de Cancelar fuera de la pantalla.
 
+### Combate (prototipo, todavía no en el menú de Jugar)
+
+`startCombatGame()` — se lanza solo desde el panel de prueba (`dbgCombat`),
+a propósito: es para probar el feel antes de sumarlo al menú real y a la
+economía. El rival es **otra especie al azar** (nunca la propia): no hace
+falta arte nuevo, `drawCombat()` pisa `debugForcedSpecies` un instante nada
+más que para ese `drawPetAt()` y lo restaura enseguida, así no interfiere si
+el panel de prueba ya estaba forzando una especie propia.
+
+Mecánica de lectura + reacción, no azar: el rival telegrafía uno de tres
+ataques (`CB_ATTACKS`, un ícono arriba de su cabeza) y hay que responder con
+el botón que corresponde antes de que se cierre el anillo de tiempo
+(`cbWindowMs()`, se achica por ronda igual que `BB_DIFFICULTY`). Golpe y
+agarre solo evitan daño si se leen bien (esquivar / bloquear); el ataque
+lento es el único que, bien leído, deja contraatacar y hacerle daño de
+vuelta al rival — así no alcanza con apretar siempre el mismo botón.
+Verificado por simulación pura (sin canvas): un jugador que siempre acierta
+gana 100% de las veces, uno que aprieta al azar gana ~3%, uno que solo
+contraataca gana ~21% — la habilidad paga y no hay atajo.
+
+Los tres botones (`.gbtn-row3`, Esquivar / Bloquear / Contra) están siempre
+habilitados durante la ventana de telegraph, al revés que Baloncesto donde
+solo uno sirve por vez — acá la gracia es elegir CUÁL de los tres es el
+correcto. El impacto (`CB_IMPACT_MS`) es sacudida de cámara + flash rojo +
+knockback de una sola pasada (misma idea que las parábolas de Baloncesto,
+pero en x). Números sin calibrar: `CB_ROUNDS`/`CB_PLAYER_HP`/`CB_RIVAL_HP`/
+`cbWindowMs()` son un primer intento a propósito, para probarlos jugando.
+
 ## Panel de prueba
 
 El botón ✏️ (`#btnDebug`) abre `#debugPanel`: fuerza etapa, ánimo y **especie**

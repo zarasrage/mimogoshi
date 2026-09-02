@@ -600,12 +600,14 @@ function forceCloseMinigames(){
   snDispose();
   mmDispose();
   if (bb && bb.raf) cancelAnimationFrame(bb.raf);
+  if (cb && cb.raf) cancelAnimationFrame(cb.raf);
   sg = null;
   bb = null;
   rx = null;
   tr = null;
   sn = null;
   mm = null;
+  cb = null;
   activeMinigame = null;
   document.getElementById('gameCanvas').classList.add('hidden');
   document.getElementById('creatureFloor').classList.remove('hidden');
@@ -2643,6 +2645,263 @@ function endMemoryGame(){
   finishMinigame('memory', { score, merit: score * 1.2, energyCost: 18, message });
 }
 
+/* ===================== Minijuego 7 (PRUEBA): combate =====================
+   Prototipo para probar el feel de la pelea antes de sumarlo al menú de Jugar.
+   Por ahora solo se lanza desde el panel de prueba (dbgCombat). El rival es
+   otra especie al azar (nunca la propia) — no hace falta arte nuevo, se
+   reusa el mismo drawPetAt() con debugForcedSpecies pisado un instante nada
+   más que para dibujar al rival (ver drawCombat()), y se restaura enseguida.
+
+   Mecánica: el rival telegrafía uno de tres ataques (un ícono arriba de su
+   cabeza) y hay que responder con el botón que le corresponde antes de que
+   se acabe el anillo de tiempo — igual que el resto de los minijuegos, es
+   lectura + reacción, no azar. Golpe y agarre solo evitan daño si se
+   responden bien (esquivar / bloquear); el ataque lento es el único que,
+   bien leído, deja contraatacar y hacerle daño de vuelta al rival. Números
+   sin calibrar todavía: es justo lo que hay que probar jugándolo. */
+
+const CB_ROUNDS = 8;
+const CB_PLAYER_HP = 3;
+const CB_RIVAL_HP = 3;
+const CB_IMPACT_MS = 380;   // dura el flash/sacudida/knockback de cada golpe
+const CB_END_MS = 1200;
+
+const CB_ATTACKS = {
+  golpe:  { icon: '👊', beats: 'esquivar' },
+  agarre: { icon: '🤜', beats: 'bloquear' },
+  lento:  { icon: '🐢', beats: 'contraatacar' },  // el único que se puede devolver
+};
+const CB_ATTACK_IDS = Object.keys(CB_ATTACKS);
+
+/* La ventana de reacción se achica con las rondas, mismo espíritu que
+   BB_DIFFICULTY en baloncesto. */
+function cbWindowMs(round){ return Math.max(420, 900 - round * 60); }
+
+let cb = null;
+
+function pickRivalSpecies(){
+  const mine = currentSpeciesId();
+  const opciones = SPECIES_IDS.filter(id => id !== mine);
+  const pool = opciones.length ? opciones : SPECIES_IDS;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function startCombatGame(){
+  const { gc, ctx } = enterMinigame('combat');
+  const w = gc.width, h = gc.height;
+  cb = {
+    ctx, gc, w, h,
+    groundY: h - 4,
+    playerX: w * 0.22,
+    rivalX: w * 0.78,
+    rivalSpecies: pickRivalSpecies(),
+    round: 0,
+    playerHp: CB_PLAYER_HP,
+    rivalHp: CB_RIVAL_HP,
+    attack: null,
+    state: 'telegraph',    // 'telegraph' | 'impact' | 'end'
+    telegraphStart: 0,
+    telegraphMs: 0,
+    impactStart: 0,
+    lastHit: null,         // 'player' | 'rival' | 'dodge' — qué animar en el impacto
+    result: null,           // 'win' | 'lose' cuando termina
+    resultAt: 0,
+    raf: null,
+  };
+  cbNextRound();
+
+  const cont = showGameControls(`
+    <div class="game-hint" id="cbHint">¡Mirá qué viene y respondé!</div>
+    <div class="gbtn-row3">
+      <button class="gbtn gbtn-lg" id="btnDodge">🤸 Esquivar</button>
+      <button class="gbtn gbtn-lg" id="btnBlock">🛡️ Bloquear</button>
+      <button class="gbtn gbtn-lg" id="btnCounter">👊 Contra</button>
+    </div>
+  `);
+  cb.hintEl = cont.querySelector('#cbHint');
+  wireGameButton(cont.querySelector('#btnDodge'), () => cbPress('esquivar'));
+  wireGameButton(cont.querySelector('#btnBlock'), () => cbPress('bloquear'));
+  wireGameButton(cont.querySelector('#btnCounter'), () => cbPress('contraatacar'));
+
+  cb.raf = requestAnimationFrame(cbLoop);
+}
+
+function cbNextRound(){
+  cb.attack = CB_ATTACK_IDS[Math.floor(Math.random() * CB_ATTACK_IDS.length)];
+  cb.telegraphMs = cbWindowMs(cb.round);
+  cb.telegraphStart = performance.now();
+  cb.state = 'telegraph';
+  cb.lastHit = null;
+}
+
+/* Los tres botones responden siempre — no hay uno solo habilitado como en
+   Baloncesto, porque acá la gracia es elegir CUÁL de los tres es el
+   correcto, no esperar el momento de apretar el único que sirve. */
+function cbPress(which){
+  if (!cb || cb.state !== 'telegraph' || activeMinigame !== 'combat') return;
+  cbResolve(which);
+}
+
+/* which === null pasa cuando se acaba el tiempo sin ninguna respuesta: cuenta
+   como fallo, igual que apretar el botón que no corresponde. */
+function cbResolve(which){
+  const info = CB_ATTACKS[cb.attack];
+  const acierto = which === info.beats;
+
+  if (acierto && which === 'contraatacar'){
+    cb.rivalHp -= 1;
+    cb.lastHit = 'rival';
+    floatFx('💥');
+  } else if (acierto){
+    cb.lastHit = 'dodge';
+    floatFx('💨');
+  } else {
+    cb.playerHp -= 1;
+    cb.lastHit = 'player';
+    floatFx('💢');
+  }
+  cb.state = 'impact';
+  cb.impactStart = performance.now();
+}
+
+function cbEnd(won){
+  cb.state = 'end';
+  cb.result = won ? 'win' : 'lose';
+  cb.resultAt = performance.now();
+}
+
+function cbSyncButtons(){
+  if (!cb) return;
+  const cont = document.getElementById('gameControls');
+  const on = cb.state === 'telegraph';
+  ['btnDodge', 'btnBlock', 'btnCounter'].forEach(id => {
+    const el = cont.querySelector('#' + id);
+    if (el) el.disabled = !on;
+  });
+  if (cb.hintEl) cb.hintEl.textContent = on ? '¡Mirá qué viene y respondé!' : '';
+}
+
+function cbLoop(){
+  if (activeMinigame !== 'combat' || !cb) return;
+  const now = performance.now();
+
+  if (cb.state === 'telegraph'){
+    if (now - cb.telegraphStart >= cb.telegraphMs) cbResolve(null);
+  } else if (cb.state === 'impact'){
+    if (now - cb.impactStart >= CB_IMPACT_MS){
+      if (cb.rivalHp <= 0) cbEnd(true);
+      else if (cb.playerHp <= 0) cbEnd(false);
+      else if (cb.round + 1 >= CB_ROUNDS) cbEnd(cb.playerHp >= cb.rivalHp);
+      else { cb.round += 1; cbNextRound(); }
+    }
+  } else if (cb.state === 'end'){
+    if (now - cb.resultAt >= CB_END_MS){
+      finishCombatGame();
+      return;
+    }
+  }
+
+  cbSyncButtons();
+  drawCombat();
+  cb.raf = requestAnimationFrame(cbLoop);
+}
+
+function drawCombat(){
+  const { ctx, gc } = cb;
+  ctx.clearRect(0, 0, gc.width, gc.height);
+  ctx.save();
+
+  /* Sacudida de cámara: más fuerte si te pegan a vos que si le pegás al
+     rival, y nada si fue una esquiva/bloqueo limpio. */
+  if (cb.state === 'impact'){
+    const t = (performance.now() - cb.impactStart) / CB_IMPACT_MS;
+    const amp = (1 - t) * (cb.lastHit === 'player' ? 6 : cb.lastHit === 'rival' ? 4 : 0);
+    if (amp > 0) ctx.translate((Math.random()*2-1)*amp, (Math.random()*2-1)*amp);
+  }
+
+  ctx.font = '12px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(255,255,255,.85)';
+  ctx.fillText(`Vos ${'❤️'.repeat(Math.max(0, cb.playerHp))}`, 8, 16);
+  ctx.textAlign = 'right';
+  ctx.fillText(`${'💚'.repeat(Math.max(0, cb.rivalHp))} Rival`, gc.width-8, 16);
+
+  ctx.strokeStyle = 'rgba(200,242,194,.25)';
+  ctx.beginPath();
+  ctx.moveTo(0, cb.groundY+2); ctx.lineTo(gc.width, cb.groundY+2); ctx.stroke();
+
+  /* Knockback: sale y vuelve en una sola pasada (misma idea que las
+     parábolas de baloncesto, pero en x y sin altura). */
+  let playerOffsetX = 0, rivalOffsetX = 0;
+  if (cb.state === 'impact'){
+    const t = Math.min(1, (performance.now() - cb.impactStart) / CB_IMPACT_MS);
+    const kb = Math.sin(t * Math.PI) * 10;
+    if (cb.lastHit === 'player') playerOffsetX = kb;
+    if (cb.lastHit === 'rival') rivalOffsetX = -kb;
+  }
+
+  /* El rival es otra especie: se pisa debugForcedSpecies solo para este
+     drawPetAt() y se restaura al toque, así no interfiere con el panel de
+     prueba si estaba forzando una especie propia. */
+  const prevForced = debugForcedSpecies;
+  debugForcedSpecies = cb.rivalSpecies;
+  const rivalMood = cb.state === 'end'
+    ? (cb.result === 'win' ? 'sad' : 'happy')
+    : (cb.lastHit === 'rival' ? 'sad' : 'normal');
+  drawPetAt(ctx, cb.rivalX + rivalOffsetX, cb.groundY, rivalMood, 2);
+  debugForcedSpecies = prevForced;
+
+  const playerMood = cb.state === 'end'
+    ? (cb.result === 'win' ? 'happy' : 'dead')
+    : (cb.lastHit === 'player' ? 'sad' : 'normal');
+  drawPetAt(ctx, cb.playerX + playerOffsetX, cb.groundY, playerMood, 2);
+
+  /* Flash de impacto: un rect semitransparente encima de a quién le pegaron. */
+  if (cb.state === 'impact' && cb.lastHit && cb.lastHit !== 'dodge'){
+    const t = (performance.now() - cb.impactStart) / CB_IMPACT_MS;
+    if (t < 0.4){
+      const alpha = (0.4 - t) / 0.4 * 0.5;
+      ctx.fillStyle = `rgba(255,80,80,${alpha})`;
+      const fx = cb.lastHit === 'player' ? cb.playerX : cb.rivalX;
+      ctx.fillRect(fx-32, cb.groundY-64, 64, 64);
+    }
+  }
+
+  /* Telegraph: ícono del ataque que viene + anillo de tiempo que se achica. */
+  if (cb.state === 'telegraph'){
+    const info = CB_ATTACKS[cb.attack];
+    drawEmoji(ctx, info.icon, 22, cb.rivalX, cb.groundY-80);
+    const remain = 1 - Math.min(1, (performance.now() - cb.telegraphStart) / cb.telegraphMs);
+    ctx.strokeStyle = remain > 0.3 ? 'rgba(255,206,75,.9)' : 'rgba(255,93,108,.9)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cb.rivalX, cb.groundY-80, 16, -Math.PI/2, -Math.PI/2 + remain*Math.PI*2);
+    ctx.stroke();
+  }
+
+  if (cb.state === 'end'){
+    ctx.font = '14px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText(cb.result === 'win' ? '¡GANASTE!' : 'Perdiste…', gc.width/2, gc.height/2);
+  }
+
+  ctx.restore();
+}
+
+function finishCombatGame(){
+  const won = cb && cb.result === 'win';
+  const rounds = cb ? cb.round + 1 : 0;
+  if (cb && cb.raf) cancelAnimationFrame(cb.raf);
+  cb = null;
+
+  const score = won ? rounds : 0;
+  const merit = won ? rounds * 9 : 0;
+  const message = won ? '¡Ganaste la pelea!' : 'Perdiste la pelea… la próxima';
+
+  finishMinigame('combat', { score, merit, energyCost: 14, message });
+}
+
 /* ===================== Overlay / setup ===================== */
 
 function showOverlay(html){
@@ -2808,6 +3067,7 @@ function renderDebugPanel(){
           <button class="debug-btn" id="dbgTap">🎵 Tap rítmico</button>
           <button class="debug-btn" id="dbgSnake">🐍 Snake</button>
           <button class="debug-btn" id="dbgMemory">💡 Memorice</button>
+          <button class="debug-btn" id="dbgCombat">⚔️ Combate (prueba)</button>
         </div>
       </div>
       <div class="debug-section">
@@ -2854,6 +3114,7 @@ function renderDebugPanel(){
   document.getElementById('dbgTap').addEventListener('click', () => { closeDebugPanel(); startTapGame(); });
   document.getElementById('dbgSnake').addEventListener('click', () => { closeDebugPanel(); startSnakeGame(); });
   document.getElementById('dbgMemory').addEventListener('click', () => { closeDebugPanel(); startMemoryGame(); });
+  document.getElementById('dbgCombat').addEventListener('click', () => { closeDebugPanel(); startCombatGame(); });
   document.getElementById('dbgPoop').addEventListener('click', () => {
     state.poop = true; saveState(); render(); renderDebugPanel();
   });
