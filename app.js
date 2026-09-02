@@ -346,7 +346,7 @@ const HEALTH_RECOVER_PER_HOUR = 1.5;       // solo si no hay ninguna causa activ
 
 /* Probabilidad de enfermarse, por hora de juego. */
 const SICK_CHANCE_PER_HOUR = 0.002;
-const SICK_CHANCE_PER_HOUR_LOW = 0.1;
+const SICK_CHANCE_PER_HOUR_LOW = 0.01;
 const SICK_LOW_HEALTH_AT = 60;
 
 let state = null;
