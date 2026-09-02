@@ -205,6 +205,16 @@ body{
   box-shadow:0 0 0 3px #0a1109 inset;
 }
 
+/* La pantalla de "elegir especie y nombre" no tiene mascota ni barras que
+   proteger (el overlay las tapa) y .controls ya está escondido mientras dura
+   — así que puede pedir más alto que el clamp normal sin empujar nada fuera
+   de la pantalla del teléfono. Sin esto, con 5+ especies el overlay se queda
+   corto y tiene que scrollear internamente para llegar al botón "Empezar". */
+.screen.onboarding{
+  min-height:0;
+  height:clamp(290px, 62vh, 560px);
+}
+
 .screen-glow{
   position:absolute;
   inset:0;

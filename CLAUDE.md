@@ -69,7 +69,8 @@ Para cambiarle el tamaño a la mascota hay que mover **los tres a la vez**
 solo a múltiplos de 32: 64, 96, 128, 192. Poner `width:50px` sobre un canvas de
 80 (como estaba antes) reescala por 0.625 y arruina todo el pixel art.
 
-Lo mismo aplica a las miniaturas del selector (`speciesThumbStyle()` usa `s=2`)
+Lo mismo aplica a las miniaturas del selector de especie (`speciesThumbStyle()`
+acepta `s`; el picker de la pantalla de inicio usa `s=1`, 32px — ver más abajo)
 y a la mascota dentro de los minijuegos, que se dibuja con `drawPetAt()` a escala
 2 usando `ctx.translate()` y **sin** `ctx.scale()`.
 
@@ -178,19 +179,26 @@ más que la pantalla y empuja el botón "Empezar" fuera de vista; en fila con sc
 horizontal el gesto pelea con el scroll vertical del overlay y las especies que
 quedan pasado el borde no dan ninguna señal de existir.
 
-Por eso `speciesThumbStyle(id, s)` usa `s = 2` (miniatura de 64px): con `s = 3` no
-entran tres columnas. La escala tiene que seguir siendo **entera**.
+En la pantalla de inicio `speciesThumbStyle(id, s)` usa `s = 1` (miniatura de
+32px): con `s = 2` no entran tres columnas ni las cinco especies dos filas sin
+que el overlay tenga que scrollear internamente para llegar a "Empezar" — y con
+`s = 3` tampoco entran tres columnas. La escala tiene que seguir siendo
+**entera**; en cualquier otro lado que use `speciesThumbStyle()` la escala
+sigue siendo `s = 2` por defecto.
 
 La pantalla de inicio **no** enfoca el campo del nombre al abrirse: en el teléfono
 el teclado aparecía de una y tapaba justo el selector de especies, que es lo
 primero que hay que elegir.
 
-`askName()` también esconde `.controls` (los 7 botones de cuidado) mientras dura
-esta pantalla: sin mascota todavía no sirven de nada, pero como `boot()` nunca
-corre sin un save existente, nadie los escondía — sumaban alto de más abajo del
-overlay y la página terminaba más larga que el viewport del teléfono, obligando
-a scrollear para llegar al botón "Empezar". `start()` los vuelve a mostrar justo
-antes de llamar a `boot()`.
+`askName()` también esconde `.controls` (los 7 botones de cuidado, que sin
+mascota no sirven de nada) y agrega la clase `.onboarding` a `#screen` mientras
+dura esta pantalla; `start()` saca las dos cosas justo antes de llamar a
+`boot()`. Sin esto, `.controls` sumaba alto de más abajo del overlay (`boot()`
+nunca corre sin un save existente, así que nadie los escondía) y `#screen`
+seguía atado al `clamp(290px, 42vh, 420px)` pensado para la pantalla de juego
+—con mascota, barras y mandos reales—, que le quedaba corto a esta pantalla sin
+nada de eso. `.screen.onboarding` afloja ese clamp a `clamp(290px, 62vh, 560px)`:
+puede porque en esta pantalla no hay nada más abajo compitiendo por alto.
 
 ## Estado del juego
 

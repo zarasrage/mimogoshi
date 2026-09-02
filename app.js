@@ -2562,10 +2562,13 @@ function hideOverlay(){
 
 let pickedSpecies = DEFAULT_SPECIES;
 
+/* s=1 (miniatura de 32px) y no el s=2 de siempre: con 5 especies y creciendo,
+   el grid de 3 columnas en dos filas a 64px ya no entraba sin scroll dentro
+   del alto disponible. Sigue siendo escala entera, que es lo que importa. */
 function renderSpeciesPicker(){
   return SPECIES_IDS.map(id => `
     <div class="menu-item species-item ${pickedSpecies===id ? 'selected':''}" data-species="${id}">
-      <span class="species-thumb" style="${speciesThumbStyle(id)}"></span>
+      <span class="species-thumb" style="${speciesThumbStyle(id, 1)}"></span>
       <div class="info"><b>${SPECIES_RAW[id].name}</b></div>
     </div>
   `).join('');
@@ -2579,6 +2582,7 @@ function askName(){
      viewport del teléfono, obligando a scrollear para llegar a "Empezar". Se
      esconden acá y start() los vuelve a mostrar al arrancar boot(). */
   document.getElementById('controls').classList.add('hidden');
+  document.getElementById('screen').classList.add('onboarding');
   /* Sin `autofocus`: en el teléfono abría el teclado apenas cargaba la pantalla,
      y el teclado tapa justo el selector de especies — que es lo primero que hay
      que elegir. El campo se enfoca cuando el jugador lo toca. */
@@ -2610,6 +2614,7 @@ function askName(){
     saveState();
     hideOverlay();
     document.getElementById('controls').classList.remove('hidden');
+    document.getElementById('screen').classList.remove('onboarding');
     boot();
   };
   document.getElementById('btnStart').addEventListener('click', start);
