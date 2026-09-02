@@ -186,12 +186,26 @@ function pickAnimation(species, mood, walkFrame, now){
 /* ===================== Huevo =====================
    No vino arte para esta etapa: un óvalo chico dibujado a mano. */
 
+/* Tambaleo sutil, uno por segundo: sin esto el huevo se ve muerto en vez de a
+   punto de eclosionar. Es rotación pura sobre su propio centro con seno del
+   tiempo real (no requiere estado propio ni tocar el loop de render, que ya
+   redibuja cada frame) — no hay sprites nuevos, sigue siendo el mismo óvalo. */
+const EGG_WOBBLE_PERIOD_MS = 1000;
+const EGG_WOBBLE_MAX_RAD = 0.05; // ~3°, "muy poco"
+
 function drawEgg(ctx){
   const pal = PALETTES.egg;
   /* Proporcional al canvas y no en píxeles fijos: si no, al agrandar la mascota
      el huevo se queda chico y descolocado abajo. */
   const rx = CANVAS_W * 0.25, ry = CANVAS_H * 0.3125;
   const cx = CANVAS_W/2, cy = CANVAS_H - ry - 2; // apoyado en el piso, igual que los sprites
+
+  const wobble = Math.sin((performance.now() / EGG_WOBBLE_PERIOD_MS) * Math.PI*2) * EGG_WOBBLE_MAX_RAD;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(wobble);
+  ctx.translate(-cx, -cy);
+
   ctx.fillStyle = pal.O;
   ctx.beginPath();
   ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
@@ -200,6 +214,8 @@ function drawEgg(ctx){
   ctx.beginPath();
   ctx.ellipse(cx, cy, rx-3, ry-3, 0, 0, Math.PI*2);
   ctx.fill();
+
+  ctx.restore();
 }
 
 /* ===================== Render ===================== */
@@ -246,19 +262,19 @@ function drawSprite(ctx, stage, mood, walkFrame, noClear, scaleOverride){
 
 /* ===================== Comida ===================== */
 
-/* El bocadillo simple es gratis e infinito a propósito: es la red de seguridad.
-   Si toda la comida costara monedas, un jugador sin plata y con la mascota
-   muerta de hambre no tendría ninguna salida. Las otras dos se compran en la
-   tienda y se gastan al usarlas. */
-/* `energy` es opcional: si no está, comer da el bonus de energía plano de
-   siempre (4). La Red Bull es la única que lo pisa — poca hambre, mucha
-   energía, al revés que el resto. */
+/* El bocadillo simple ya no es infinito: se arranca con FOOD_START_STOCK
+   porciones (ver freshState) y de ahí en más se repone en la tienda como
+   cualquier otra comida — sigue costando 0 monedas, así que nunca deja al
+   jugador sin salida (siempre se puede "comprar" gratis), pero ya no evita
+   tener que pasar por la tienda. */
 const FOODS = [
   { id:'simple',   name:'Bocadillo simple', emoji:'🍬', restore:15, price:  0 },
   { id:'rica',     name:'Comida rica',      emoji:'🍗', restore:30, price: 12 },
   { id:'especial', name:'Comida especial',  emoji:'🍰', restore:50, price: 25 },
   { id:'redbull',  name:'Red Bull',         emoji:'⚡', restore: 2, energy: 20, price: 20 },
 ];
+
+const FOOD_START_STOCK = 5;
 
 function foodById(id){ return FOODS.find(f => f.id === id) || FOODS[0]; }
 
@@ -268,9 +284,9 @@ function foodDesc(f){
   return `+${f.restore} de hambre` + (energy !== FOOD_ENERGY_DEFAULT ? ` · +${energy} de energía` : '');
 }
 
-/* Cuántas porciones quedan. El bocadillo simple no se cuenta: nunca se acaba. */
+/* Cuántas porciones quedan. Todas las comidas, incluido el bocadillo simple,
+   se gastan al usarlas y se reponen en la tienda. */
 function foodStock(id){
-  if (foodById(id).price === 0) return Infinity;
   return (state.pantry && state.pantry[id]) || 0;
 }
 
@@ -356,7 +372,7 @@ function freshState(name, species){
     stage: 'egg',
     selectedFood: 'simple',
     coins: 0,
-    pantry: {},    // porciones compradas por comida (el bocadillo simple no se guarda)
+    pantry: { simple: FOOD_START_STOCK },  // porciones en la mochila por comida
     records: {},   // mejor puntaje por minijuego
   };
 }
@@ -370,6 +386,8 @@ function loadState(){
     if (!s.selectedFood) s.selectedFood = 'simple';
     if (typeof s.coins !== 'number' || !isFinite(s.coins)) s.coins = 0;   // saves anteriores al dinero
     if (!s.pantry || typeof s.pantry !== 'object') s.pantry = {};
+    // saves de antes de que el bocadillo simple se gastara: sin esto quedarían en 0 de golpe
+    if (s.pantry.simple === undefined) s.pantry.simple = FOOD_START_STOCK;
     delete s.unlockedFoods;  // el modelo viejo era desbloqueo permanente; ahora son porciones
     if (!s.species || !SPECIES[s.species]) s.species = DEFAULT_SPECIES; // saves de especies que ya no existen
     if (!s.records || typeof s.records !== 'object') s.records = {};    // saves anteriores a los récords
@@ -691,24 +709,32 @@ const btnFeed = () => {
 
   /* Si se acabó lo que estaba elegido, cae al bocadillo simple en vez de no
      hacer nada: quedarse con un botón que no responde es peor que dar de comer
-     algo más flojo y avisarlo. */
+     algo más flojo y avisarlo. Pero el bocadillo también se gasta ahora: si
+     tampoco queda de eso, no hay con qué alimentar y hay que avisar en vez de
+     comer de la nada. */
   let seAcabo = null;
   if (foodStock(state.selectedFood) <= 0){
     seAcabo = foodById(state.selectedFood).name;
     state.selectedFood = 'simple';
   }
 
+  if (foodStock(state.selectedFood) <= 0){
+    say('No queda comida… ¡hay que pasar por la tienda! 🛒');
+    return;
+  }
+
   const food = foodById(state.selectedFood);
-  if (food.price > 0) state.pantry[food.id] = (state.pantry[food.id] || 0) - 1;
+  state.pantry[food.id] = (state.pantry[food.id] || 0) - 1;
 
   state.hunger = clamp(state.hunger + food.restore);
   state.energy = clamp(state.energy + (food.energy ?? FOOD_ENERGY_DEFAULT));
   floatFx(food.emoji);
-  say(seAcabo ? `Se acabó ${seAcabo}, le doy un bocadillo` : '¡Ñam ñam!');
+  say(seAcabo ? `Se acabó ${seAcabo}, le doy ${food.name}` : '¡Ñam ñam!');
   triggerPetAction('eat');
 
-  // gastada la última porción, vuelve solo al bocadillo para no dejarlo elegido en 0
-  if (food.price > 0 && foodStock(food.id) <= 0) state.selectedFood = 'simple';
+  // gastada la última porción de lo que no sea el bocadillo, vuelve solo a
+  // este para no dejarlo elegido en 0
+  if (food.id !== 'simple' && foodStock(food.id) <= 0) state.selectedFood = 'simple';
 
   saveState(); render();
 };
@@ -753,13 +779,12 @@ function openFoodMenu(){
     const stock = foodStock(f.id);
     const hay = stock > 0;
     const selected = state.selectedFood === f.id;
-    const cuanto = f.price === 0 ? 'siempre disponible' : `te quedan ${stock}`;
     return `
       <div class="menu-item ${hay ? '' : 'locked'} ${selected ? 'selected' : ''}" data-food="${f.id}">
         <span class="emoji">${f.emoji}</span>
         <div class="info">
           <b>${escapeHtml(f.name)}</b>
-          <small>${foodDesc(f)} · ${hay ? cuanto : 'sin porciones'}</small>
+          <small>${foodDesc(f)} · ${hay ? `te quedan ${stock}` : 'sin porciones'}</small>
         </div>
       </div>`;
   }).join('');
@@ -784,13 +809,15 @@ function openFoodMenu(){
 }
 
 /* ===================== Tienda =====================
-   Las monedas salen de los minijuegos (ver finishMinigame). Solo se venden las
-   comidas con precio: el bocadillo simple no se compra porque nunca se acaba. */
+   Las monedas salen de los minijuegos (ver finishMinigame). Se vende toda la
+   comida, incluido el bocadillo simple: sigue costando 0 monedas (es la red
+   de seguridad si no queda plata) pero ya no es infinito, hay que venir a
+   buscarlo igual que el resto. */
 
 /* El aviso va dentro de la tarjeta y no con say(): la burbuja tiene z-index 5 y
    el overlay 10, así que un mensaje por say() con la tienda abierta queda tapado. */
 function openShop(aviso){
-  const rows = FOODS.filter(f => f.price > 0).map(f => {
+  const rows = FOODS.map(f => {
     const alcanza = state.coins >= f.price;
     return `
       <div class="menu-item ${alcanza ? '' : 'locked'}" data-buy="${f.id}">
@@ -799,7 +826,7 @@ function openShop(aviso){
           <b>${escapeHtml(f.name)}</b>
           <small>${foodDesc(f)} · tienes ${foodStock(f.id)}</small>
         </div>
-        <span class="menu-record">${coinsLabel(f.price)}</span>
+        <span class="menu-record">${f.price === 0 ? 'Gratis' : coinsLabel(f.price)}</span>
       </div>`;
   }).join('');
 

@@ -256,10 +256,15 @@ Las monedas no pueden derivarse de la felicidad ya topada: si se hace así, subi
 el premio de una arrastra al de la otra y el tope de la felicidad le pone techo
 al dinero.
 
-`state.pantry` guarda **porciones compradas** por comida. El bocadillo simple
-(`price: 0`) es gratis e infinito **a propósito**: es la red de seguridad, si
-toda la comida costara, un jugador sin monedas y con la mascota hambrienta
-quedaría sin salida. `btnFeed()` cae solo al bocadillo si lo elegido se acabó.
+`state.pantry` guarda **porciones** por comida. Se arranca con
+`FOOD_START_STOCK = 5` de bocadillo simple (`freshState()`) y de ahí en más se
+repone en la tienda como cualquier otra comida — ya no es infinito. Sigue
+costando 0 monedas **a propósito**: es la red de seguridad, si toda la comida
+costara monedas de verdad, un jugador sin plata y con la mascota hambrienta
+quedaría sin salida; "comprarlo" gratis en la tienda sigue siendo siempre
+posible. `btnFeed()` cae solo al bocadillo si lo elegido se acabó, y si el
+bocadillo también está en 0 avisa que hay que pasar por la tienda en vez de
+alimentar de la nada.
 
 El modelo viejo era `unlockedFoods` (desbloqueo permanente), pero nada en el
 código lo llenaba nunca: las comidas 2 y 3 eran inalcanzables. `loadState()`
@@ -281,6 +286,11 @@ ilustración terminada, y aplicarles un wash de color por etapa pintaba también
 sobre la cara. Por eso `PALETTES` quedó reducido a la entrada `egg`, y por eso
 mismo `drawSprite()` solo usa `stage` para decidir si dibuja el huevo o el
 sprite: entre las dos etapas que quedan no hay ninguna otra diferencia visual.
+
+El huevo se tambalea muy poco, un ciclo por segundo (`EGG_WOBBLE_PERIOD_MS`/
+`EGG_WOBBLE_MAX_RAD` en `drawEgg()`): rotación pura sobre su propio centro con
+`Math.sin(performance.now()/…)`, sin estado propio — `render()` ya redibuja
+cada frame, así que no hace falta enganchar nada al loop.
 
 ## Minijuegos
 
