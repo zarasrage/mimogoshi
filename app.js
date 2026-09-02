@@ -326,6 +326,12 @@ const DECAY_PER_HOUR = {
 };
 const ENERGY_RECOVER_PER_HOUR = 100 / 60;  // durmiendo: barra entera en 1 hora real
 
+/* Probabilidad de que aparezca caca, por hora de juego. Calibrada para que la
+   primera aparezca en mediana a los ~30 minutos reales (no compuesta como
+   sickChance() porque nunca hace falta más de un evento — una vez que hay
+   caca, state.poop ya no vuelve a tirar el dado). */
+const POOP_CHANCE_PER_HOUR = 0.023;
+
 /* Bajo estos valores la barra entra en "apuro" y se vacía más rápido — el bajón
    se acelera solo cuando ya va mal. */
 const DISTRESS_AT = { hunger: 20, happiness: 20, hygiene: 20, energy: 10 };
@@ -461,7 +467,7 @@ function applyDecay(hours){
     ? hours * ENERGY_RECOVER_PER_HOUR
     : -hours * decayRate('energy', state.energy)));
 
-  if (!state.poop && Math.random() < hours * 0.35) state.poop = true;
+  if (!state.poop && Math.random() < hours * POOP_CHANCE_PER_HOUR) state.poop = true;
   /* La higiene NO baja sola: solo se ensucia mientras haya caca sin limpiar. Así
      limpiar deja de ser un trámite periódico y pasa a ser la respuesta a algo
      que el jugador ve en pantalla. */

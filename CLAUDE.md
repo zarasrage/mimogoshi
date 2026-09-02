@@ -222,12 +222,16 @@ entera queda en blanco. Si agregas una llamada nueva, protégela igual.
 especie que ya no existe, cae a `DEFAULT_SPECIES` en vez de quedarse sin sprite.
 Hay que mantener eso al borrar o renombrar especies.
 
-Simulación por ticks (`TICK_MS = 4000`, `MS_PER_GAME_HOUR = 45000`): hambre,
+Simulación por ticks (`TICK_MS = 4000`, `MS_PER_GAME_HOUR = 60000`): hambre,
 felicidad, energía, higiene y salud bajan solas; `catchUp()` recupera el tiempo
 que pasó con la pestaña cerrada (con tope de 3 días).
 
+La caca aparece con `POOP_CHANCE_PER_HOUR` (0.023 por hora de juego): calibrada
+para que la primera salga en mediana a los ~30 minutos reales. La higiene no
+baja sola — solo mientras haya caca sin limpiar (ver `DECAY_PER_HOUR.hygiene`).
+
 - **Etapas** (`ALL_STAGES`): solo dos, `egg → grown` (`EGG_HOURS = 0.1`, o sea
-  ~4.5 s reales de huevo). Había una escalera de edades
+  ~6 s reales de huevo). Había una escalera de edades
   (bebé/niño/adolescente/adulto bueno-neutro-malo) pero **no existía arte por
   edad**: cada especie tiene un solo diseño, así que las cinco etapas se veían
   idénticas. `loadState()` mapea a `grown` cualquier etapa que ya no exista, si
