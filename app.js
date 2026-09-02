@@ -319,7 +319,7 @@ const RED_ZONE = 25;           // bajo esto, ni alimentarlo/jugar lo despierta
    para que se lea directo cuánto tarda cada barra en vaciarse entera; con
    MS_PER_GAME_HOUR = 60000, una hora real son 60 horas de juego. */
 const DECAY_PER_HOUR = {
-  hunger:    100 / 180,   // 180 h de juego = 3 horas reales
+  hunger:    100 / 4,     // 4 h de juego = 4 minutos reales
   happiness: 100 / 300,   // 300 h de juego = 5 horas reales
   energy:    100 / 960,   // 960 h de juego = 16 horas reales
   hygiene:   100 / 120,   // 120 h de juego = 2 horas reales, pero solo si hay caca
@@ -327,10 +327,10 @@ const DECAY_PER_HOUR = {
 const ENERGY_RECOVER_PER_HOUR = 100 / 60;  // durmiendo: barra entera en 1 hora real
 
 /* Probabilidad de que aparezca caca, por hora de juego. Calibrada para que la
-   primera aparezca en mediana a los ~30 minutos reales (no compuesta como
-   sickChance() porque nunca hace falta más de un evento — una vez que hay
-   caca, state.poop ya no vuelve a tirar el dado). */
-const POOP_CHANCE_PER_HOUR = 0.023;
+   primera aparezca en mediana a la hora real (no compuesta como sickChance()
+   porque nunca hace falta más de un evento — una vez que hay caca,
+   state.poop ya no vuelve a tirar el dado). */
+const POOP_CHANCE_PER_HOUR = 0.0115;
 
 /* Bajo estos valores la barra entra en "apuro" y se vacía más rápido — el bajón
    se acelera solo cuando ya va mal. */
@@ -340,7 +340,7 @@ const DISTRESS_MULT = 1.5;
 /* La salud tiene dos causas de daño independientes que se suman: que alguna de
    las otras barras esté bajo HEALTH_RISK_AT, y estar enfermo. Con las dos a la
    vez la salud cae al doble (una hora real de 100 a 0). */
-const HEALTH_RISK_AT = 50;
+const HEALTH_RISK_AT = 30;
 const HEALTH_DECAY_PER_HOUR = 100 / 120;   // 2 horas reales por cada causa
 const HEALTH_RECOVER_PER_HOUR = 1.5;       // solo si no hay ninguna causa activa
 
@@ -591,10 +591,10 @@ const CARE_STATS = ['hunger', 'happiness', 'energy', 'hygiene'];
 
 /* Los colores tienen que coincidir con lo que de verdad pasa, si no el jugador
    no puede leer el estado de un vistazo. Antes eran 55 y 25, que no correspondían
-   a nada: el daño a la salud empieza en HEALTH_RISK_AT (50) y la barra se vacía
+   a nada: el daño a la salud empieza en HEALTH_RISK_AT y la barra se vacía
    1.5x más rápido bajo su DISTRESS_AT (20, o 10 en energía). La salud se mide con
    su propio umbral: bajo SICK_LOW_HEALTH_AT la probabilidad de enfermarse salta
-   de 0.002 a 0.1 por hora. */
+   de SICK_CHANCE_PER_HOUR a SICK_CHANCE_PER_HOUR_LOW. */
 function statColor(v, stat){
   if (stat === 'health'){
     if (v < 25) return 'var(--bad)';

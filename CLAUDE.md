@@ -226,9 +226,9 @@ Simulación por ticks (`TICK_MS = 4000`, `MS_PER_GAME_HOUR = 60000`): hambre,
 felicidad, energía, higiene y salud bajan solas; `catchUp()` recupera el tiempo
 que pasó con la pestaña cerrada (con tope de 3 días).
 
-La caca aparece con `POOP_CHANCE_PER_HOUR` (0.023 por hora de juego): calibrada
-para que la primera salga en mediana a los ~30 minutos reales. La higiene no
-baja sola — solo mientras haya caca sin limpiar (ver `DECAY_PER_HOUR.hygiene`).
+La caca aparece con `POOP_CHANCE_PER_HOUR` (0.0115 por hora de juego): calibrada
+para que la primera salga en mediana a la hora real. La higiene no baja sola —
+solo mientras haya caca sin limpiar (ver `DECAY_PER_HOUR.hygiene`).
 
 - **Etapas** (`ALL_STAGES`): solo dos, `egg → grown` (`EGG_HOURS = 0.1`, o sea
   ~6 s reales de huevo). Había una escalera de edades
