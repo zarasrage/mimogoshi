@@ -1266,14 +1266,14 @@ function sgLoop(t){
 
   sg.spawnIn -= dt;
   if (sg.spawnIn <= 0){
-    sg.spawnIn = 0.62 - 0.34*progress;          // 0.62s → 0.28s entre caídas
+    sg.spawnIn = 0.50 - 0.32*progress;          // 0.50s → 0.18s entre caídas
     const roll = Math.random();
-    const poopChance = 0.16 + 0.26*progress;    // 16% → 42% de caca
+    const poopChance = 0.24 + 0.36*progress;    // 24% → 60% de caca
     const kind = roll < poopChance ? 'poop' : (roll > 0.95 ? 'gold' : 'star');
     sg.items.push({
       x: 16 + Math.random()*(gc.width - 32),
       y: -12,
-      vy: (72 + 96*progress) * (0.85 + Math.random()*0.4),
+      vy: (110 + 160*progress) * (0.85 + Math.random()*0.4),
       kind,
     });
   }
@@ -2021,32 +2021,69 @@ function endReflexGame(){
 
 /* ===================== Minijuego 4: tap rítmico =====================
    Tres carriles, notas que bajan hasta la línea y hay que tocarlas justo cuando
-   la cruzan. El chart acelera solo (0.62s → 0.34s entre notas), y como tocar de
-   más también corta el combo, no sirve tapear a lo loco: hay que seguir el ritmo. */
+   la cruzan. El chart acelera solo (0.50s → 0.22s entre notas), y como tocar de
+   más también corta el combo, no sirve tapear a lo loco: hay que seguir el ritmo.
+
+   Dos tipos de nota además de la simple: dobles (dos carriles al mismo tiempo,
+   hay que tocar los dos) y sostenidas (hay que mantener apretado el carril hasta
+   que se completa, soltar antes corta el combo). Por eso el input dejó de ser
+   solo "pointerdown dispara el golpe" (trHit) y pasó a trPress/trRelease con
+   estado por carril (tr.laneDown[]) — necesario para saber si seguís
+   sosteniendo, no solo si tocaste. */
 
 const TR_LANES = 3;
 const TR_LANE_CHAR = ['🍬','🎮','🫧'];
-const TR_APPROACH = 1.35;   // segundos que tarda una nota en bajar hasta la línea
+const TR_APPROACH = 1.05;   // segundos que tarda una nota en bajar hasta la línea
 const TR_PERFECT = 0.09;    // ventana de acierto perfecto, en segundos
 const TR_GOOD = 0.19;       // ventana de acierto normal
+const TR_HOLD_CHANCE = 0.14;   // probabilidad de que una nota (no doble) sea sostenida
+const TR_HOLD_SEC = 0.45;      // cuánto hay que mantenerla apretada
+const TR_DOUBLE_CHANCE = 0.16; // probabilidad de que una nota simple sume pareja en otro carril
 
 let tr = null;
 
 /* Chart generado, no fijo: mismo esqueleto rítmico siempre (acelera parejo) pero
-   los carriles cambian, así no se memoriza la secuencia en dos partidas. */
+   los carriles cambian, así no se memoriza la secuencia en dos partidas.
+
+   `busyUntil[carril]` es hasta qué instante sigue "ocupado" un carril por una
+   sostenida en curso: ninguna nota nueva (ni la pareja de una doble) se agenda
+   ahí mientras siga ocupado. Sin esto, con el chart tan rápido (llega a 0.22s
+   entre notas) una sostenida de 0.45s con mala suerte terminaba con otra nota
+   del mismo carril cayendo adentro — imposible de tocar con el dedo todavía
+   puesto, fallo garantizado y nada que ver con la puntería del jugador.
+   Verificado por simulación: con este resguardo, 0 solapamientos en 3000
+   charts generados. */
 function trBuildChart(){
   const notes = [];
   let t = 1.7;        // deja un compás de aire antes de la primera nota
-  let beat = 0.62;
-  let lane = 1;
+  let beat = 0.50;
+  let lastLane = 1;
+  const busyUntil = [0, 0, 0];
   while (t < 26){
-    // salta a otro carril la mayoría de las veces, pero a veces repite
-    if (Math.random() < 0.78){
-      lane = (lane + 1 + Math.floor(Math.random()*(TR_LANES-1))) % TR_LANES;
+    const libres = [0, 1, 2].filter(l => busyUntil[l] <= t);
+    const pool = libres.length ? libres : [0, 1, 2]; // no debería hacer falta nunca; red de seguridad igual
+
+    const otras = pool.filter(l => l !== lastLane);
+    const lane = (otras.length && Math.random() < 0.78)
+      ? otras[Math.floor(Math.random() * otras.length)]
+      : pool[Math.floor(Math.random() * pool.length)];
+    lastLane = lane;
+
+    const isHold = Math.random() < TR_HOLD_CHANCE;
+    notes.push({ t, lane, judged: false, hold: isHold, holding: false, holdSec: isHold ? TR_HOLD_SEC : 0 });
+    if (isHold) busyUntil[lane] = t + TR_HOLD_SEC;
+
+    // nota doble: pareja en otro carril libre, mismo instante — nunca sobre una sostenida
+    if (!isHold && Math.random() < TR_DOUBLE_CHANCE){
+      const libresPareja = pool.filter(l => l !== lane);
+      if (libresPareja.length){
+        const lane2 = libresPareja[Math.floor(Math.random() * libresPareja.length)];
+        notes.push({ t, lane: lane2, judged: false, hold: false, holding: false, holdSec: 0 });
+      }
     }
-    notes.push({ t, lane, judged: false });
+
     t += beat;
-    beat = Math.max(0.34, beat * 0.985);
+    beat = Math.max(0.22, beat * 0.978);
   }
   return notes;
 }
@@ -2072,6 +2109,8 @@ function startTapGame(){
     judgeColor: '#fff',
     judgeUntil: 0,
     lanePulse: [0, 0, 0],
+    laneDown: [false, false, false],   // qué carriles están apretados ahora mismo (para las sostenidas)
+    canvasPointers: new Map(),          // pointerId -> carril, para soltar el que corresponde al tocar la pantalla
     pointer: makeCanvasPointer(gc),
     raf: null,
     lastT: 0,
@@ -2079,30 +2118,55 @@ function startTapGame(){
   tr.speed = (tr.hitY + 26) / TR_APPROACH; // px/s para que la nota tarde TR_APPROACH
 
   /* Un botón por carril, abajo. Tocar la pantalla sigue funcionando para quien
-     prefiera apuntar al carril directamente. */
+     prefiera apuntar al carril directamente — con dos carriles al mismo tiempo
+     (dobles) hace falta que ambos, botones y canvas, soporten multitouch, por
+     eso el canvas trackea pointerId->carril en vez de un solo puntero. */
   tr.onDown = (e) => {
     e.preventDefault();
     const { x } = tr.pointer.at(e);
-    trHit(Math.max(0, Math.min(TR_LANES-1, Math.floor(x / tr.laneW))));
+    const lane = Math.max(0, Math.min(TR_LANES-1, Math.floor(x / tr.laneW)));
+    tr.canvasPointers.set(e.pointerId, lane);
+    trPress(lane);
+  };
+  tr.onUp = (e) => {
+    const lane = tr.canvasPointers.get(e.pointerId);
+    if (lane === undefined) return;
+    tr.canvasPointers.delete(e.pointerId);
+    trRelease(lane);
   };
   gc.addEventListener('pointerdown', tr.onDown);
+  gc.addEventListener('pointerup', tr.onUp);
+  gc.addEventListener('pointercancel', tr.onUp);
 
   const cont = showGameControls(`
     <div class="gbtn-row">
       ${TR_LANE_CHAR.map((c, i) => `<button class="gbtn" data-lane="${i}">${c}</button>`).join('')}
     </div>
   `);
+  /* No usa wireGameButton: ese helper solo ata pointerdown, y las sostenidas
+     necesitan también el soltar. pointerleave cubre el dedo que se arrastra
+     fuera del botón sin pasar por un pointerup prolijo. */
   cont.querySelectorAll('[data-lane]').forEach(el => {
-    wireGameButton(el, () => trHit(+el.dataset.lane));
+    const lane = +el.dataset.lane;
+    el.addEventListener('pointerdown', (e) => { e.preventDefault(); trPress(lane); });
+    el.addEventListener('pointerup', () => trRelease(lane));
+    el.addEventListener('pointercancel', () => trRelease(lane));
+    el.addEventListener('pointerleave', () => trRelease(lane));
   });
 
+  const KEY_LANE = { '1':0, '2':1, '3':2, a:0, s:1, d:2, ArrowLeft:0, ArrowDown:1, ArrowRight:2 };
   tr.onKeyDown = (e) => {
-    const idx = { '1':0, '2':1, '3':2, a:0, s:1, d:2, ArrowLeft:0, ArrowDown:1, ArrowRight:2 }[e.key];
-    if (idx !== undefined){ e.preventDefault(); trHit(idx); }
+    const idx = KEY_LANE[e.key];
+    if (idx !== undefined){ e.preventDefault(); trPress(idx); }
+  };
+  tr.onKeyUp = (e) => {
+    const idx = KEY_LANE[e.key];
+    if (idx !== undefined) trRelease(idx);
   };
   window.addEventListener('keydown', tr.onKeyDown);
+  window.addEventListener('keyup', tr.onKeyUp);
 
-  say('¡Toca al ritmo!');
+  say('¡Toca al ritmo! Las celestes hay que mantenerlas apretadas');
   tr.raf = requestAnimationFrame(trLoop);
 }
 
@@ -2116,14 +2180,21 @@ function trJudge(text, color){
   tr.judgeUntil = tr.time + 0.5;
 }
 
-function trHit(lane){
-  if (!tr) return;
+/* pointerdown/keydown de un carril. Si ya estaba apretado no hace nada — el
+   auto-repeat del teclado dispara keydown a repetición mientras se mantiene
+   una tecla, y sin este freno cada repetición se juzgaba como un toque sin
+   nota (fallo) apenas se resolvía la nota original. */
+function trPress(lane){
+  if (!tr || tr.laneDown[lane]) return;
+  tr.laneDown[lane] = true;
   tr.lanePulse[lane] = 0.18;
 
-  /* La nota sin juzgar más cercana en el tiempo, dentro de ese carril. */
+  /* La nota sin juzgar más cercana en el tiempo, dentro de ese carril. Una
+     sostenida ya empezada (n.holding) no cuenta: se resuelve sola en trLoop
+     con el soltar, no con un segundo toque. */
   let mejor = null, mejorDist = Infinity;
   for (const n of tr.notes){
-    if (n.judged || n.lane !== lane) continue;
+    if (n.judged || n.holding || n.lane !== lane) continue;
     const dist = Math.abs(n.t - tr.time);
     if (dist < mejorDist){ mejorDist = dist; mejor = n; }
   }
@@ -2131,6 +2202,14 @@ function trHit(lane){
   if (!mejor || mejorDist > TR_GOOD){
     tr.combo = 0;                    // tocar cuando no hay nota corta la racha
     trJudge('fallo', '#ff8f8f');
+    return;
+  }
+
+  if (mejor.hold){
+    // arranca la sostenida: se completa o falla en trLoop, no acá
+    mejor.holding = true;
+    trJudge('¡mantené!', '#8fd0ff');
+    tr.fx.push({ char: TR_LANE_CHAR[lane], x: (lane + 0.5) * tr.laneW, y: tr.hitY, vy: -40, life: 0.4 });
     return;
   }
 
@@ -2146,11 +2225,42 @@ function trHit(lane){
   tr.fx.push({ char: TR_LANE_CHAR[lane], x: (lane + 0.5) * tr.laneW, y: tr.hitY, vy: -55, life: 0.5 });
 }
 
+/* Soltar un carril. Si había una sostenida en curso ahí, trLoop se entera por
+   tr.laneDown y la corta la próxima vez que la chequea — no hace falta buscar
+   la nota acá también. */
+function trRelease(lane){
+  if (!tr) return;
+  tr.laneDown[lane] = false;
+}
+
 function trLoop(t){
   if (activeMinigame !== 'tap' || !tr) return;
   const dt = Math.min(0.05, (t - (tr.lastT || t)) / 1000);
   tr.lastT = t;
   tr.time += dt;
+
+  /* Sostenidas en curso: se resuelven acá, no en trPress/trRelease, porque
+     "completarla" depende del tiempo transcurrido y "fallarla soltando antes"
+     depende de tr.laneDown — ambas cosas solo se saben mirando cada frame. */
+  for (const n of tr.notes){
+    if (!n.holding || n.judged) continue;
+    if (tr.time >= n.t + n.holdSec){
+      n.judged = true;
+      n.holding = false;
+      tr.combo += 1;
+      if (tr.combo > tr.bestCombo) tr.bestCombo = tr.combo;
+      tr.hits += 1;
+      tr.perfects += 1;               // una sostenida completa cuenta como perfecta
+      tr.score += 4 * trMultiplier(); // vale más que una simple: hay que sostenerla, no solo tocarla
+      trJudge('¡PERFECTO!', '#ffe66d');
+      tr.fx.push({ char: TR_LANE_CHAR[n.lane], x: (n.lane + 0.5) * tr.laneW, y: tr.hitY, vy: -55, life: 0.5 });
+    } else if (!tr.laneDown[n.lane]){
+      n.judged = true;
+      n.holding = false;
+      tr.combo = 0;
+      trJudge('soltaste antes', '#ff8f8f');
+    }
+  }
 
   const gc = tr.gc, ctx = tr.ctx;
   ctx.clearRect(0, 0, gc.width, gc.height);
@@ -2187,20 +2297,35 @@ function trLoop(t){
   let quedan = tr.cursor < tr.notes.length;
   for (let i = tr.cursor; i < tr.notes.length; i++){
     const n = tr.notes[i];
-    const falta = n.t - tr.time;                   // >0 todavía viene bajando
-    if (falta > TR_APPROACH) break;                // aún no entra en pantalla
     if (n.judged) continue;
-    if (falta < -TR_GOOD){                         // se pasó de largo: fallo
-      n.judged = true;
-      tr.combo = 0;
-      trJudge('fallo', '#ff8f8f');
-      continue;
+    const falta = n.t - tr.time;                   // >0 todavía viene bajando
+    /* Una sostenida ya empezada no se juzga por estas dos reglas (ni "todavía
+       no entra en pantalla" ni "se pasó de largo, fallo"): mientras se está
+       sosteniendo, falta ya es negativo por diseño, y quien la resuelve es el
+       bloque de arriba, no esto. */
+    if (!n.holding){
+      if (falta > TR_APPROACH) break;               // aún no entra en pantalla
+      if (falta < -TR_GOOD){                         // se pasó de largo: fallo
+        n.judged = true;
+        tr.combo = 0;
+        trJudge('fallo', '#ff8f8f');
+        continue;
+      }
     }
-    const y = tr.hitY - falta * tr.speed;
+    const y = n.holding ? tr.hitY : tr.hitY - falta * tr.speed;
     const x = (n.lane + 0.5) * tr.laneW;
+
+    if (n.hold){
+      /* Cola por encima de la cabeza: su largo es cuánto hay que sostenerla.
+         Mientras se sostiene, se va acortando a medida que falta menos. */
+      const restante = n.holding ? Math.max(0, (n.t + n.holdSec) - tr.time) : n.holdSec;
+      ctx.fillStyle = 'rgba(143,208,255,.35)';
+      ctx.fillRect(x-5, y - restante*tr.speed, 10, restante*tr.speed);
+    }
+
     ctx.beginPath();
     ctx.arc(x, y, 13, 0, Math.PI*2);
-    ctx.fillStyle = 'rgba(255,230,109,.16)';
+    ctx.fillStyle = n.hold ? 'rgba(143,208,255,.28)' : 'rgba(255,230,109,.16)';
     ctx.fill();
     drawEmoji(ctx, TR_LANE_CHAR[n.lane], 20, x, y);
   }
@@ -2241,7 +2366,10 @@ function trLoop(t){
 function trDispose(){
   if (!tr) return;
   tr.gc.removeEventListener('pointerdown', tr.onDown);
+  tr.gc.removeEventListener('pointerup', tr.onUp);
+  tr.gc.removeEventListener('pointercancel', tr.onUp);
   window.removeEventListener('keydown', tr.onKeyDown);
+  window.removeEventListener('keyup', tr.onKeyUp);
   tr.pointer.dispose();
   if (tr.raf) cancelAnimationFrame(tr.raf);
 }

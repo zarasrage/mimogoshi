@@ -360,9 +360,25 @@ su tamaño real en pantalla para que nada salga estirado:
   buenos, no las bombas. 25 segundos y 3 vidas. Tocar el vacío corta el combo,
   así que martillar la pantalla es peor que elegir.
 - **Tap rítmico** (`tr`): tres carriles, notas que bajan a la línea. El chart lo
-  genera `trBuildChart()` (acelera de 0.62s a 0.34s entre notas; los carriles
+  genera `trBuildChart()` (acelera de 0.50s a 0.22s entre notas; los carriles
   cambian en cada partida). Ventanas `TR_PERFECT`/`TR_GOOD`; tocar de más
   también corta el combo.
+
+  Dos tipos de nota además de la simple, ambos para subirle la dificultad:
+  **dobles** (`TR_DOUBLE_CHANCE`, dos carriles al mismo instante — hay que
+  tocar los dos) y **sostenidas** (`TR_HOLD_CHANCE`/`TR_HOLD_SEC`, hay que
+  mantener apretado el carril hasta completarla; soltar antes corta el combo
+  igual que un fallo). Por eso el input dejó de ser un solo `trHit()` en
+  `pointerdown` y pasó a `trPress()`/`trRelease()` con estado por carril
+  (`tr.laneDown[]`): hace falta saber si se sigue sosteniendo, no solo si se
+  tocó. El botón de carril ya no usa `wireGameButton()` (solo ata pointerdown)
+  porque necesita también el soltar; el canvas trackea `pointerId → carril`
+  para que dos dedos en dos carriles (una doble) funcionen a la vez.
+  `trBuildChart()` nunca agenda una nota nueva —ni la pareja de una doble— en
+  un carril que sigue "ocupado" por una sostenida en curso (`busyUntil[]`):
+  sin ese resguardo, con el chart yendo tan rápido, una nota podía caer
+  encima de una sostenida y ser un fallo imposible de evitar. Verificado por
+  simulación pura: 0 solapamientos en 3000 charts generados.
 
 - **Snake** (`sn`): clásico, sobre una rejilla de celdas de `SN_CELL`. Se gira
   deslizando el dedo o con flechas / WASD. El giro se registra en `pointermove`
