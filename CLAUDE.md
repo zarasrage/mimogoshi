@@ -380,6 +380,23 @@ su tamaño real en pantalla para que nada salga estirado:
   encima de una sostenida y ser un fallo imposible de evitar. Verificado por
   simulación pura: 0 solapamientos en 3000 charts generados.
 
+  Tiene sonido y pulso visual, los dos primeros minijuegos en tenerlos:
+  - **Sonido**: sintetizado con Web Audio (`beep()`, en las utilidades
+    compartidas de minijuegos), no archivos — un tono por carril
+    (`TR_LANE_FREQ`, acorde do-mi-sol) que además de feedback ayuda a
+    distinguir de oído qué carril sonó. El de "perfecto" es el mismo tono una
+    quinta arriba (×1.5) y más corto; fallar suena un tono grave (`trSfxFail`)
+    sea por tocar vacío, soltar una sostenida antes de tiempo o dejar pasar
+    una nota sin tocarla. El `AudioContext` se crea recién al primer `beep()`
+    (no antes: los navegadores lo bloquean si no hay un gesto del usuario
+    previo, y acá siempre lo hay porque hace falta tocar algo para llegar a
+    jugar) y queda vivo para toda la sesión, no solo para este minijuego.
+  - **Pulso**: `tr.beatTimes` son los instantes únicos del chart (una doble
+    cuenta una sola vez); cuando `tr.time` cruza uno, la pantalla y la línea
+    de acierto laten un instante — sin importar si el jugador tocó o no, es
+    el metrónomo visual del chart, no feedback de puntería (eso ya lo cubren
+    los flashes por carril y los sonidos).
+
 - **Snake** (`sn`): clásico, sobre una rejilla de celdas de `SN_CELL`. Se gira
   deslizando el dedo o con flechas / WASD. El giro se registra en `pointermove`
   y no al soltar, para poder encadenar dos curvas sin levantar el dedo. `snTurn()`

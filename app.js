@@ -1018,6 +1018,45 @@ function drawEmoji(ctx, char, size, x, y){
   ctx.drawImage(emojiSprite(char, size), Math.round(x - size/2), Math.round(y - size/2));
 }
 
+/* Sonido sintetizado con Web Audio, sin archivos: encaja con que todo el resto
+   del juego ya es procedural (animaciones, huevo) y no depende de conseguir ni
+   licenciar ningún asset. El AudioContext se crea recién al primer beep() —
+   los navegadores lo bloquean si se crea antes de un gesto del usuario, y acá
+   el primer beep siempre llega después de tocar algo (empezar un minijuego). */
+let audioCtx = null;
+
+function getAudioCtx(){
+  if (!audioCtx){
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    audioCtx = new AC();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+/* Un tono corto con caída exponencial (así no "clickea" al cortar de golpe).
+   Envuelto en try/catch como el resto de las cosas que pueden fallar por
+   políticas del navegador — un beep que no suena no puede romper el juego. */
+function beep(freq, durationMs, type = 'sine', vol = 0.15){
+  try {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    const now = ctx.currentTime;
+    const dur = durationMs / 1000;
+    gain.gain.setValueAtTime(vol, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    osc.start(now);
+    osc.stop(now + dur);
+  } catch (e) { /* audio bloqueado o no soportado: no pasa nada, sigue mudo */ }
+}
+
 /* getBoundingClientRect() obliga al navegador a recalcular el layout. Llamarlo en
    cada pointermove es un recálculo por frame, así que se cachea al empezar la
    partida y solo se refresca si la ventana cambia de tamaño. */
@@ -2040,6 +2079,21 @@ const TR_HOLD_CHANCE = 0.14;   // probabilidad de que una nota (no doble) sea so
 const TR_HOLD_SEC = 0.45;      // cuánto hay que mantenerla apretada
 const TR_DOUBLE_CHANCE = 0.16; // probabilidad de que una nota simple sume pareja en otro carril
 
+/* Un tono por carril (acorde do-mi-sol, C5/E5/G5): además de servir de
+   feedback de acierto/fallo, ayuda a distinguir de oído qué carril sonó sin
+   mirar la pantalla. El de "perfecto" es el mismo tono una quinta más arriba
+   (×1.5) y más corto/agudo — se nota la diferencia con "bien" sin necesitar
+   un sonido totalmente distinto. */
+const TR_LANE_FREQ = [523.25, 659.25, 783.99];
+
+function trSfxHit(lane, perfecto){
+  const base = TR_LANE_FREQ[lane];
+  beep(perfecto ? base * 1.5 : base, perfecto ? 90 : 70, 'square', perfecto ? 0.16 : 0.11);
+}
+function trSfxFail(){
+  beep(150, 130, 'sawtooth', 0.13);
+}
+
 let tr = null;
 
 /* Chart generado, no fijo: mismo esqueleto rítmico siempre (acelera parejo) pero
@@ -2111,11 +2165,19 @@ function startTapGame(){
     lanePulse: [0, 0, 0],
     laneDown: [false, false, false],   // qué carriles están apretados ahora mismo (para las sostenidas)
     canvasPointers: new Map(),          // pointerId -> carril, para soltar el que corresponde al tocar la pantalla
+    /* Pulso de fondo sincronizado con el chart, no con los aciertos: late en
+       cada instante que trae nota(s) (una doble cuenta una sola vez, por eso
+       son los tiempos únicos) aunque el jugador no toque nada — es lo que
+       vende la sensación de ritmo incluso mirando de lejos. */
+    beatTimes: [],
+    beatCursor: 0,
+    pulse: 0,
     pointer: makeCanvasPointer(gc),
     raf: null,
     lastT: 0,
   };
   tr.speed = (tr.hitY + 26) / TR_APPROACH; // px/s para que la nota tarde TR_APPROACH
+  tr.beatTimes = [...new Set(tr.notes.map(n => n.t))].sort((a, b) => a - b);
 
   /* Un botón por carril, abajo. Tocar la pantalla sigue funcionando para quien
      prefiera apuntar al carril directamente — con dos carriles al mismo tiempo
@@ -2202,6 +2264,7 @@ function trPress(lane){
   if (!mejor || mejorDist > TR_GOOD){
     tr.combo = 0;                    // tocar cuando no hay nota corta la racha
     trJudge('fallo', '#ff8f8f');
+    trSfxFail();
     return;
   }
 
@@ -2210,6 +2273,7 @@ function trPress(lane){
     mejor.holding = true;
     trJudge('¡mantené!', '#8fd0ff');
     tr.fx.push({ char: TR_LANE_CHAR[lane], x: (lane + 0.5) * tr.laneW, y: tr.hitY, vy: -40, life: 0.4 });
+    trSfxHit(lane, false);
     return;
   }
 
@@ -2223,6 +2287,7 @@ function trPress(lane){
   tr.score += (perfecto ? 3 : 1) * trMultiplier();
   trJudge(perfecto ? '¡PERFECTO!' : 'bien', perfecto ? '#ffe66d' : '#c8f2c2');
   tr.fx.push({ char: TR_LANE_CHAR[lane], x: (lane + 0.5) * tr.laneW, y: tr.hitY, vy: -55, life: 0.5 });
+  trSfxHit(lane, perfecto);
 }
 
 /* Soltar un carril. Si había una sostenida en curso ahí, trLoop se entera por
@@ -2254,16 +2319,31 @@ function trLoop(t){
       tr.score += 4 * trMultiplier(); // vale más que una simple: hay que sostenerla, no solo tocarla
       trJudge('¡PERFECTO!', '#ffe66d');
       tr.fx.push({ char: TR_LANE_CHAR[n.lane], x: (n.lane + 0.5) * tr.laneW, y: tr.hitY, vy: -55, life: 0.5 });
+      trSfxHit(n.lane, true);
     } else if (!tr.laneDown[n.lane]){
       n.judged = true;
       n.holding = false;
       tr.combo = 0;
       trJudge('soltaste antes', '#ff8f8f');
+      trSfxFail();
     }
   }
 
+  /* Pulso de fondo: uno por cada instante único del chart, sin importar si el
+     jugador acertó — es el "metrónomo visual", no feedback de puntería. */
+  while (tr.beatCursor < tr.beatTimes.length && tr.beatTimes[tr.beatCursor] <= tr.time){
+    tr.pulse = 1;
+    tr.beatCursor++;
+  }
+  if (tr.pulse > 0) tr.pulse = Math.max(0, tr.pulse - dt * 5);
+
   const gc = tr.gc, ctx = tr.ctx;
   ctx.clearRect(0, 0, gc.width, gc.height);
+
+  if (tr.pulse > 0){
+    ctx.fillStyle = `rgba(255,255,255,${tr.pulse * 0.10})`;
+    ctx.fillRect(0, 0, gc.width, gc.height);
+  }
 
   for (let i = 0; i < TR_LANES; i++){
     if (tr.lanePulse[i] > 0) tr.lanePulse[i] -= dt;
@@ -2278,12 +2358,15 @@ function trLoop(t){
   }
 
   /* Franja de acierto: es exactamente la ventana "bien", así el jugador ve
-     dónde tiene que estar la nota al tocar en vez de adivinarlo. */
+     dónde tiene que estar la nota al tocar en vez de adivinarlo. La línea se
+     engrosa con el pulso: es el mismo "metrónomo" de arriba, solo que acá se
+     ve justo donde hay que estar mirando. */
   const banda = TR_GOOD * tr.speed;
   ctx.fillStyle = 'rgba(255,230,109,.10)';
   ctx.fillRect(0, tr.hitY - banda, gc.width, banda*2);
-  ctx.fillStyle = 'rgba(255,230,109,.55)';
-  ctx.fillRect(0, tr.hitY - 1, gc.width, 2);
+  ctx.fillStyle = `rgba(255,230,109,${0.55 + tr.pulse*0.4})`;
+  const grosor = 2 + tr.pulse*3;
+  ctx.fillRect(0, tr.hitY - grosor/2, gc.width, grosor);
   for (let i = 0; i < TR_LANES; i++){
     ctx.globalAlpha = 0.45;
     drawEmoji(ctx, TR_LANE_CHAR[i], 15, (i + 0.5)*tr.laneW, tr.hitY + 14);
@@ -2309,6 +2392,7 @@ function trLoop(t){
         n.judged = true;
         tr.combo = 0;
         trJudge('fallo', '#ff8f8f');
+        trSfxFail();
         continue;
       }
     }
