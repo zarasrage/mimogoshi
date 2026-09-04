@@ -2127,8 +2127,16 @@ function endReflexGame(){
 
 const TR_LANES = 3;
 const TR_LANE_CHAR = ['🍬','🎮','🫧'];
-const TR_PERFECT = 0.09;    // ventana de acierto perfecto, en segundos
-const TR_GOOD = 0.19;       // ventana de acierto normal
+const TR_PERFECT = 0.09;      // ventana de acierto perfecto, en segundos (simétrica)
+/* La ventana de acierto normal es ASIMÉTRICA a propósito. Un toque adelantado
+   ahora suena cuantizado al pulso (trSfxHit recibe el `at` de la nota, no el
+   del toque) así que sonar antes de tiempo no tiene costo de audio — eso deja
+   margen para tolerar bastante adelanto. Uno atrasado no se puede cuantizar
+   hacia atrás (tone() ya pasó ese instante): siempre suena "ya", tarde de
+   verdad respecto de la pista. Por eso el lado tarde es más angosto: cuanto
+   más se lo achica, menos atraso audible le queda al peor caso aceptado. */
+const TR_GOOD_EARLY = 0.19;   // cuánto se puede tocar antes de la nota
+const TR_GOOD_LATE = 0.12;    // cuánto se puede tocar después: más angosto
 
 /* La grilla musical. Todo lo demás se deriva de acá: si se cambia el tempo,
    las sostenidas, la anticipación y el largo del chart se acomodan solos. */
@@ -2143,9 +2151,10 @@ const TR_CHART_BEATS = TR_CHART_BARS * TR_BEATS_PER_BAR;
 const TR_APPROACH = TR_BEAT_SEC * 3;    // una nota se ve venir tres pulsos antes
 const TR_HOLD_SEC = TR_BEAT_SEC * 2;    // una sostenida dura una blanca (dos pulsos)
 /* Dos notas más juntas que esto no pueden compartir carril: dos corcheas
-   seguidas quedan a media negra (0.19s) y la ventana de acierto mide TR_GOOD
-   (0.19s), así que en el mismo carril serían indistinguibles. Tres cuartos de
-   negra deja pasar el caso de negra a negra y bloquea el de corchea. */
+   seguidas quedan a media negra (0.19s) y el lado más ancho de la ventana de
+   acierto (TR_GOOD_EARLY, 0.19s) mide lo mismo, así que en el mismo carril
+   serían indistinguibles. Tres cuartos de negra deja pasar el caso de negra a
+   negra y bloquea el de corchea. */
 const TR_MIN_SAME_LANE_GAP = TR_BEAT_SEC * 0.75;
 
 /* Rampas de densidad {al empezar, al terminar}: esto es lo que reemplaza a la
@@ -2451,7 +2460,11 @@ function trPress(lane){
     if (dist < mejorDist){ mejorDist = dist; mejor = n; }
   }
 
-  if (!mejor || mejorDist > TR_GOOD){
+  /* mejorDist ya encontró la nota más cercana en cualquier dirección; ahora
+     hay que aceptarla o no según de qué lado quedó el toque. Positivo =
+     tocaste tarde (dist > 0), negativo = temprano. */
+  const dist = mejor ? tr.time - mejor.t : 0;
+  if (!mejor || dist > TR_GOOD_LATE || dist < -TR_GOOD_EARLY){
     tr.combo = 0;                    // tocar cuando no hay nota corta la racha
     trJudge('fallo', '#ff8f8f');
     trSfxFail();
@@ -2609,12 +2622,15 @@ function trLoop(t){
   }
 
   /* Franja de acierto: es exactamente la ventana "bien", así el jugador ve
-     dónde tiene que estar la nota al tocar en vez de adivinarlo. La línea se
-     engrosa con el pulso: es el mismo "metrónomo" de arriba, solo que acá se
-     ve justo donde hay que estar mirando. */
-  const banda = TR_GOOD * tr.speed;
+     dónde tiene que estar la nota al tocar en vez de adivinarlo. Asimétrica
+     como la ventana real: hacia arriba de la línea (nota que todavía baja,
+     toque temprano) llega más lejos que hacia abajo (nota que ya pasó, toque
+     tarde). La línea se engrosa con el pulso: es el mismo "metrónomo" de
+     arriba, solo que acá se ve justo donde hay que estar mirando. */
+  const bandaArriba = TR_GOOD_EARLY * tr.speed;
+  const bandaAbajo = TR_GOOD_LATE * tr.speed;
   ctx.fillStyle = 'rgba(255,230,109,.10)';
-  ctx.fillRect(0, tr.hitY - banda, gc.width, banda*2);
+  ctx.fillRect(0, tr.hitY - bandaArriba, gc.width, bandaArriba + bandaAbajo);
   ctx.fillStyle = `rgba(255,230,109,${0.55 + tr.pulse*0.4})`;
   const grosor = 2 + tr.pulse*3;
   ctx.fillRect(0, tr.hitY - grosor/2, gc.width, grosor);
@@ -2639,7 +2655,7 @@ function trLoop(t){
        bloque de arriba, no esto. */
     if (!n.holding){
       if (falta > TR_APPROACH) break;               // aún no entra en pantalla
-      if (falta < -TR_GOOD){                         // se pasó de largo: fallo
+      if (falta < -TR_GOOD_LATE){                    // se pasó de largo: fallo
         n.judged = true;
         tr.combo = 0;
         trJudge('fallo', '#ff8f8f');
