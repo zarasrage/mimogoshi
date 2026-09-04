@@ -1024,37 +1024,72 @@ function drawEmoji(ctx, char, size, x, y){
    los navegadores lo bloquean si se crea antes de un gesto del usuario, y acá
    el primer beep siempre llega después de tocar algo (empezar un minijuego). */
 let audioCtx = null;
+let audioBroken = false;   // el navegador no deja: se deja de reintentar
 
+/* Ojo: esto se llama desde el loop de un minijuego, o sea cada frame. Tiene que
+   ser barato y no puede tirar nunca — si revienta acá, se lleva puesto el
+   requestAnimationFrame y el juego se congela. */
 function getAudioCtx(){
-  if (!audioCtx){
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return null;
-    audioCtx = new AC();
+  if (audioBroken) return null;
+  try {
+    if (!audioCtx){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC){ audioBroken = true; return null; }
+      audioCtx = new AC();
+    }
+    if (audioCtx.state === 'suspended'){
+      const p = audioCtx.resume();
+      if (p && p.catch) p.catch(() => {});
+    }
+    return audioCtx;
+  } catch (e) {
+    audioBroken = true;
+    return null;
   }
-  if (audioCtx.state === 'suspended') audioCtx.resume();
-  return audioCtx;
 }
 
-/* Un tono corto con caída exponencial (así no "clickea" al cortar de golpe).
-   Envuelto en try/catch como el resto de las cosas que pueden fallar por
-   políticas del navegador — un beep que no suena no puede romper el juego. */
-function beep(freq, durationMs, type = 'sine', vol = 0.15){
+/* Reloj del audio, o null si todavía no arrancó (recién creado, o el navegador
+   lo dejó suspendido esperando un gesto). Sirve para agendar sonidos con
+   precisión de sample en vez de "cuando toque el próximo frame". */
+function audioNow(){
+  const ctx = getAudioCtx();
+  return (ctx && ctx.state === 'running') ? ctx.currentTime : null;
+}
+
+/* Un tono con envolvente: ataque opcional y caída exponencial (así no
+   "clickea" al cortar de golpe). `at` es un instante ABSOLUTO del reloj de
+   audio: con eso se puede agendar por adelantado —un metrónomo agendado frame
+   a frame suena tembleque, agendado en el reloj de audio no—. Envuelto en
+   try/catch como el resto de las cosas que pueden fallar por políticas del
+   navegador: un sonido que no suena no puede romper el juego. */
+function tone({ freq, durationMs, type = 'sine', vol = 0.15, at = 0, attackMs = 0 }){
   try {
     const ctx = getAudioCtx();
     if (!ctx) return;
+    const start = Math.max(at || 0, ctx.currentTime);
+    const dur = durationMs / 1000;
+    const atk = Math.min(attackMs / 1000, dur * 0.5);
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = type;
     osc.frequency.value = freq;
     osc.connect(gain);
     gain.connect(ctx.destination);
-    const now = ctx.currentTime;
-    const dur = durationMs / 1000;
-    gain.gain.setValueAtTime(vol, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-    osc.start(now);
-    osc.stop(now + dur);
+    if (atk > 0){
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(vol, start + atk);
+    } else {
+      gain.gain.setValueAtTime(vol, start);
+    }
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+    osc.start(start);
+    osc.stop(start + dur + 0.02);
   } catch (e) { /* audio bloqueado o no soportado: no pasa nada, sigue mudo */ }
+}
+
+/* Atajo para el caso más común: un tono corto que suena ya mismo. */
+function beep(freq, durationMs, type = 'sine', vol = 0.15){
+  tone({ freq, durationMs, type, vol });
 }
 
 /* getBoundingClientRect() obliga al navegador a recalcular el layout. Llamarlo en
@@ -2063,11 +2098,19 @@ function endReflexGame(){
    la cruzan. Como tocar de más también corta el combo, no sirve tapear a lo
    loco: hay que seguir el ritmo.
 
-   El tempo es FIJO (TR_BEAT). Antes el chart aceleraba solo, y eso era lo único
-   que subía la intensidad, pero con la pista acelerando no hay forma de que
-   suene a canción. Ahora la dificultad escala por densidad: a medida que avanza
-   aparecen más contratiempos, más dobles y más sostenidas sobre la misma grilla
-   — que es como escalan los juegos de ritmo de verdad.
+   El tempo es FIJO (TR_BPM) y todo se mide en pulsos, no en segundos sueltos:
+   la negra dura TR_BEAT_SEC y una nota solo puede caer en una negra o en la
+   corchea exacta del medio — nunca en un instante intermedio. Antes el chart
+   aceleraba solo, y eso era lo único que subía la intensidad, pero con la
+   pista acelerando no hay forma de que suene a canción. Ahora la dificultad
+   escala por densidad sobre la misma grilla, que es como escalan los juegos de
+   ritmo de verdad.
+
+   De fondo suena un metrónomo (una vez por negra, con acento en el primer
+   tiempo de cada compás) y el acorde de Si menor en redonda, uno por compás.
+   Los dos se agendan por adelantado en el reloj de Web Audio, no frame a
+   frame; y para que la pista no se despegue nunca de las notas, el tiempo del
+   juego (tr.time) también sale de ese mismo reloj — ver trAdvanceClock().
 
    Dos tipos de nota además de la simple: dobles (dos carriles al mismo tiempo,
    hay que tocar los dos) y sostenidas (hay que mantener apretado el carril hasta
@@ -2078,26 +2121,48 @@ function endReflexGame(){
 
 const TR_LANES = 3;
 const TR_LANE_CHAR = ['🍬','🎮','🫧'];
-const TR_APPROACH = 1.05;   // segundos que tarda una nota en bajar hasta la línea
 const TR_PERFECT = 0.09;    // ventana de acierto perfecto, en segundos
 const TR_GOOD = 0.19;       // ventana de acierto normal
 
-const TR_BEAT = 0.38;              // separación fija de la grilla (~158 BPM)
-const TR_CHART_SEC = 26;           // largo del chart
-const TR_LEAD_IN = 1.7;            // aire antes de la primera nota
-const TR_HOLD_SEC = TR_BEAT * 2;   // una sostenida dura exactamente dos pulsos
-/* Dos notas más juntas que esto no pueden compartir carril: con los
-   contratiempos quedan a media grilla (0.19s) y la ventana de acierto mide
-   TR_GOOD (0.19s), así que en el mismo carril serían indistinguibles. */
-const TR_MIN_SAME_LANE_GAP = 0.26;
+/* La grilla musical. Todo lo demás se deriva de acá: si se cambia el tempo,
+   las sostenidas, la anticipación y el largo del chart se acomodan solos. */
+const TR_BPM = 158;
+const TR_BEAT_SEC = 60 / TR_BPM;        // la negra
+const TR_EIGHTH_SEC = TR_BEAT_SEC / 2;  // la corchea: el único subdividido permitido
+const TR_BEATS_PER_BAR = 4;
+const TR_LEAD_IN_BEATS = 4;             // un compás de metrónomo antes de la primera nota
+const TR_CHART_BARS = 16;
+const TR_CHART_BEATS = TR_CHART_BARS * TR_BEATS_PER_BAR;
+
+const TR_APPROACH = TR_BEAT_SEC * 3;    // una nota se ve venir tres pulsos antes
+const TR_HOLD_SEC = TR_BEAT_SEC * 2;    // una sostenida dura una blanca (dos pulsos)
+/* Dos notas más juntas que esto no pueden compartir carril: dos corcheas
+   seguidas quedan a media negra (0.19s) y la ventana de acierto mide TR_GOOD
+   (0.19s), así que en el mismo carril serían indistinguibles. Tres cuartos de
+   negra deja pasar el caso de negra a negra y bloquea el de corchea. */
+const TR_MIN_SAME_LANE_GAP = TR_BEAT_SEC * 0.75;
 
 /* Rampas de densidad {al empezar, al terminar}: esto es lo que reemplaza a la
    aceleración de la pista. */
-const TR_OFFBEAT_CHANCE = [0.05, 0.55];  // nota extra a media grilla
+const TR_OFFBEAT_CHANCE = [0.05, 0.55];  // corchea extra entre dos negras
 const TR_DOUBLE_CHANCE  = [0.06, 0.28];  // pareja en otro carril, mismo instante
 const TR_HOLD_CHANCE    = [0.05, 0.16];  // nota sostenida
 
 function trRamp(rango, progress){ return rango[0] + (rango[1] - rango[0]) * progress; }
+
+/* Instante exacto de un pulso, contando desde que arranca la partida. Se
+   multiplica en vez de ir acumulando: sumar 0.379 sesenta veces arrastra error
+   y deja las notas fuera de la grilla del metrónomo. */
+function trBeatTime(beat){ return beat * TR_BEAT_SEC; }
+
+/* Pista de fondo. El metrónomo son dos clicks bien cortos y agudos (fuera del
+   registro de la melodía, para que no se confundan con una nota) y el acorde
+   es un Si menor abierto —fundamental, quinta y tercera repartidas— bien
+   despacito y con ataque lento, para que se sienta debajo sin tapar nada. */
+const TR_CLICK_ACCENT = 1975.53;  // B6, el primer tiempo del compás
+const TR_CLICK_BEAT   = 1479.98;  // F#6, los otros tres
+const TR_PAD_CHORD    = [246.94, 369.99, 587.33];  // B3, F#4, D5
+const TR_SCHEDULE_AHEAD = 0.25;   // segundos de pista que se agendan por adelantado
 
 /* Escala de Si menor natural (B, C♯, D, E, F♯, G, A) recorrida desde el 7º
    grado: A, B, C♯, D, E, F♯, G, A, B. Nueve notas, una octava y dos, todas en
@@ -2200,8 +2265,12 @@ function trBuildChart(){
     return lane;
   };
 
-  for (let t = TR_LEAD_IN; t < TR_LEAD_IN + TR_CHART_SEC; t += TR_BEAT){
-    const progress = (t - TR_LEAD_IN) / TR_CHART_SEC;
+  /* Se recorre por número de pulso, no acumulando segundos: cada nota cae en
+     una negra (trBeatTime(b)) o en la corchea exacta del medio (b + 0.5), y
+     nunca en un instante intermedio. */
+  for (let b = 0; b < TR_CHART_BEATS; b++){
+    const progress = b / TR_CHART_BEATS;
+    const t = trBeatTime(TR_LEAD_IN_BEATS + b);
 
     const lane = pickLane(t);
     if (lane === null) continue;             // grilla ocupada: queda un silencio
@@ -2217,10 +2286,11 @@ function trBuildChart(){
     recentLanes = usados;
     recentT = t;
 
-    /* Contratiempo: a media grilla. Siempre nota simple — si además pudiera ser
-       doble o sostenida, la parte densa del final se vuelve ilegible. */
+    /* Contratiempo: la corchea justo al medio de las dos negras. Siempre nota
+       simple — si además pudiera ser doble o sostenida, la parte densa del
+       final se vuelve ilegible. */
     if (Math.random() < trRamp(TR_OFFBEAT_CHANCE, progress)){
-      const tOff = t + TR_BEAT / 2;
+      const tOff = trBeatTime(TR_LEAD_IN_BEATS + b + 0.5);
       const laneOff = pickLane(tOff);
       if (laneOff !== null){
         recentLanes = [push(tOff, laneOff, 0)];
@@ -2254,19 +2324,22 @@ function startTapGame(){
     lanePulse: [0, 0, 0],
     laneDown: [false, false, false],   // qué carriles están apretados ahora mismo (para las sostenidas)
     canvasPointers: new Map(),          // pointerId -> carril, para soltar el que corresponde al tocar la pantalla
-    /* Pulso de fondo sincronizado con el chart, no con los aciertos: late en
-       cada instante que trae nota(s) (una doble cuenta una sola vez, por eso
-       son los tiempos únicos) aunque el jugador no toque nada — es lo que
-       vende la sensación de ritmo incluso mirando de lejos. */
-    beatTimes: [],
-    beatCursor: 0,
+    /* El pulso visual late en cada negra, igual que el metrónomo: es el mismo
+       compás, una vez visto y otra escuchado. Late aunque el jugador no toque
+       nada — es metrónomo, no feedback de puntería. */
     pulse: 0,
+    nextPulseBeat: 0,
+    /* Agenda de la pista de fondo: `nextBeat` es el próximo pulso todavía sin
+       agendar, `audioStart` el instante del reloj de audio en que empezó la
+       partida (null hasta que el navegador deja arrancar el AudioContext). */
+    nextBeat: 0,
+    audioStart: null,
+    totalBeats: TR_LEAD_IN_BEATS + TR_CHART_BEATS,
     pointer: makeCanvasPointer(gc),
     raf: null,
     lastT: 0,
   };
   tr.speed = (tr.hitY + 26) / TR_APPROACH; // px/s para que la nota tarde TR_APPROACH
-  tr.beatTimes = [...new Set(tr.notes.map(n => n.t))].sort((a, b) => a - b);
 
   /* Un botón por carril, abajo. Tocar la pantalla sigue funcionando para quien
      prefiera apuntar al carril directamente — con dos carriles al mismo tiempo
@@ -2387,11 +2460,62 @@ function trRelease(lane){
   tr.laneDown[lane] = false;
 }
 
+/* El reloj del juego sale del AudioContext, no de sumar el dt de cada frame:
+   la pista se agenda en el reloj de audio, así que si las notas corrieran por
+   otro reloj se despegarían apenas el navegador saltee un frame (y el dt viene
+   con tope de 0.05s, o sea que con la pestaña trabada se atrasa a propósito).
+   Mientras el AudioContext no arranque —los navegadores lo dejan suspendido
+   hasta que hay un gesto del usuario— se usa el dt acumulado, y al enganchar
+   se descuenta lo ya transcurrido para que no pegue un salto. */
+function trAdvanceClock(dt){
+  const now = audioNow();
+  if (now === null){ tr.time += dt; return; }
+  if (tr.audioStart === null) tr.audioStart = now - tr.time;
+  tr.time = now - tr.audioStart;
+}
+
+/* Agenda la pista de fondo un poco por adelantado (TR_SCHEDULE_AHEAD): el
+   metrónomo en cada negra —con acento en el primer tiempo del compás— y el
+   acorde de Si menor en redonda, uno por compás. Se agenda con instantes
+   absolutos del reloj de audio, que es lo único que suena parejo; disparar un
+   metrónomo desde el frame lo deja tembleque. */
+function trScheduleTrack(){
+  if (tr.audioStart === null) return;
+  while (tr.nextBeat < tr.totalBeats && trBeatTime(tr.nextBeat) < tr.time + TR_SCHEDULE_AHEAD){
+    const beat = tr.nextBeat;
+    const at = tr.audioStart + trBeatTime(beat);
+    const acento = beat % TR_BEATS_PER_BAR === 0;
+
+    tone({
+      freq: acento ? TR_CLICK_ACCENT : TR_CLICK_BEAT,
+      durationMs: acento ? 45 : 28,
+      type: 'sine',
+      vol: acento ? 0.055 : 0.03,
+      at,
+    });
+
+    if (acento){
+      for (const freq of TR_PAD_CHORD){
+        tone({
+          freq,
+          durationMs: TR_BEAT_SEC * TR_BEATS_PER_BAR * 1000 * 0.92,
+          type: 'triangle',
+          vol: 0.03,
+          at,
+          attackMs: 110,   // entra de a poco: es colchón, no un acorde golpeado
+        });
+      }
+    }
+    tr.nextBeat++;
+  }
+}
+
 function trLoop(t){
   if (activeMinigame !== 'tap' || !tr) return;
   const dt = Math.min(0.05, (t - (tr.lastT || t)) / 1000);
   tr.lastT = t;
-  tr.time += dt;
+  trAdvanceClock(dt);
+  trScheduleTrack();
 
   /* Sostenidas en curso: se resuelven acá, no en trPress/trRelease, porque
      "completarla" depende del tiempo transcurrido y "fallarla soltando antes"
@@ -2418,11 +2542,12 @@ function trLoop(t){
     }
   }
 
-  /* Pulso de fondo: uno por cada instante único del chart, sin importar si el
-     jugador acertó — es el "metrónomo visual", no feedback de puntería. */
-  while (tr.beatCursor < tr.beatTimes.length && tr.beatTimes[tr.beatCursor] <= tr.time){
-    tr.pulse = 1;
-    tr.beatCursor++;
+  /* Pulso de fondo: uno por negra, el mismo compás que marca el metrónomo, y
+     más marcado en el primer tiempo. Late toque o no toque el jugador — es
+     metrónomo visual, no feedback de puntería. */
+  while (tr.nextPulseBeat < tr.totalBeats && trBeatTime(tr.nextPulseBeat) <= tr.time){
+    tr.pulse = (tr.nextPulseBeat % TR_BEATS_PER_BAR === 0) ? 1 : 0.55;
+    tr.nextPulseBeat++;
   }
   if (tr.pulse > 0) tr.pulse = Math.max(0, tr.pulse - dt * 5);
 

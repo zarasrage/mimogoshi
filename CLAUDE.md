@@ -363,13 +363,27 @@ su tamaño real en pantalla para que nada salga estirado:
   genera `trBuildChart()` (los carriles y los tonos cambian en cada partida).
   Ventanas `TR_PERFECT`/`TR_GOOD`; tocar de más también corta el combo.
 
-  **El tempo es fijo** (`TR_BEAT`, ~158 BPM). Antes el chart aceleraba solo y
-  eso era lo único que subía la intensidad, pero con la pista acelerando no
-  hay forma de que suene a canción. La dificultad ahora escala por
-  **densidad** sobre la misma grilla: `TR_OFFBEAT_CHANCE`, `TR_DOUBLE_CHANCE`
-  y `TR_HOLD_CHANCE` son rampas `{al empezar, al terminar}` que `trRamp()`
-  interpola según el avance — medido, va de ~3.2 a ~4.3 notas/s. Si se quiere
-  endurecer o ablandar el juego, se tocan esas rampas, **no** el tempo.
+  **El tempo es fijo y todo se mide en pulsos, no en segundos sueltos.**
+  `TR_BPM = 158` define la negra (`TR_BEAT_SEC`) y de ahí salen derivados la
+  corchea, el largo de una sostenida (una blanca), la anticipación con que se
+  ve venir una nota (tres pulsos) y el largo del chart (`TR_CHART_BARS`
+  compases de `TR_BEATS_PER_BAR`). Cambiar el BPM reacomoda todo solo.
+  `trBeatTime(beat)` multiplica en vez de ir acumulando: sumar 0.379 sesenta
+  veces arrastra error y deja las notas fuera de la grilla del metrónomo.
+
+  Una nota **solo puede caer en una negra o en la corchea exacta del medio**,
+  nunca en un instante intermedio: `trBuildChart()` recorre números de pulso
+  enteros y los contratiempos van en `beat + 0.5`. Verificado por simulación
+  contra la función real: 0 notas fuera de la grilla de corcheas y 0
+  sostenidas que no terminen sobre un pulso, en 4000 charts.
+
+  Antes el chart aceleraba solo y eso era lo único que subía la intensidad,
+  pero con la pista acelerando no hay forma de que suene a canción. La
+  dificultad ahora escala por **densidad** sobre la misma grilla:
+  `TR_OFFBEAT_CHANCE`, `TR_DOUBLE_CHANCE` y `TR_HOLD_CHANCE` son rampas
+  `{al empezar, al terminar}` que `trRamp()` interpola según el avance —
+  medido, va de ~3.3 a ~4.2 notas/s. Si se quiere endurecer o ablandar el
+  juego, se tocan esas rampas, **no** el tempo.
 
   Dos tipos de nota además de la simple: **dobles** (dos carriles al mismo
   instante — hay que tocar los dos) y **sostenidas** (`TR_HOLD_SEC`, que son
@@ -421,15 +435,36 @@ su tamaño real en pantalla para que nada salga estirado:
     - **Fallo** (`trSfxFail`): el tritono contra la tónica (Fa natural con
       Si), lo único fuera de escala en todo el juego — no puede confundirse
       con un acierto ni sonar "bien por casualidad".
-    El `AudioContext` se crea recién al primer `beep()` (no antes: los
+    El `AudioContext` se crea recién al primer sonido (no antes: los
     navegadores lo bloquean si no hay un gesto del usuario previo, y acá
     siempre lo hay porque hace falta tocar algo para llegar a jugar) y queda
-    vivo para toda la sesión, no solo para este minijuego.
-  - **Pulso**: `tr.beatTimes` son los instantes únicos del chart (una doble
-    cuenta una sola vez); cuando `tr.time` cruza uno, la pantalla y la línea
-    de acierto laten un instante — sin importar si el jugador tocó o no, es
-    el metrónomo visual del chart, no feedback de puntería (eso ya lo cubren
-    los flashes por carril y los sonidos).
+    vivo para toda la sesión, no solo para este minijuego. `getAudioCtx()`
+    está blindado con try/catch y una bandera para no reintentar, porque ahora
+    lo llama el loop del juego en cada frame: si tirara ahí, se llevaría
+    puesto el `requestAnimationFrame` y el minijuego se congelaría.
+  - **Pista de fondo** (`trScheduleTrack`): un **metrónomo** en cada negra
+    (`TR_CLICK_ACCENT`/`TR_CLICK_BEAT`, dos clicks cortos y agudos, fuera del
+    registro de la melodía para que no se confundan con una nota; el acento va
+    en el primer tiempo del compás) y el acorde de **Si menor en redonda**,
+    uno por compás (`TR_PAD_CHORD`, voicing abierto B3-F♯4-D5, bien bajito y
+    con ataque lento para que se sienta debajo sin tapar la melodía).
+    Se agenda **por adelantado** (`TR_SCHEDULE_AHEAD`) con instantes absolutos
+    del reloj de Web Audio vía `tone({ at })`, no disparando el sonido en el
+    frame que cruza el pulso: un metrónomo disparado frame a frame suena
+    tembleque. Como avanza por número de pulso y no por "crucé el beat en este
+    frame", un frame lento no le hace saltear ni duplicar clicks — verificado
+    simulando 30s con frames de 250ms intercalados.
+  - **El reloj del juego es el del audio** (`trAdvanceClock`): `tr.time` sale
+    de `audioNow()`, no de acumular el `dt` de los frames. Si corrieran por
+    relojes distintos, la pista (agendada en el reloj de audio) se despegaría
+    de las notas apenas el navegador saltee un frame — y encima el `dt` viene
+    con tope de 0.05s, o sea que con la pestaña trabada se atrasa a propósito.
+    Mientras el `AudioContext` siga suspendido se usa el `dt` acumulado y al
+    enganchar se descuenta lo ya transcurrido, así no pega un salto.
+  - **Pulso visual**: late una vez por negra —el mismo compás que marca el
+    metrónomo, una vez visto y otra escuchado— y más fuerte en el primer
+    tiempo. Late toque o no toque el jugador: es metrónomo, no feedback de
+    puntería (eso ya lo cubren los flashes por carril y los sonidos).
 
 - **Snake** (`sn`): clásico, sobre una rejilla de celdas de `SN_CELL`. Se gira
   deslizando el dedo o con flechas / WASD. El giro se registra en `pointermove`
