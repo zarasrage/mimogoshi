@@ -413,8 +413,19 @@ su tamaño real en pantalla para que nada salga estirado:
   pares del mismo carril demasiado juntos, 0 charts fuera de orden.
 
   Tiene sonido y pulso visual, el único minijuego con los dos:
-  - **Sonido**: sintetizado con Web Audio (`beep()`, en las utilidades
-    compartidas de minijuegos), sin archivos de audio. `TR_SCALE` es la escala
+  - **Sonido**: sintetizado con Web Audio (`tone()`/`beep()`, en las
+    utilidades compartidas de minijuegos), sin archivos de audio. Un acierto
+    (normal o perfecto) **no suena en el instante del toque, sino en el pulso
+    de la nota** (`trSfxHit(pitch, perfecto, at)` recibe `tr.audioStart +
+    mejor.t`): si sonara al tocar, un acierto adelantado —dentro de la
+    ventana pero antes del pulso— se oiría desalineado del metrónomo aunque
+    el juego lo cuente como bueno. Achicar la ventana no arregla eso, solo
+    reduce cuánto se nota; cuantizar sí. `tone()` igual recorta `at` al
+    presente si ya quedó en el pasado, así que un toque tardío sigue sonando
+    "ya" —no hay forma de sonar hacia atrás—, pero es el caso adelantado el
+    que más se nota contra la pista. `trSfxFail` no cuantiza (`at` por
+    default 0): un fallo no tiene ningún pulso al que alinearse. `TR_SCALE` es
+    la escala
     de **Si menor natural** recorrida desde el 7º grado (A, B, C♯, D, E, F♯,
     G, A, B): nueve notas repartidas de a tres por carril, graves a la
     izquierda y agudas a la derecha, así la altura coincide con la posición en

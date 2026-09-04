@@ -2208,17 +2208,24 @@ const TR_SCALE = [
 ];
 const TR_NOTES_PER_LANE = 3;
 
-function trSfxHit(pitch, perfecto){
+/* `at` es el instante de LA NOTA en la grilla (tr.audioStart + mejor.t), no el
+   instante del toque: si sonara cuando tocás, un acierto adelantado (dentro
+   de la ventana pero antes del pulso) se escucharía desalineado del
+   metrónomo aunque el juego lo cuente como bueno. tone() ya recorta `at` al
+   presente si quedó en el pasado (tocaste tarde: ahí sí suena "ya", no hay
+   forma de sonar hacia atrás), así que solo esto arregla el caso adelantado,
+   que es el que se nota más. */
+function trSfxHit(pitch, perfecto, at){
   if (perfecto){
     /* Tríada de la escala: la nota con su 3ª y su 5ª, las tres a la vez. Cada
        voz va más bajita que un tono suelto (tres osciladores al volumen de uno
        saturan) y en triangular en vez de cuadrada, que apiladas embarran. */
-    beep(TR_SCALE[pitch],     220, 'triangle', 0.09);
-    beep(TR_SCALE[pitch + 2], 220, 'triangle', 0.07);
-    beep(TR_SCALE[pitch + 4], 220, 'triangle', 0.06);
+    tone({ freq: TR_SCALE[pitch],     durationMs: 220, type: 'triangle', vol: 0.09, at });
+    tone({ freq: TR_SCALE[pitch + 2], durationMs: 220, type: 'triangle', vol: 0.07, at });
+    tone({ freq: TR_SCALE[pitch + 4], durationMs: 220, type: 'triangle', vol: 0.06, at });
     return;
   }
-  beep(TR_SCALE[pitch], 90, 'square', 0.10);
+  tone({ freq: TR_SCALE[pitch], durationMs: 90, type: 'square', vol: 0.10, at });
 }
 
 /* Fallo: el tritono contra la tónica (Fa natural con Si), la única cosa acá
@@ -2451,12 +2458,15 @@ function trPress(lane){
     return;
   }
 
+  // el sonido va SIEMPRE en el pulso de la nota, no en el instante del toque
+  const at = tr.audioStart === null ? 0 : tr.audioStart + mejor.t;
+
   if (mejor.hold){
     // arranca la sostenida: se completa o falla en trLoop, no acá
     mejor.holding = true;
     trJudge('¡mantené!', '#8fd0ff');
     tr.fx.push({ char: TR_LANE_CHAR[lane], x: (lane + 0.5) * tr.laneW, y: tr.hitY, vy: -40, life: 0.4 });
-    trSfxHit(mejor.pitch, false);
+    trSfxHit(mejor.pitch, false, at);
     return;
   }
 
@@ -2470,7 +2480,7 @@ function trPress(lane){
   tr.score += (perfecto ? 3 : 1) * trMultiplier();
   trJudge(perfecto ? '¡PERFECTO!' : 'bien', perfecto ? '#ffe66d' : '#c8f2c2');
   tr.fx.push({ char: TR_LANE_CHAR[lane], x: (lane + 0.5) * tr.laneW, y: tr.hitY, vy: -55, life: 0.5 });
-  trSfxHit(mejor.pitch, perfecto);
+  trSfxHit(mejor.pitch, perfecto, at);
 }
 
 /* Soltar un carril. Si había una sostenida en curso ahí, trLoop se entera por
