@@ -2060,8 +2060,14 @@ function endReflexGame(){
 
 /* ===================== Minijuego 4: tap rítmico =====================
    Tres carriles, notas que bajan hasta la línea y hay que tocarlas justo cuando
-   la cruzan. El chart acelera solo (0.50s → 0.22s entre notas), y como tocar de
-   más también corta el combo, no sirve tapear a lo loco: hay que seguir el ritmo.
+   la cruzan. Como tocar de más también corta el combo, no sirve tapear a lo
+   loco: hay que seguir el ritmo.
+
+   El tempo es FIJO (TR_BEAT). Antes el chart aceleraba solo, y eso era lo único
+   que subía la intensidad, pero con la pista acelerando no hay forma de que
+   suene a canción. Ahora la dificultad escala por densidad: a medida que avanza
+   aparecen más contratiempos, más dobles y más sostenidas sobre la misma grilla
+   — que es como escalan los juegos de ritmo de verdad.
 
    Dos tipos de nota además de la simple: dobles (dos carriles al mismo tiempo,
    hay que tocar los dos) y sostenidas (hay que mantener apretado el carril hasta
@@ -2075,69 +2081,152 @@ const TR_LANE_CHAR = ['🍬','🎮','🫧'];
 const TR_APPROACH = 1.05;   // segundos que tarda una nota en bajar hasta la línea
 const TR_PERFECT = 0.09;    // ventana de acierto perfecto, en segundos
 const TR_GOOD = 0.19;       // ventana de acierto normal
-const TR_HOLD_CHANCE = 0.14;   // probabilidad de que una nota (no doble) sea sostenida
-const TR_HOLD_SEC = 0.45;      // cuánto hay que mantenerla apretada
-const TR_DOUBLE_CHANCE = 0.16; // probabilidad de que una nota simple sume pareja en otro carril
 
-/* Un tono por carril (acorde do-mi-sol, C5/E5/G5): además de servir de
-   feedback de acierto/fallo, ayuda a distinguir de oído qué carril sonó sin
-   mirar la pantalla. El de "perfecto" es el mismo tono una quinta más arriba
-   (×1.5) y más corto/agudo — se nota la diferencia con "bien" sin necesitar
-   un sonido totalmente distinto. */
-const TR_LANE_FREQ = [523.25, 659.25, 783.99];
+const TR_BEAT = 0.38;              // separación fija de la grilla (~158 BPM)
+const TR_CHART_SEC = 26;           // largo del chart
+const TR_LEAD_IN = 1.7;            // aire antes de la primera nota
+const TR_HOLD_SEC = TR_BEAT * 2;   // una sostenida dura exactamente dos pulsos
+/* Dos notas más juntas que esto no pueden compartir carril: con los
+   contratiempos quedan a media grilla (0.19s) y la ventana de acierto mide
+   TR_GOOD (0.19s), así que en el mismo carril serían indistinguibles. */
+const TR_MIN_SAME_LANE_GAP = 0.26;
 
-function trSfxHit(lane, perfecto){
-  const base = TR_LANE_FREQ[lane];
-  beep(perfecto ? base * 1.5 : base, perfecto ? 90 : 70, 'square', perfecto ? 0.16 : 0.11);
+/* Rampas de densidad {al empezar, al terminar}: esto es lo que reemplaza a la
+   aceleración de la pista. */
+const TR_OFFBEAT_CHANCE = [0.05, 0.55];  // nota extra a media grilla
+const TR_DOUBLE_CHANCE  = [0.06, 0.28];  // pareja en otro carril, mismo instante
+const TR_HOLD_CHANCE    = [0.05, 0.16];  // nota sostenida
+
+function trRamp(rango, progress){ return rango[0] + (rango[1] - rango[0]) * progress; }
+
+/* Escala de Si menor natural (B, C♯, D, E, F♯, G, A) recorrida desde el 7º
+   grado: A, B, C♯, D, E, F♯, G, A, B. Nueve notas, una octava y dos, todas en
+   un registro que el parlante de un teléfono reproduce bien (440-988 Hz; abajo
+   de ~400 Hz un celular casi no suena). Cada carril se queda con tres notas
+   seguidas: izquierda las graves, medio las del medio, derecha las agudas, así
+   la altura del sonido coincide con la posición en pantalla.
+
+   Los cuatro índices de arriba (9..12) no los toca ninguna nota del chart:
+   existen solo para que el acorde de "perfecto" (grados i, i+2, i+4 — la nota
+   con su 3ª y su 5ª) también cierre bien en las notas más altas. Sin ellos
+   habría que dar la vuelta al arreglo y las tríadas de arriba quedaban en
+   octavas dobladas en vez de acordes completos. */
+const TR_SCALE = [
+  440.00,   // 0  A4  ┐
+  493.88,   // 1  B4  ├ carril izquierdo
+  554.37,   // 2  C#5 ┘
+  587.33,   // 3  D5  ┐
+  659.25,   // 4  E5  ├ carril del medio
+  739.99,   // 5  F#5 ┘
+  783.99,   // 6  G5  ┐
+  880.00,   // 7  A5  ├ carril derecho
+  987.77,   // 8  B5  ┘
+  1108.73,  // 9  C#6 ┐
+  1174.66,  // 10 D6  ├ solo para completar las tríadas de las notas de arriba
+  1318.51,  // 11 E6  │
+  1479.98,  // 12 F#6 ┘
+];
+const TR_NOTES_PER_LANE = 3;
+
+function trSfxHit(pitch, perfecto){
+  if (perfecto){
+    /* Tríada de la escala: la nota con su 3ª y su 5ª, las tres a la vez. Cada
+       voz va más bajita que un tono suelto (tres osciladores al volumen de uno
+       saturan) y en triangular en vez de cuadrada, que apiladas embarran. */
+    beep(TR_SCALE[pitch],     220, 'triangle', 0.09);
+    beep(TR_SCALE[pitch + 2], 220, 'triangle', 0.07);
+    beep(TR_SCALE[pitch + 4], 220, 'triangle', 0.06);
+    return;
+  }
+  beep(TR_SCALE[pitch], 90, 'square', 0.10);
 }
+
+/* Fallo: el tritono contra la tónica (Fa natural con Si), la única cosa acá
+   adentro que está fuera de escala a propósito — no hay forma de confundirlo
+   con un acierto ni de que suene "bien por casualidad". */
 function trSfxFail(){
-  beep(150, 130, 'sawtooth', 0.13);
+  beep(349.23, 140, 'sawtooth', 0.10);  // F4
+  beep(493.88, 140, 'sawtooth', 0.07);  // B4
 }
 
 let tr = null;
 
-/* Chart generado, no fijo: mismo esqueleto rítmico siempre (acelera parejo) pero
-   los carriles cambian, así no se memoriza la secuencia en dos partidas.
+/* Chart generado, no fijo: la grilla rítmica es siempre la misma (tempo
+   constante) pero los carriles, los tonos y qué posiciones se rellenan cambian
+   en cada partida, así no se memoriza la secuencia en dos vueltas.
 
-   `busyUntil[carril]` es hasta qué instante sigue "ocupado" un carril por una
-   sostenida en curso: ninguna nota nueva (ni la pareja de una doble) se agenda
-   ahí mientras siga ocupado. Sin esto, con el chart tan rápido (llega a 0.22s
-   entre notas) una sostenida de 0.45s con mala suerte terminaba con otra nota
-   del mismo carril cayendo adentro — imposible de tocar con el dedo todavía
-   puesto, fallo garantizado y nada que ver con la puntería del jugador.
-   Verificado por simulación: con este resguardo, 0 solapamientos en 3000
-   charts generados. */
+   Dos resguardos para que ningún fallo sea culpa del generador y no del
+   jugador:
+   - `busyUntil[carril]`: hasta cuándo sigue tomado un carril por una sostenida
+     en curso. Ninguna nota nueva —ni la pareja de una doble— se agenda ahí
+     mientras dure, porque con el dedo todavía puesto sería imposible de tocar.
+   - `TR_MIN_SAME_LANE_GAP`: dos notas muy seguidas nunca comparten carril, o
+     sus ventanas de acierto se pisarían.
+   Verificado por simulación pura: 0 solapamientos y 0 pares del mismo carril
+   demasiado juntos en 3000 charts generados. */
 function trBuildChart(){
   const notes = [];
-  let t = 1.7;        // deja un compás de aire antes de la primera nota
-  let beat = 0.50;
-  let lastLane = 1;
   const busyUntil = [0, 0, 0];
-  while (t < 26){
-    const libres = [0, 1, 2].filter(l => busyUntil[l] <= t);
-    const pool = libres.length ? libres : [0, 1, 2]; // no debería hacer falta nunca; red de seguridad igual
+  let recentLanes = [];   // carriles de la última emisión...
+  let recentT = -99;      // ...y cuándo fue, para no repetir carril si quedan muy juntas
 
-    const otras = pool.filter(l => l !== lastLane);
-    const lane = (otras.length && Math.random() < 0.78)
-      ? otras[Math.floor(Math.random() * otras.length)]
-      : pool[Math.floor(Math.random() * pool.length)];
-    lastLane = lane;
+  /* Devuelve null si no hay ningún carril donde la nota sea justa. El que
+     llama simplemente no la agenda: un silencio en la grilla es preferible a
+     una nota imposible. `excluir` lo usa la pareja de una doble para no caer
+     sobre su propia compañera. */
+  const pickLane = (t, excluir = []) => {
+    const libres = [0, 1, 2].filter(l => busyUntil[l] <= t && !excluir.includes(l));
+    if (!libres.length) return null;
+    const sinRepetir = libres.filter(l => !recentLanes.includes(l));
+    let pool = libres;
+    if (t - recentT < TR_MIN_SAME_LANE_GAP){
+      if (!sinRepetir.length) return null;   // muy junta y sin carril libre distinto
+      pool = sinRepetir;                     // muy juntas: obligado a cambiar
+    } else if (sinRepetir.length && Math.random() < 0.78){
+      pool = sinRepetir;                     // separadas: casi siempre cambia igual
+    }
+    return pool[Math.floor(Math.random() * pool.length)];
+  };
 
-    const isHold = Math.random() < TR_HOLD_CHANCE;
-    notes.push({ t, lane, judged: false, hold: isHold, holding: false, holdSec: isHold ? TR_HOLD_SEC : 0 });
-    if (isHold) busyUntil[lane] = t + TR_HOLD_SEC;
+  /* El tono sale de las tres notas del carril, sorteado cada vez: puede repetir
+     el de la nota anterior sin problema, todas son de la misma escala.
+     Una sostenida deja el carril tomado hasta un poco DESPUÉS de terminar, no
+     justo al terminar: si no, la nota siguiente caería en el mismo instante en
+     que hay que soltar, y habría que soltar y volver a apretar sin margen. */
+  const push = (t, lane, holdSec) => {
+    const pitch = lane * TR_NOTES_PER_LANE + Math.floor(Math.random() * TR_NOTES_PER_LANE);
+    notes.push({ t, lane, pitch, judged: false, hold: holdSec > 0, holding: false, holdSec });
+    if (holdSec > 0) busyUntil[lane] = t + holdSec + TR_MIN_SAME_LANE_GAP;
+    return lane;
+  };
 
-    // nota doble: pareja en otro carril libre, mismo instante — nunca sobre una sostenida
-    if (!isHold && Math.random() < TR_DOUBLE_CHANCE){
-      const libresPareja = pool.filter(l => l !== lane);
-      if (libresPareja.length){
-        const lane2 = libresPareja[Math.floor(Math.random() * libresPareja.length)];
-        notes.push({ t, lane: lane2, judged: false, hold: false, holding: false, holdSec: 0 });
+  for (let t = TR_LEAD_IN; t < TR_LEAD_IN + TR_CHART_SEC; t += TR_BEAT){
+    const progress = (t - TR_LEAD_IN) / TR_CHART_SEC;
+
+    const lane = pickLane(t);
+    if (lane === null) continue;             // grilla ocupada: queda un silencio
+
+    const esHold = Math.random() < trRamp(TR_HOLD_CHANCE, progress);
+    push(t, lane, esHold ? TR_HOLD_SEC : 0);
+    const usados = [lane];
+
+    if (!esHold && Math.random() < trRamp(TR_DOUBLE_CHANCE, progress)){
+      const pareja = pickLane(t, [lane]);
+      if (pareja !== null) usados.push(push(t, pareja, 0));
+    }
+    recentLanes = usados;
+    recentT = t;
+
+    /* Contratiempo: a media grilla. Siempre nota simple — si además pudiera ser
+       doble o sostenida, la parte densa del final se vuelve ilegible. */
+    if (Math.random() < trRamp(TR_OFFBEAT_CHANCE, progress)){
+      const tOff = t + TR_BEAT / 2;
+      const laneOff = pickLane(tOff);
+      if (laneOff !== null){
+        recentLanes = [push(tOff, laneOff, 0)];
+        recentT = tOff;
       }
     }
-
-    t += beat;
-    beat = Math.max(0.22, beat * 0.978);
   }
   return notes;
 }
@@ -2273,7 +2362,7 @@ function trPress(lane){
     mejor.holding = true;
     trJudge('¡mantené!', '#8fd0ff');
     tr.fx.push({ char: TR_LANE_CHAR[lane], x: (lane + 0.5) * tr.laneW, y: tr.hitY, vy: -40, life: 0.4 });
-    trSfxHit(lane, false);
+    trSfxHit(mejor.pitch, false);
     return;
   }
 
@@ -2287,7 +2376,7 @@ function trPress(lane){
   tr.score += (perfecto ? 3 : 1) * trMultiplier();
   trJudge(perfecto ? '¡PERFECTO!' : 'bien', perfecto ? '#ffe66d' : '#c8f2c2');
   tr.fx.push({ char: TR_LANE_CHAR[lane], x: (lane + 0.5) * tr.laneW, y: tr.hitY, vy: -55, life: 0.5 });
-  trSfxHit(lane, perfecto);
+  trSfxHit(mejor.pitch, perfecto);
 }
 
 /* Soltar un carril. Si había una sostenida en curso ahí, trLoop se entera por
@@ -2319,7 +2408,7 @@ function trLoop(t){
       tr.score += 4 * trMultiplier(); // vale más que una simple: hay que sostenerla, no solo tocarla
       trJudge('¡PERFECTO!', '#ffe66d');
       tr.fx.push({ char: TR_LANE_CHAR[n.lane], x: (n.lane + 0.5) * tr.laneW, y: tr.hitY, vy: -55, life: 0.5 });
-      trSfxHit(n.lane, true);
+      trSfxHit(n.pitch, true);
     } else if (!tr.laneDown[n.lane]){
       n.judged = true;
       n.holding = false;

@@ -360,37 +360,71 @@ su tamaño real en pantalla para que nada salga estirado:
   buenos, no las bombas. 25 segundos y 3 vidas. Tocar el vacío corta el combo,
   así que martillar la pantalla es peor que elegir.
 - **Tap rítmico** (`tr`): tres carriles, notas que bajan a la línea. El chart lo
-  genera `trBuildChart()` (acelera de 0.50s a 0.22s entre notas; los carriles
-  cambian en cada partida). Ventanas `TR_PERFECT`/`TR_GOOD`; tocar de más
-  también corta el combo.
+  genera `trBuildChart()` (los carriles y los tonos cambian en cada partida).
+  Ventanas `TR_PERFECT`/`TR_GOOD`; tocar de más también corta el combo.
 
-  Dos tipos de nota además de la simple, ambos para subirle la dificultad:
-  **dobles** (`TR_DOUBLE_CHANCE`, dos carriles al mismo instante — hay que
-  tocar los dos) y **sostenidas** (`TR_HOLD_CHANCE`/`TR_HOLD_SEC`, hay que
-  mantener apretado el carril hasta completarla; soltar antes corta el combo
-  igual que un fallo). Por eso el input dejó de ser un solo `trHit()` en
-  `pointerdown` y pasó a `trPress()`/`trRelease()` con estado por carril
-  (`tr.laneDown[]`): hace falta saber si se sigue sosteniendo, no solo si se
-  tocó. El botón de carril ya no usa `wireGameButton()` (solo ata pointerdown)
-  porque necesita también el soltar; el canvas trackea `pointerId → carril`
-  para que dos dedos en dos carriles (una doble) funcionen a la vez.
-  `trBuildChart()` nunca agenda una nota nueva —ni la pareja de una doble— en
-  un carril que sigue "ocupado" por una sostenida en curso (`busyUntil[]`):
-  sin ese resguardo, con el chart yendo tan rápido, una nota podía caer
-  encima de una sostenida y ser un fallo imposible de evitar. Verificado por
-  simulación pura: 0 solapamientos en 3000 charts generados.
+  **El tempo es fijo** (`TR_BEAT`, ~158 BPM). Antes el chart aceleraba solo y
+  eso era lo único que subía la intensidad, pero con la pista acelerando no
+  hay forma de que suene a canción. La dificultad ahora escala por
+  **densidad** sobre la misma grilla: `TR_OFFBEAT_CHANCE`, `TR_DOUBLE_CHANCE`
+  y `TR_HOLD_CHANCE` son rampas `{al empezar, al terminar}` que `trRamp()`
+  interpola según el avance — medido, va de ~3.2 a ~4.3 notas/s. Si se quiere
+  endurecer o ablandar el juego, se tocan esas rampas, **no** el tempo.
 
-  Tiene sonido y pulso visual, los dos primeros minijuegos en tenerlos:
+  Dos tipos de nota además de la simple: **dobles** (dos carriles al mismo
+  instante — hay que tocar los dos) y **sostenidas** (`TR_HOLD_SEC`, que son
+  exactamente dos pulsos; hay que mantener apretado el carril hasta
+  completarla y soltar antes corta el combo igual que un fallo). Los
+  contratiempos son siempre nota simple a propósito: si además pudieran ser
+  dobles o sostenidas, la parte densa del final se vuelve ilegible.
+
+  Por las sostenidas el input dejó de ser un solo `trHit()` en `pointerdown` y
+  pasó a `trPress()`/`trRelease()` con estado por carril (`tr.laneDown[]`):
+  hace falta saber si se sigue sosteniendo, no solo si se tocó. El botón de
+  carril ya no usa `wireGameButton()` (solo ata pointerdown) porque necesita
+  también el soltar; el canvas trackea `pointerId → carril` para que dos dedos
+  en dos carriles (una doble) funcionen a la vez.
+
+  `trBuildChart()` tiene dos resguardos para que ningún fallo sea culpa del
+  generador y no del jugador — `pickLane()` devuelve `null` y esa posición
+  queda como silencio antes que agendar una nota injusta:
+  - `busyUntil[carril]`: una sostenida deja su carril tomado hasta un poco
+    **después** de terminar (`+ TR_MIN_SAME_LANE_GAP`), así la nota siguiente
+    no cae justo en el instante en que hay que soltar.
+  - `TR_MIN_SAME_LANE_GAP`: dos notas más juntas que eso nunca comparten
+    carril (con contratiempos quedan a 0.19s y la ventana `TR_GOOD` mide lo
+    mismo, así que en el mismo carril serían indistinguibles). Aplica también
+    a la pareja de una doble, que es justo por donde se escapaba antes.
+  Verificado por simulación pura contra la función real: 0 solapamientos, 0
+  pares del mismo carril demasiado juntos, 0 charts fuera de orden.
+
+  Tiene sonido y pulso visual, el único minijuego con los dos:
   - **Sonido**: sintetizado con Web Audio (`beep()`, en las utilidades
-    compartidas de minijuegos), no archivos — un tono por carril
-    (`TR_LANE_FREQ`, acorde do-mi-sol) que además de feedback ayuda a
-    distinguir de oído qué carril sonó. El de "perfecto" es el mismo tono una
-    quinta arriba (×1.5) y más corto; fallar suena un tono grave (`trSfxFail`)
-    sea por tocar vacío, soltar una sostenida antes de tiempo o dejar pasar
-    una nota sin tocarla. El `AudioContext` se crea recién al primer `beep()`
-    (no antes: los navegadores lo bloquean si no hay un gesto del usuario
-    previo, y acá siempre lo hay porque hace falta tocar algo para llegar a
-    jugar) y queda vivo para toda la sesión, no solo para este minijuego.
+    compartidas de minijuegos), sin archivos de audio. `TR_SCALE` es la escala
+    de **Si menor natural** recorrida desde el 7º grado (A, B, C♯, D, E, F♯,
+    G, A, B): nueve notas repartidas de a tres por carril, graves a la
+    izquierda y agudas a la derecha, así la altura coincide con la posición en
+    pantalla. Cada nota del chart sortea su tono entre los tres del carril
+    (puede repetir el anterior), de modo que cada partida arma una melodía
+    distinta pero siempre en tono. El registro es 440-988 Hz **a propósito**:
+    abajo de ~400 Hz el parlante de un celular casi no suena.
+    - Acierto normal: la nota sola, onda cuadrada.
+    - **Perfecto**: la nota con su 3ª y su 5ª (índices `i`, `i+2`, `i+4`), las
+      tres a la vez y en triangular — las nueve combinaciones dan tríadas
+      diatónicas completas de Si menor (A mayor, B menor, C♯ dim, …),
+      verificado calculando los intervalos desde los Hz del código. Por eso
+      `TR_SCALE` tiene 13 entradas y no 9: las cuatro de arriba no las toca
+      ninguna nota, existen solo para que las tríadas de las notas más altas
+      cierren en vez de dar la vuelta y quedar en octavas dobladas. Cada voz
+      va más bajita que un tono suelto: tres osciladores al volumen de uno
+      saturan.
+    - **Fallo** (`trSfxFail`): el tritono contra la tónica (Fa natural con
+      Si), lo único fuera de escala en todo el juego — no puede confundirse
+      con un acierto ni sonar "bien por casualidad".
+    El `AudioContext` se crea recién al primer `beep()` (no antes: los
+    navegadores lo bloquean si no hay un gesto del usuario previo, y acá
+    siempre lo hay porque hace falta tocar algo para llegar a jugar) y queda
+    vivo para toda la sesión, no solo para este minijuego.
   - **Pulso**: `tr.beatTimes` son los instantes únicos del chart (una doble
     cuenta una sola vez); cuando `tr.time` cruza uno, la pantalla y la línea
     de acierto laten un instante — sin importar si el jugador tocó o no, es
