@@ -2133,10 +2133,13 @@ const TR_PERFECT = 0.09;      // ventana de acierto perfecto, en segundos (simé
    del toque) así que sonar antes de tiempo no tiene costo de audio — eso deja
    margen para tolerar bastante adelanto. Uno atrasado no se puede cuantizar
    hacia atrás (tone() ya pasó ese instante): siempre suena "ya", tarde de
-   verdad respecto de la pista. Por eso el lado tarde es más angosto: cuanto
-   más se lo achica, menos atraso audible le queda al peor caso aceptado. */
-const TR_GOOD_EARLY = 0.19;   // cuánto se puede tocar antes de la nota
-const TR_GOOD_LATE = 0.12;    // cuánto se puede tocar después: más angosto
+   verdad respecto de la pista. Por eso el lado tarde es apenas un cuarto del
+   adelantado: sigue sonando, pero solo si cae bastante cerca del pulso.
+   Como queda por debajo de TR_PERFECT, cualquier toque tarde aceptado ya
+   cae también dentro de la ventana perfecta — del lado tarde no existe un
+   "bien", o es perfecto o es fallo. */
+const TR_GOOD_EARLY = 0.19;              // cuánto se puede tocar antes de la nota
+const TR_GOOD_LATE = TR_GOOD_EARLY / 4;  // después: un cuarto de eso (0.0475s)
 
 /* La grilla musical. Todo lo demás se deriva de acá: si se cambia el tempo,
    las sostenidas, la anticipación y el largo del chart se acomodan solos. */

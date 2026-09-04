@@ -362,11 +362,13 @@ su tamaño real en pantalla para que nada salga estirado:
 - **Tap rítmico** (`tr`): tres carriles, notas que bajan a la línea. El chart lo
   genera `trBuildChart()` (los carriles y los tonos cambian en cada partida).
   Ventana `TR_PERFECT` (simétrica) y ventana de acierto normal, que es
-  **asimétrica** (`TR_GOOD_EARLY` = 0.19s, `TR_GOOD_LATE` = 0.12s, más
-  angosta): un toque temprano suena cuantizado al pulso de la nota, sin costo
+  **asimétrica** (`TR_GOOD_EARLY` = 0.19s; `TR_GOOD_LATE` es un cuarto de eso,
+  0.0475s): un toque temprano suena cuantizado al pulso de la nota, sin costo
   de audio, así que hay margen para tolerar bastante adelanto; uno tarde no se
-  puede cuantizar hacia atrás y siempre suena "ya" — cuanto más angosto ese
-  lado, menos atraso audible le queda al peor caso aceptado. Tocar de más
+  puede cuantizar hacia atrás y siempre suena "ya" — de ese lado casi no hay
+  margen. Como `TR_GOOD_LATE` queda por debajo de `TR_PERFECT`, del lado tarde
+  no existe un "bien": todo toque atrasado que se acepta ya cae también
+  dentro de la ventana perfecta, o es perfecto o es fallo. Tocar de más
   también corta el combo.
 
   **El tempo es fijo y todo se mide en pulsos, no en segundos sueltos.**
