@@ -364,11 +364,11 @@ su tamaño real en pantalla para que nada salga estirado:
   Ventanas `TR_PERFECT`/`TR_GOOD`; tocar de más también corta el combo.
 
   **El tempo es fijo y todo se mide en pulsos, no en segundos sueltos.**
-  `TR_BPM = 158` define la negra (`TR_BEAT_SEC`) y de ahí salen derivados la
+  `TR_BPM = 150` define la negra (`TR_BEAT_SEC` = 0.4s) y de ahí salen derivados la
   corchea, el largo de una sostenida (una blanca), la anticipación con que se
   ve venir una nota (tres pulsos) y el largo del chart (`TR_CHART_BARS`
   compases de `TR_BEATS_PER_BAR`). Cambiar el BPM reacomoda todo solo.
-  `trBeatTime(beat)` multiplica en vez de ir acumulando: sumar 0.379 sesenta
+  `trBeatTime(beat)` multiplica en vez de ir acumulando: sumar la negra sesenta
   veces arrastra error y deja las notas fuera de la grilla del metrónomo.
 
   Una nota **solo puede caer en una negra o en la corchea exacta del medio**,
@@ -382,7 +382,7 @@ su tamaño real en pantalla para que nada salga estirado:
   dificultad ahora escala por **densidad** sobre la misma grilla:
   `TR_OFFBEAT_CHANCE`, `TR_DOUBLE_CHANCE` y `TR_HOLD_CHANCE` son rampas
   `{al empezar, al terminar}` que `trRamp()` interpola según el avance —
-  medido, va de ~3.3 a ~4.2 notas/s. Si se quiere endurecer o ablandar el
+  medido a 150 BPM, va de ~3.0 a ~3.9 notas/s. Si se quiere endurecer o ablandar el
   juego, se tocan esas rampas, **no** el tempo.
 
   Dos tipos de nota además de la simple: **dobles** (dos carriles al mismo
@@ -446,14 +446,27 @@ su tamaño real en pantalla para que nada salga estirado:
     (`TR_CLICK_ACCENT`/`TR_CLICK_BEAT`, dos clicks cortos y agudos, fuera del
     registro de la melodía para que no se confundan con una nota; el acento va
     en el primer tiempo del compás) y el acorde de **Si menor en redonda**,
-    uno por compás (`TR_PAD_CHORD`, voicing abierto B3-F♯4-D5, bien bajito y
-    con ataque lento para que se sienta debajo sin tapar la melodía).
+    uno por compás (`TR_PAD_CHORD`, voicing abierto B3-F♯4-D5). Se sienta
+    debajo de la melodía **por volumen** (`TR_PAD_VOL`), no por ataque lento:
+    con `TR_PAD_ATTACK_MS` alto el acorde se percibe entrando tarde y suena
+    desfasado del metrónomo, así que el ataque es corto (12ms, solo para que
+    no chasquee) y lo que lo mantiene atrás es que está bajito.
+    Además, en `tone()` el ataque va en rampa **lineal** y solo la caída es
+    exponencial: una rampa exponencial de subida arranca pegada a cero y
+    recién despega cerca del final, o sea que el golpe se escucha bastante
+    después del instante agendado.
     Se agenda **por adelantado** (`TR_SCHEDULE_AHEAD`) con instantes absolutos
     del reloj de Web Audio vía `tone({ at })`, no disparando el sonido en el
     frame que cruza el pulso: un metrónomo disparado frame a frame suena
     tembleque. Como avanza por número de pulso y no por "crucé el beat en este
     frame", un frame lento no le hace saltear ni duplicar clicks — verificado
-    simulando 30s con frames de 250ms intercalados.
+    simulando 30s con frames de 250ms intercalados. Un pulso que ya quedó en
+    el pasado se **saltea** (`if (at < now) continue`) en vez de agendarse:
+    `tone()` recorta `at` al presente, así que agendarlos igual amontonaría
+    todos los clicks atrasados de golpe. El `AudioContext` se prende en
+    `startTapGame()`, dentro del gesto que abrió el minijuego, y la pista
+    arranca `TR_START_DELAY` después: si se esperara al primer frame el
+    contexto podría seguir suspendido y se perdería el primer compás.
   - **El reloj del juego es el del audio** (`trAdvanceClock`): `tr.time` sale
     de `audioNow()`, no de acumular el `dt` de los frames. Si corrieran por
     relojes distintos, la pista (agendada en el reloj de audio) se despegaría

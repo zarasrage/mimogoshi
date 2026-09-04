@@ -1075,9 +1075,15 @@ function tone({ freq, durationMs, type = 'sine', vol = 0.15, at = 0, attackMs = 
     osc.frequency.value = freq;
     osc.connect(gain);
     gain.connect(ctx.destination);
+    /* El ataque va en rampa LINEAL y la caída en exponencial, a propósito. Una
+       rampa exponencial de subida arranca pegada a cero y recién despega
+       cerca del final: con 110ms de ataque el sonido se percibe entrando
+       ~80ms tarde, que a 150 BPM es un cuarto de pulso — se escucha
+       claramente fuera de tiempo. La lineal llega a la mitad del volumen a
+       la mitad del ataque, o sea que el golpe se percibe donde corresponde. */
     if (atk > 0){
       gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(vol, start + atk);
+      gain.gain.linearRampToValueAtTime(vol, start + atk);
     } else {
       gain.gain.setValueAtTime(vol, start);
     }
@@ -2126,7 +2132,7 @@ const TR_GOOD = 0.19;       // ventana de acierto normal
 
 /* La grilla musical. Todo lo demás se deriva de acá: si se cambia el tempo,
    las sostenidas, la anticipación y el largo del chart se acomodan solos. */
-const TR_BPM = 158;
+const TR_BPM = 150;
 const TR_BEAT_SEC = 60 / TR_BPM;        // la negra
 const TR_EIGHTH_SEC = TR_BEAT_SEC / 2;  // la corchea: el único subdividido permitido
 const TR_BEATS_PER_BAR = 4;
@@ -2162,7 +2168,16 @@ function trBeatTime(beat){ return beat * TR_BEAT_SEC; }
 const TR_CLICK_ACCENT = 1975.53;  // B6, el primer tiempo del compás
 const TR_CLICK_BEAT   = 1479.98;  // F#6, los otros tres
 const TR_PAD_CHORD    = [246.94, 369.99, 587.33];  // B3, F#4, D5
+/* "Despacito" es de volumen, no de ataque: el acorde entra justo con el click
+   del primer tiempo y se queda sonando bajito. Con un ataque largo el oído lo
+   escucha llegar tarde aunque esté agendado en el instante exacto. */
+const TR_PAD_VOL = 0.032;
+const TR_PAD_ATTACK_MS = 12;
 const TR_SCHEDULE_AHEAD = 0.25;   // segundos de pista que se agendan por adelantado
+/* Se arranca la pista unos milisegundos en el futuro para que el pulso 0 caiga
+   siempre por delante del reloj de audio: si se agendara en el instante exacto
+   en que empieza la partida, el primer frame ya lo dejaría en el pasado. */
+const TR_START_DELAY = 0.08;
 
 /* Escala de Si menor natural (B, C♯, D, E, F♯, G, A) recorrida desde el 7º
    grado: A, B, C♯, D, E, F♯, G, A, B. Nueve notas, una octava y dos, todas en
@@ -2304,6 +2319,12 @@ function trBuildChart(){
 function startTapGame(){
   const { gc, ctx } = enterMinigame('tap');
 
+  /* Se prende el audio ACÁ y no en el loop: esto corre dentro del gesto del
+     usuario (el toque que abrió el minijuego), que es cuando el navegador deja
+     arrancar un AudioContext. Si se esperara al primer frame, el contexto
+     podría quedar suspendido y perderse el primer compás del metrónomo. */
+  const audioT0 = audioNow();
+
   tr = {
     ctx, gc,
     notes: trBuildChart(),
@@ -2333,7 +2354,7 @@ function startTapGame(){
        agendar, `audioStart` el instante del reloj de audio en que empezó la
        partida (null hasta que el navegador deja arrancar el AudioContext). */
     nextBeat: 0,
-    audioStart: null,
+    audioStart: audioT0 === null ? null : audioT0 + TR_START_DELAY,
     totalBeats: TR_LEAD_IN_BEATS + TR_CHART_BEATS,
     pointer: makeCanvasPointer(gc),
     raf: null,
@@ -2481,11 +2502,18 @@ function trAdvanceClock(dt){
    metrónomo desde el frame lo deja tembleque. */
 function trScheduleTrack(){
   if (tr.audioStart === null) return;
-  while (tr.nextBeat < tr.totalBeats && trBeatTime(tr.nextBeat) < tr.time + TR_SCHEDULE_AHEAD){
-    const beat = tr.nextBeat;
-    const at = tr.audioStart + trBeatTime(beat);
-    const acento = beat % TR_BEATS_PER_BAR === 0;
+  const now = audioNow();
+  if (now === null) return;
 
+  while (tr.nextBeat < tr.totalBeats && trBeatTime(tr.nextBeat) < tr.time + TR_SCHEDULE_AHEAD){
+    const beat = tr.nextBeat++;
+    const at = tr.audioStart + trBeatTime(beat);
+    /* Si ese pulso ya pasó (el audio arrancó tarde, o la pestaña estuvo
+       trabada), se saltea. Agendarlo igual no lo pone en su lugar: tone() lo
+       correría al presente y sonaría un montón de clicks amontonados. */
+    if (at < now) continue;
+
+    const acento = beat % TR_BEATS_PER_BAR === 0;
     tone({
       freq: acento ? TR_CLICK_ACCENT : TR_CLICK_BEAT,
       durationMs: acento ? 45 : 28,
@@ -2500,13 +2528,12 @@ function trScheduleTrack(){
           freq,
           durationMs: TR_BEAT_SEC * TR_BEATS_PER_BAR * 1000 * 0.92,
           type: 'triangle',
-          vol: 0.03,
+          vol: TR_PAD_VOL,
           at,
-          attackMs: 110,   // entra de a poco: es colchón, no un acorde golpeado
+          attackMs: TR_PAD_ATTACK_MS,
         });
       }
     }
-    tr.nextBeat++;
   }
 }
 
