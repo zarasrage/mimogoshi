@@ -597,6 +597,7 @@ function forceCloseMinigames(){
   sgDispose();
   rxDispose();
   trDispose();
+  tpDispose();
   snDispose();
   mmDispose();
   if (bb && bb.raf) cancelAnimationFrame(bb.raf);
@@ -605,6 +606,7 @@ function forceCloseMinigames(){
   bb = null;
   rx = null;
   tr = null;
+  tp = null;
   sn = null;
   mm = null;
   cb = null;
@@ -2742,6 +2744,453 @@ function endTapGame(){
   finishMinigame('tap', { score, merit: score * 0.13, energyCost: 20, message });
 }
 
+/* ===================== Prototipo: Tap prueba =====================
+   Variante de prueba del Tap rítmico, para probar si una melodía
+   compuesta a mano (en vez de un tono al azar por nota) y una progresión de
+   acordes (en vez de un Bm fijo) hacen que suene más a canción de verdad.
+   Todo lo demás — grilla rítmica, rampas de dificultad, ventanas de
+   acierto, holds/dobles, input — es EXACTAMENTE el mismo sistema que ya
+   está probado en el tap rítmico real (comparten hasta las funciones de
+   sonido, trSfxHit/trSfxFail). Solo se lanza desde el panel de prueba
+   (dbgTapPrueba), a propósito: es para escuchar la idea antes de decidir si
+   reemplaza al tap rítmico real. */
+
+/* Frase de 4 compáses en Si menor natural, compuesta a mano (índices dentro
+   de TR_SCALE: 1=B4, 3=D5, 5=F#5, 7=A5, etc). Se repite en loop mientras dura
+   el chart. Compás 1 sube (tónica-3ª-5ª-7ª), compás 2 baja por grados,
+   compás 3 rebota en tensión y el compás 4 baja y resuelve otra vez en la
+   tónica antes de repetir. */
+const TP_LOOP_BEATS = 16;   // 4 compáses de 4 negras
+const TP_MELODY = [
+  1, 3, 5, 7,   // compás 1: B  D  F#  A   (sube)
+  6, 5, 4, 3,   // compás 2: G  F#  E  D   (baja)
+  4, 5, 6, 5,   // compás 3: E  F#  G  F#  (rebote)
+  4, 3, 2, 1,   // compás 4: E  D  C#  B   (baja y resuelve)
+];
+
+/* Una corchea a mitad de camino entre dos negras no tiene nota propia en la
+   melodía: toma la del pulso que viene (anticipación), un recurso melódico
+   normal y más simple que componer 32 notas en vez de 16. */
+function tpPitchAt(beat){
+  const base = Math.floor(beat);
+  const esCorchea = beat - base > 0.25;
+  const pos = ((base % TP_LOOP_BEATS) + TP_LOOP_BEATS) % TP_LOOP_BEATS;
+  return esCorchea ? TP_MELODY[(pos + 1) % TP_LOOP_BEATS] : TP_MELODY[pos];
+}
+
+/* Progresión i-VI-III-VII en Si menor natural (Bm-G-D-A), un acorde por
+   compás, en vez del Bm fijo del tap rítmico real. Mismo voicing abierto que
+   TR_PAD_CHORD (fundamental, quinta, tercera una octava arriba). */
+const TP_CHORDS = [
+  [246.94, 369.99, 587.33],  // Bm (i):   B3, F#4, D5
+  [196.00, 293.66, 493.88],  // G  (VI):  G3, D4,  B4
+  [146.83, 220.00, 369.99],  // D  (III): D3, A3,  F#4
+  [110.00, 164.81, 277.18],  // A  (VII): A2, E3,  C#4
+];
+
+let tp = null;
+
+/* Idéntico a trBuildChart en carriles/timing/dificultad — el único cambio
+   real es que push() ya no sortea el tono, lo saca de tpPitchAt(beat) según
+   la posición dentro del compás. */
+function tpBuildChart(){
+  const notes = [];
+  const busyUntil = [0, 0, 0];
+  let recentLanes = [];
+  let recentT = -99;
+
+  const pickLane = (t, excluir = []) => {
+    const libres = [0, 1, 2].filter(l => busyUntil[l] <= t && !excluir.includes(l));
+    if (!libres.length) return null;
+    const sinRepetir = libres.filter(l => !recentLanes.includes(l));
+    let pool = libres;
+    if (t - recentT < TR_MIN_SAME_LANE_GAP){
+      if (!sinRepetir.length) return null;
+      pool = sinRepetir;
+    } else if (sinRepetir.length && Math.random() < 0.78){
+      pool = sinRepetir;
+    }
+    return pool[Math.floor(Math.random() * pool.length)];
+  };
+
+  const push = (t, lane, holdSec, beat) => {
+    const pitch = tpPitchAt(beat);
+    notes.push({ t, lane, pitch, judged: false, hold: holdSec > 0, holding: false, holdSec });
+    if (holdSec > 0) busyUntil[lane] = t + holdSec + TR_MIN_SAME_LANE_GAP;
+    return lane;
+  };
+
+  for (let b = 0; b < TR_CHART_BEATS; b++){
+    const progress = b / TR_CHART_BEATS;
+    const t = trBeatTime(TR_LEAD_IN_BEATS + b);
+
+    const lane = pickLane(t);
+    if (lane === null) continue;
+
+    const esHold = Math.random() < trRamp(TR_HOLD_CHANCE, progress);
+    push(t, lane, esHold ? TR_HOLD_SEC : 0, b);
+    const usados = [lane];
+
+    if (!esHold && Math.random() < trRamp(TR_DOUBLE_CHANCE, progress)){
+      const pareja = pickLane(t, [lane]);
+      if (pareja !== null) usados.push(push(t, pareja, 0, b));
+    }
+    recentLanes = usados;
+    recentT = t;
+
+    if (Math.random() < trRamp(TR_OFFBEAT_CHANCE, progress)){
+      const tOff = trBeatTime(TR_LEAD_IN_BEATS + b + 0.5);
+      const laneOff = pickLane(tOff);
+      if (laneOff !== null){
+        recentLanes = [push(tOff, laneOff, 0, b + 0.5)];
+        recentT = tOff;
+      }
+    }
+  }
+  return notes;
+}
+
+function startTapPruebaGame(){
+  const { gc, ctx } = enterMinigame('tapPrueba');
+  const audioT0 = audioNow();
+
+  tp = {
+    ctx, gc,
+    notes: tpBuildChart(),
+    fx: [],
+    score: 0,
+    combo: 0,
+    bestCombo: 0,
+    perfects: 0,
+    hits: 0,
+    laneW: gc.width / TR_LANES,
+    hitY: gc.height - 26,
+    time: 0,
+    cursor: 0,
+    endAt: 0,
+    judgeText: '',
+    judgeColor: '#fff',
+    judgeUntil: 0,
+    lanePulse: [0, 0, 0],
+    laneDown: [false, false, false],
+    canvasPointers: new Map(),
+    pulse: 0,
+    nextPulseBeat: 0,
+    nextBeat: 0,
+    audioStart: audioT0 === null ? null : audioT0 + TR_START_DELAY,
+    totalBeats: TR_LEAD_IN_BEATS + TR_CHART_BEATS,
+    pointer: makeCanvasPointer(gc),
+    raf: null,
+    lastT: 0,
+  };
+  tp.speed = (tp.hitY + 26) / TR_APPROACH;
+
+  tp.onDown = (e) => {
+    e.preventDefault();
+    const { x } = tp.pointer.at(e);
+    const lane = Math.max(0, Math.min(TR_LANES-1, Math.floor(x / tp.laneW)));
+    tp.canvasPointers.set(e.pointerId, lane);
+    tpPress(lane);
+  };
+  tp.onUp = (e) => {
+    const lane = tp.canvasPointers.get(e.pointerId);
+    if (lane === undefined) return;
+    tp.canvasPointers.delete(e.pointerId);
+    tpRelease(lane);
+  };
+  gc.addEventListener('pointerdown', tp.onDown);
+  gc.addEventListener('pointerup', tp.onUp);
+  gc.addEventListener('pointercancel', tp.onUp);
+
+  const cont = showGameControls(`
+    <div class="gbtn-row">
+      ${TR_LANE_CHAR.map((c, i) => `<button class="gbtn" data-lane="${i}">${c}</button>`).join('')}
+    </div>
+  `);
+  cont.querySelectorAll('[data-lane]').forEach(el => {
+    const lane = +el.dataset.lane;
+    el.addEventListener('pointerdown', (e) => { e.preventDefault(); tpPress(lane); });
+    el.addEventListener('pointerup', () => tpRelease(lane));
+    el.addEventListener('pointercancel', () => tpRelease(lane));
+    el.addEventListener('pointerleave', () => tpRelease(lane));
+  });
+
+  const KEY_LANE = { '1':0, '2':1, '3':2, a:0, s:1, d:2, ArrowLeft:0, ArrowDown:1, ArrowRight:2 };
+  tp.onKeyDown = (e) => {
+    const idx = KEY_LANE[e.key];
+    if (idx !== undefined){ e.preventDefault(); tpPress(idx); }
+  };
+  tp.onKeyUp = (e) => {
+    const idx = KEY_LANE[e.key];
+    if (idx !== undefined) tpRelease(idx);
+  };
+  window.addEventListener('keydown', tp.onKeyDown);
+  window.addEventListener('keyup', tp.onKeyUp);
+
+  say('Prueba: melodía fija + acordes en progresión');
+  tp.raf = requestAnimationFrame(tpLoop);
+}
+
+function tpMultiplier(){
+  return Math.min(4, 1 + Math.floor(tp.combo / 10));
+}
+
+function tpJudge(text, color){
+  tp.judgeText = text;
+  tp.judgeColor = color;
+  tp.judgeUntil = tp.time + 0.5;
+}
+
+function tpPress(lane){
+  if (!tp || tp.laneDown[lane]) return;
+  tp.laneDown[lane] = true;
+  tp.lanePulse[lane] = 0.18;
+
+  let mejor = null, mejorDist = Infinity;
+  for (const n of tp.notes){
+    if (n.judged || n.holding || n.lane !== lane) continue;
+    const dist = Math.abs(n.t - tp.time);
+    if (dist < mejorDist){ mejorDist = dist; mejor = n; }
+  }
+
+  const dist = mejor ? tp.time - mejor.t : 0;
+  if (!mejor || dist > TR_GOOD_LATE || dist < -TR_GOOD_EARLY){
+    tp.combo = 0;
+    tpJudge('fallo', '#ff8f8f');
+    trSfxFail();
+    return;
+  }
+
+  const at = tp.audioStart === null ? 0 : tp.audioStart + mejor.t;
+
+  if (mejor.hold){
+    mejor.holding = true;
+    tpJudge('¡mantené!', '#8fd0ff');
+    tp.fx.push({ char: TR_LANE_CHAR[lane], x: (lane + 0.5) * tp.laneW, y: tp.hitY, vy: -40, life: 0.4 });
+    trSfxHit(mejor.pitch, false, at);
+    return;
+  }
+
+  mejor.judged = true;
+  tp.combo += 1;
+  if (tp.combo > tp.bestCombo) tp.bestCombo = tp.combo;
+  tp.hits += 1;
+
+  const perfecto = mejorDist <= TR_PERFECT;
+  if (perfecto) tp.perfects += 1;
+  tp.score += (perfecto ? 3 : 1) * tpMultiplier();
+  tpJudge(perfecto ? '¡PERFECTO!' : 'bien', perfecto ? '#ffe66d' : '#c8f2c2');
+  tp.fx.push({ char: TR_LANE_CHAR[lane], x: (lane + 0.5) * tp.laneW, y: tp.hitY, vy: -55, life: 0.5 });
+  trSfxHit(mejor.pitch, perfecto, at);
+}
+
+function tpRelease(lane){
+  if (!tp) return;
+  tp.laneDown[lane] = false;
+}
+
+function tpAdvanceClock(dt){
+  const now = audioNow();
+  if (now === null){ tp.time += dt; return; }
+  if (tp.audioStart === null) tp.audioStart = now - tp.time;
+  tp.time = now - tp.audioStart;
+}
+
+/* Único cambio real contra trScheduleTrack: el acorde ya no es siempre Bm,
+   sale de TP_CHORDS según en qué compás va (progresión i-VI-III-VII). */
+function tpScheduleTrack(){
+  if (tp.audioStart === null) return;
+  const now = audioNow();
+  if (now === null) return;
+
+  while (tp.nextBeat < tp.totalBeats && trBeatTime(tp.nextBeat) < tp.time + TR_SCHEDULE_AHEAD){
+    const beat = tp.nextBeat++;
+    const at = tp.audioStart + trBeatTime(beat);
+    if (at < now) continue;
+
+    const acento = beat % TR_BEATS_PER_BAR === 0;
+    tone({
+      freq: acento ? TR_CLICK_ACCENT : TR_CLICK_BEAT,
+      durationMs: acento ? 45 : 28,
+      type: 'sine',
+      vol: acento ? 0.055 : 0.03,
+      at,
+    });
+
+    if (acento){
+      const bar = Math.floor(beat / TR_BEATS_PER_BAR) % TP_CHORDS.length;
+      for (const freq of TP_CHORDS[bar]){
+        tone({
+          freq,
+          durationMs: TR_BEAT_SEC * TR_BEATS_PER_BAR * 1000 * 0.92,
+          type: 'triangle',
+          vol: TR_PAD_VOL,
+          at,
+          attackMs: TR_PAD_ATTACK_MS,
+        });
+      }
+    }
+  }
+}
+
+function tpLoop(t){
+  if (activeMinigame !== 'tapPrueba' || !tp) return;
+  const dt = Math.min(0.05, (t - (tp.lastT || t)) / 1000);
+  tp.lastT = t;
+  tpAdvanceClock(dt);
+  tpScheduleTrack();
+
+  for (const n of tp.notes){
+    if (!n.holding || n.judged) continue;
+    if (tp.time >= n.t + n.holdSec){
+      n.judged = true;
+      n.holding = false;
+      tp.combo += 1;
+      if (tp.combo > tp.bestCombo) tp.bestCombo = tp.combo;
+      tp.hits += 1;
+      tp.perfects += 1;
+      tp.score += 4 * tpMultiplier();
+      tpJudge('¡PERFECTO!', '#ffe66d');
+      tp.fx.push({ char: TR_LANE_CHAR[n.lane], x: (n.lane + 0.5) * tp.laneW, y: tp.hitY, vy: -55, life: 0.5 });
+      trSfxHit(n.pitch, true);
+    } else if (!tp.laneDown[n.lane]){
+      n.judged = true;
+      n.holding = false;
+      tp.combo = 0;
+      tpJudge('soltaste antes', '#ff8f8f');
+      trSfxFail();
+    }
+  }
+
+  while (tp.nextPulseBeat < tp.totalBeats && trBeatTime(tp.nextPulseBeat) <= tp.time){
+    tp.pulse = (tp.nextPulseBeat % TR_BEATS_PER_BAR === 0) ? 1 : 0.55;
+    tp.nextPulseBeat++;
+  }
+  if (tp.pulse > 0) tp.pulse = Math.max(0, tp.pulse - dt * 5);
+
+  const gc = tp.gc, ctx = tp.ctx;
+  ctx.clearRect(0, 0, gc.width, gc.height);
+
+  if (tp.pulse > 0){
+    ctx.fillStyle = `rgba(255,255,255,${tp.pulse * 0.10})`;
+    ctx.fillRect(0, 0, gc.width, gc.height);
+  }
+
+  for (let i = 0; i < TR_LANES; i++){
+    if (tp.lanePulse[i] > 0) tp.lanePulse[i] -= dt;
+    if (tp.lanePulse[i] > 0){
+      ctx.fillStyle = `rgba(255,230,109,${(tp.lanePulse[i]/0.18)*0.18})`;
+      ctx.fillRect(i*tp.laneW, 0, tp.laneW, gc.height);
+    }
+    if (i > 0){
+      ctx.fillStyle = 'rgba(255,255,255,.08)';
+      ctx.fillRect(Math.round(i*tp.laneW), 0, 1, gc.height);
+    }
+  }
+
+  const bandaArriba = TR_GOOD_EARLY * tp.speed;
+  const bandaAbajo = TR_GOOD_LATE * tp.speed;
+  ctx.fillStyle = 'rgba(255,230,109,.10)';
+  ctx.fillRect(0, tp.hitY - bandaArriba, gc.width, bandaArriba + bandaAbajo);
+  ctx.fillStyle = `rgba(255,230,109,${0.55 + tp.pulse*0.4})`;
+  const grosor = 2 + tp.pulse*3;
+  ctx.fillRect(0, tp.hitY - grosor/2, gc.width, grosor);
+  for (let i = 0; i < TR_LANES; i++){
+    ctx.globalAlpha = 0.45;
+    drawEmoji(ctx, TR_LANE_CHAR[i], 15, (i + 0.5)*tp.laneW, tp.hitY + 14);
+    ctx.globalAlpha = 1;
+  }
+
+  while (tp.cursor < tp.notes.length && tp.notes[tp.cursor].judged) tp.cursor++;
+  let quedan = tp.cursor < tp.notes.length;
+  for (let i = tp.cursor; i < tp.notes.length; i++){
+    const n = tp.notes[i];
+    if (n.judged) continue;
+    const falta = n.t - tp.time;
+    if (!n.holding){
+      if (falta > TR_APPROACH) break;
+      if (falta < -TR_GOOD_LATE){
+        n.judged = true;
+        tp.combo = 0;
+        tpJudge('fallo', '#ff8f8f');
+        trSfxFail();
+        continue;
+      }
+    }
+    const y = n.holding ? tp.hitY : tp.hitY - falta * tp.speed;
+    const x = (n.lane + 0.5) * tp.laneW;
+
+    if (n.hold){
+      const restante = n.holding ? Math.max(0, (n.t + n.holdSec) - tp.time) : n.holdSec;
+      ctx.fillStyle = 'rgba(143,208,255,.35)';
+      ctx.fillRect(x-5, y - restante*tp.speed, 10, restante*tp.speed);
+    }
+
+    ctx.beginPath();
+    ctx.arc(x, y, 13, 0, Math.PI*2);
+    ctx.fillStyle = n.hold ? 'rgba(143,208,255,.28)' : 'rgba(255,230,109,.16)';
+    ctx.fill();
+    drawEmoji(ctx, TR_LANE_CHAR[n.lane], 20, x, y);
+  }
+
+  for (let i = tp.fx.length - 1; i >= 0; i--){
+    const f = tp.fx[i];
+    f.life -= dt;
+    if (f.life <= 0){ tp.fx.splice(i, 1); continue; }
+    f.y += f.vy * dt;
+    ctx.globalAlpha = Math.min(1, f.life * 2);
+    drawEmoji(ctx, f.char, 16, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.font = '11px monospace';
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('🎵 ' + tp.score, 8, 16);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = tpMultiplier() > 1 ? '#ffe66d' : '#fff';
+  ctx.fillText(`combo ${tp.combo}  x${tpMultiplier()}`, gc.width - 8, 16);
+
+  if (tp.time < tp.judgeUntil){
+    ctx.textAlign = 'center';
+    ctx.fillStyle = tp.judgeColor;
+    ctx.fillText(tp.judgeText, gc.width/2, tp.hitY - 26);
+  }
+
+  if (!quedan){
+    if (!tp.endAt) tp.endAt = tp.time + 0.8;
+    if (tp.time >= tp.endAt){ endTapPruebaGame(); return; }
+  }
+  tp.raf = requestAnimationFrame(tpLoop);
+}
+
+function tpDispose(){
+  if (!tp) return;
+  tp.gc.removeEventListener('pointerdown', tp.onDown);
+  tp.gc.removeEventListener('pointerup', tp.onUp);
+  tp.gc.removeEventListener('pointercancel', tp.onUp);
+  window.removeEventListener('keydown', tp.onKeyDown);
+  window.removeEventListener('keyup', tp.onKeyUp);
+  tp.pointer.dispose();
+  if (tp.raf) cancelAnimationFrame(tp.raf);
+}
+
+function endTapPruebaGame(){
+  const score = tp ? tp.score : 0;
+  const bestCombo = tp ? tp.bestCombo : 0;
+  const perfects = tp ? tp.perfects : 0;
+  tpDispose();
+  tp = null;
+
+  const message = score > 0
+    ? `${score} pts · ${perfects} perfectos (combo ${bestCombo})`
+    : 'Se te fue el ritmo…';
+
+  finishMinigame('tapPrueba', { score, merit: score * 0.13, energyCost: 20, message });
+}
+
+
 /* ===================== Minijuego 5: snake =====================
    Se controla deslizando el dedo (o con flechas / WASD). El giro se registra en
    pointermove y no al soltar: así se pueden encadenar dos curvas sin levantar
@@ -3550,6 +3999,7 @@ function renderDebugPanel(){
           <button class="debug-btn" id="dbgSnake">🐍 Snake</button>
           <button class="debug-btn" id="dbgMemory">💡 Memorice</button>
           <button class="debug-btn" id="dbgCombat">⚔️ Combate (prueba)</button>
+          <button class="debug-btn" id="dbgTapPrueba">🎼 Tap prueba</button>
         </div>
       </div>
       <div class="debug-section">
@@ -3597,6 +4047,7 @@ function renderDebugPanel(){
   document.getElementById('dbgSnake').addEventListener('click', () => { closeDebugPanel(); startSnakeGame(); });
   document.getElementById('dbgMemory').addEventListener('click', () => { closeDebugPanel(); startMemoryGame(); });
   document.getElementById('dbgCombat').addEventListener('click', () => { closeDebugPanel(); startCombatGame(); });
+  document.getElementById('dbgTapPrueba').addEventListener('click', () => { closeDebugPanel(); startTapPruebaGame(); });
   document.getElementById('dbgPoop').addEventListener('click', () => {
     state.poop = true; saveState(); render(); renderDebugPanel();
   });

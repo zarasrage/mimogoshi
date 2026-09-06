@@ -582,6 +582,35 @@ knockback de una sola pasada (misma idea que las parábolas de Baloncesto,
 pero en x). Números sin calibrar: `CB_ROUNDS`/`CB_PLAYER_HP`/`CB_RIVAL_HP`/
 `cbWindowMs()` son un primer intento a propósito, para probarlos jugando.
 
+### Tap prueba (prototipo, todavía no en el menú de Jugar)
+
+`startTapPruebaGame()` — se lanza solo desde el panel de prueba
+(`dbgTapPrueba`), a propósito: es una variante A/B del tap rítmico real para
+escuchar si suena mejor antes de decidir si lo reemplaza. Comparte TODO el
+sistema ya probado del tap rítmico real — grilla, rampas de dificultad,
+ventanas de acierto, holds/dobles, input, hasta las funciones de sonido
+`trSfxHit`/`trSfxFail` — y cambia solo dos cosas:
+
+- **Melodía fija en loop, no al azar.** `TP_MELODY` es una frase de 4
+  compáses compuesta a mano (índices en `TR_SCALE`) que sube en el primer
+  compás (tónica-3ª-5ª-7ª), baja por grados en el segundo, rebota en tensión
+  en el tercero y baja resolviendo a la tónica en el cuarto, antes de
+  repetirse. `tpPitchAt(beat)` la consulta según la posición dentro del
+  compás — el chart (`tpBuildChart`, copia de `trBuildChart`) sigue
+  sorteando carril y timing igual que siempre, lo único que ya no sortea es
+  el tono. Una corchea a mitad de camino entre dos negras no tiene nota
+  propia en la frase: toma la del pulso que viene (anticipación), más simple
+  que componer el doble de notas.
+- **Progresión de acordes, no un acorde fijo.** `TP_CHORDS` recorre
+  i-VI-III-VII en Si menor natural (Bm-G-D-A) un acorde por compás, mismo
+  voicing abierto que ya usaba el Bm fijo (fundamental, quinta, tercera una
+  octava arriba).
+
+Verificado por simulación pura contra `tpBuildChart()`/`tpPitchAt()` reales:
+0 notas fuera de la grilla, 0 solapamientos, todo pitch dentro de rango
+válido para la tríada perfecta, y la melodía se repite idéntica en cada
+loop de 16 pulsos.
+
 ## Panel de prueba
 
 El botón ✏️ (`#btnDebug`) abre `#debugPanel`: fuerza etapa, ánimo y **especie**
