@@ -338,6 +338,18 @@ const SAVE_KEY = 'mimogoshi.save.v2';
 const TICK_MS = 4000;
 const MS_PER_GAME_HOUR = 60000;  // 1 minuto real = 1 hora de juego (60 h de juego por hora real)
 const EGG_HOURS = 0.1;         // horas de juego que dura el huevo (~6 s reales)
+/* Niño → adolescente → adulto son horas de JUEGO (60 por hora real, ver
+   MS_PER_GAME_HOUR): 1 hora real de niño, 4 horas reales en total antes de
+   llegar a adulto. Un pet ya establecido casi siempre tiene ageHours muy por
+   encima de esto, así que stageFor() lo manda directo a 'adult' — la escalera
+   solo se nota en una mascota recién nacida. */
+const CHILD_HOURS = 60;        // 1 hora real
+const TEEN_HOURS = 240;        // 4 horas reales
+/* Único cambio entre etapas: el tamaño. Mismo sprite, mismas animaciones —
+   drawSprite() ya acepta un scaleOverride entero (lo usan los minijuegos a
+   escala 2), así que crecer es solo pasarle un entero más grande según la
+   etapa. 1 = 32px, 2 = 64px, 3 = 96px (llena el canvas, como "grown" antes). */
+const STAGE_SCALE = { child: 1, teen: 2, adult: 3 };
 const SLEEPY_THRESHOLD = 35;   // bajo esto puede quedarse dormido solo
 const RED_ZONE = 25;           // bajo esto, ni alimentarlo/jugar lo despierta
 
@@ -429,10 +441,11 @@ let debugForcedStage = null;   // null = usar la etapa real de la mascota
 let debugForcedMood = null;    // null = usar el ánimo calculado normalmente
 let debugForcedSpecies = null; // null = usar la especie real de la mascota
 
-/* Solo dos etapas: el huevo (lo único procedural, `drawEgg()`) y la mascota ya
-   salida. No había arte distinto por edad —los spritesheets son un solo diseño
-   por especie— así que bebé/niño/adolescente/adulto se veían todos idénticos. */
-const ALL_STAGES = ['egg','grown'];
+/* El huevo (lo único procedural, `drawEgg()`) y una escalera de tamaños una
+   vez que nace. Los spritesheets son un solo diseño por especie —no hay arte
+   distinto por edad—, así que niño/adolescente/adulto usan exactamente el
+   mismo sprite y solo cambian de tamaño (ver STAGE_SCALE). */
+const ALL_STAGES = ['egg','child','teen','adult'];
 const ALL_MOODS = ['normal','happy','sad','sick','sleepy','dead'];
 
 function displayStage(){ return debugForcedStage || state.stage; }
@@ -492,7 +505,8 @@ function loadState(){
     for (const up of UPGRADES){
       if (!s.upgrades[up.id]) s.upgrades[up.id] = up.armable ? { owned:false, armed:false, timesUsed:0 } : { owned:false };
     }
-    if (!ALL_STAGES.includes(s.stage)) s.stage = 'grown';               // saves con baby/child/teen/adult_*
+    // saves con 'grown' (antes de la escalera de tamaños) o con una etapa fantasma
+    if (!ALL_STAGES.includes(s.stage)) s.stage = 'adult';
     return s;
   } catch (e) {
     return null;
@@ -510,7 +524,10 @@ function clamp(v, min=0, max=100){ return Math.max(min, Math.min(max, v)); }
 /* ===================== Simulación ===================== */
 
 function stageFor(ageHours){
-  return ageHours < EGG_HOURS ? 'egg' : 'grown';
+  if (ageHours < EGG_HOURS) return 'egg';
+  if (ageHours < CHILD_HOURS) return 'child';
+  if (ageHours < TEEN_HOURS) return 'teen';
+  return 'adult';
 }
 
 /* Velocidad a la que baja una barra, ya con el castigo por estar en apuro. */
@@ -795,7 +812,7 @@ function render(){
 
   const canvas = document.getElementById('petCanvas');
   const ctx = canvas.getContext('2d');
-  drawSprite(ctx, displayStage(), displayMood(), walker.frame);
+  drawSprite(ctx, displayStage(), displayMood(), walker.frame, false, STAGE_SCALE[displayStage()]);
   canvas.style.left = (walker.x*100) + '%';
   canvas.style.transform = `translateX(-50%) scaleX(${walker.dir})`;
 
@@ -4072,7 +4089,7 @@ function askName(){
 /* ===================== Modo prueba (debug) ===================== */
 
 const STAGE_LABELS = {
-  egg:'🥚 Huevo', grown:'🐣 Mascota',
+  egg:'🥚 Huevo', child:'🐣 Niño', teen:'🐤 Adolescente', adult:'🐔 Adulto',
 };
 const MOOD_LABELS = {
   normal:'😐 Normal', happy:'😄 Feliz', sad:'😢 Triste',

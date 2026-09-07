@@ -267,12 +267,25 @@ puede entregar de una un rango de horas que cruza medianoche, y como
 tramo nocturno adentro de un catchUp largo no se trata distinto del resto —
 el mismo compromiso que ya hace `sleepFactor` con horas acumuladas.
 
-- **Etapas** (`ALL_STAGES`): solo dos, `egg → grown` (`EGG_HOURS = 0.1`, o sea
-  ~6 s reales de huevo). Había una escalera de edades
-  (bebé/niño/adolescente/adulto bueno-neutro-malo) pero **no existía arte por
-  edad**: cada especie tiene un solo diseño, así que las cinco etapas se veían
-  idénticas. `loadState()` mapea a `grown` cualquier etapa que ya no exista, si
-  no los saves viejos quedan con una etapa fantasma.
+- **Etapas** (`ALL_STAGES`): `egg → child → teen → adult` (`EGG_HOURS = 0.1`,
+  ~6 s reales de huevo; `CHILD_HOURS = 60` y `TEEN_HOURS = 240`, 1 y 4 horas
+  reales — `ageHours` es hora de JUEGO, 60 por hora real). Hubo antes una
+  escalera de edades (bebé/niño/adolescente/adulto bueno-neutro-malo) que se
+  sacó porque **no había arte por edad**: cada especie tiene un solo diseño,
+  así que las etapas se veían idénticas. Esta escalera nueva no repite ese
+  error: la única diferencia entre `child`/`teen`/`adult` es el **tamaño**
+  (`STAGE_SCALE = {child:1, teen:2, adult:3}`, en el `scaleOverride` que ya
+  aceptaba `drawSprite()`) — mismo sprite, mismas animaciones, sin arte nuevo.
+  1 = 32px (recién nacido), 2 = 64px, 3 = 96px (llena el canvas, el tamaño de
+  siempre). La mascota dentro de los minijuegos (`drawPetAt()`) sigue siempre
+  a escala 2 fija, sin importar la etapa — no vale la pena reajustar el layout
+  de cada minijuego por esto. Como `ageHours` sigue subiendo mientras la
+  mascota esté viva, una ya establecida casi siempre tiene `ageHours` muy por
+  encima de `TEEN_HOURS`, así que `stageFor()` la manda directo a `adult`: la
+  escalera solo se nota en una mascota recién nacida. `loadState()` mapea a
+  `adult` cualquier etapa que ya no exista (`grown`, de antes de esta
+  escalera, o una etapa fantasma más vieja todavía), si no los saves viejos
+  quedan con una etapa fantasma.
 - **Ánimos** (`ALL_MOODS`): `normal, happy, sad, sick, sleepy, dead`.
 
 `careGood` / `careBad` se siguen acumulando pero **hoy no los lee nadie**: eran
