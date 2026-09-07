@@ -339,12 +339,13 @@ const TICK_MS = 4000;
 const MS_PER_GAME_HOUR = 60000;  // 1 minuto real = 1 hora de juego (60 h de juego por hora real)
 const EGG_HOURS = 0.1;         // horas de juego que dura el huevo (~6 s reales)
 /* Niño → adolescente → adulto son horas de JUEGO (60 por hora real, ver
-   MS_PER_GAME_HOUR): 1 hora real de niño, 4 horas reales en total antes de
-   llegar a adulto. Un pet ya establecido casi siempre tiene ageHours muy por
-   encima de esto, así que stageFor() lo manda directo a 'adult' — la escalera
-   solo se nota en una mascota recién nacida. */
-const CHILD_HOURS = 60;        // 1 hora real
-const TEEN_HOURS = 240;        // 4 horas reales
+   MS_PER_GAME_HOUR): 1 día real de niño, y 3 días reales más de adolescente
+   antes de llegar a adulto (4 días reales en total). Un pet ya establecido
+   casi siempre tiene ageHours muy por encima de esto, así que stageFor() lo
+   manda directo a 'adult' — la escalera solo se nota en una mascota recién
+   nacida. */
+const CHILD_HOURS = 24 * 60;         // 1 día real
+const TEEN_HOURS = 4 * 24 * 60;      // 4 días reales en total (3 más de adolescente)
 /* Único cambio entre etapas: el tamaño. Mismo sprite, mismas animaciones —
    drawSprite() ya acepta un scaleOverride entero (lo usan los minijuegos a
    escala 2), así que crecer es solo pasarle un entero más grande según la

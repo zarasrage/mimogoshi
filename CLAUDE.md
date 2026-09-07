@@ -268,8 +268,9 @@ tramo nocturno adentro de un catchUp largo no se trata distinto del resto —
 el mismo compromiso que ya hace `sleepFactor` con horas acumuladas.
 
 - **Etapas** (`ALL_STAGES`): `egg → child → teen → adult` (`EGG_HOURS = 0.1`,
-  ~6 s reales de huevo; `CHILD_HOURS = 60` y `TEEN_HOURS = 240`, 1 y 4 horas
-  reales — `ageHours` es hora de JUEGO, 60 por hora real). Hubo antes una
+  ~6 s reales de huevo; `CHILD_HOURS = 24*60` y `TEEN_HOURS = 4*24*60`, 1 día
+  real de niño y 3 días más de adolescente, 4 días reales en total hasta
+  adulto — `ageHours` es hora de JUEGO, 60 por hora real). Hubo antes una
   escalera de edades (bebé/niño/adolescente/adulto bueno-neutro-malo) que se
   sacó porque **no había arte por edad**: cada especie tiene un solo diseño,
   así que las etapas se veían idénticas. Esta escalera nueva no repite ese
