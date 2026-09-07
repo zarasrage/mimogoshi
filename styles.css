@@ -270,7 +270,24 @@ body{
   filter:drop-shadow(0 2px 2px rgba(0,0,0,.4));
 }
 
-.creature-floor.hidden, #gameCanvas.hidden, .poop-fx.hidden{display:none;}
+.gift-fx{
+  position:absolute;
+  bottom:4px;
+  right:16%;
+  font-size:22px;
+  cursor:pointer;
+  filter:drop-shadow(0 2px 2px rgba(0,0,0,.4));
+  animation:gift-bounce 1.1s ease-in-out infinite;
+}
+
+/* Late para llamar la atención: a diferencia de la caca (que no compite por
+   mirada, uno la quiere resolver rápido), el regalo es raro y hay que notarlo. */
+@keyframes gift-bounce{
+  0%, 100%{ transform:translateY(0) scale(1); }
+  50%{ transform:translateY(-4px) scale(1.08); }
+}
+
+.creature-floor.hidden, #gameCanvas.hidden, .poop-fx.hidden, .gift-fx.hidden{display:none;}
 
 #gameCanvas{
   image-rendering:pixelated;

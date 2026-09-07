@@ -343,6 +343,13 @@ const ENERGY_RECOVER_PER_HOUR = 100 / 212;  // durmiendo: barra entera en ~3.5 h
    una vez que hay caca, state.poop ya no vuelve a tirar el dado). */
 const POOP_CHANCE_PER_HOUR = 0.00325;
 
+/* Regalo al azar: mismo modelo de dado que la caca (un solo Math.random() por
+   `hours` de juego transcurridas, sin componer), calibrado para mediana ~12
+   horas reales. No compite con la caca por atención: no toca higiene ni nada
+   más, es puro extra. Verificado por simulación contra el mismo tick real
+   (TICK_MS/MS_PER_GAME_HOUR): mediana ~12h. */
+const GIFT_CHANCE_PER_HOUR = 0.00096;
+
 /* Bajo estos valores la barra entra en "apuro" y se vacía más rápido — el bajón
    se acelera solo cuando ya va mal. Son valores de barra (0-100), no de
    tiempo: no se escalan con el resto. */
@@ -424,6 +431,7 @@ function freshState(name, species){
     sick: false,
     sleeping: false,
     poop: false,
+    gift: false,
     stage: 'egg',
     selectedFood: 'simple',
     coins: 0,
@@ -510,6 +518,8 @@ function applyDecay(hours){
      limpiar deja de ser un trámite periódico y pasa a ser la respuesta a algo
      que el jugador ve en pantalla. */
   if (state.poop) state.hygiene = clamp(state.hygiene - hours * decayRate('hygiene', state.hygiene) * nightFactor);
+
+  if (!state.gift && Math.random() < hours * GIFT_CHANCE_PER_HOUR) state.gift = true;
 
   /* Salud: las dos causas se suman, y solo se recupera si no hay ninguna. */
   const enRiesgo = state.hunger    < HEALTH_RISK_AT || state.happiness < HEALTH_RISK_AT ||
@@ -733,6 +743,7 @@ function render(){
   document.getElementById('feedIcon').textContent = foodById(state.selectedFood).emoji;
 
   document.getElementById('poopFx').classList.toggle('hidden', !state.poop);
+  document.getElementById('giftFx').classList.toggle('hidden', !state.gift);
 }
 
 let lastFrameT = 0;
@@ -820,6 +831,28 @@ const btnClean = () => {
   floatFx('🫧');
   say(state.stage === 'egg' ? 'Huevo brillante' : '¡Ya quedó limpio!');
   if (state.stage !== 'egg') triggerPetAction('clean');
+  saveState(); render();
+};
+
+/* Comida de premio, no la de arranque: la gracia del regalo es que sea mejor
+   que lo que ya se puede comprar barato. Nunca monedas — esas se ganan SOLO
+   jugando (ver finishMinigame): si el regalo también las diera, dejaría de
+   ser cierto y el tope de felicidad de los minijuegos perdería sentido. */
+const GIFT_FOOD_POOL = ['rica', 'especial', 'redbull'];
+const GIFT_HAPPINESS = 8;
+
+const collectGift = () => {
+  if (!tryWake()) return;
+  catchUp();
+  state.gift = false;
+
+  const food = foodById(GIFT_FOOD_POOL[Math.floor(Math.random() * GIFT_FOOD_POOL.length)]);
+  state.pantry[food.id] = (state.pantry[food.id] || 0) + 1;
+  state.happiness = clamp(state.happiness + GIFT_HAPPINESS);
+
+  floatFx(food.emoji);
+  say(`¡Un regalo! +1 ${food.name} ${food.emoji}`);
+  triggerPetAction('celebrate');
   saveState(); render();
 };
 
@@ -4006,6 +4039,7 @@ function renderDebugPanel(){
         <h4>Otras pruebas</h4>
         <div class="debug-grid">
           <button class="debug-btn" id="dbgPoop">💩 Ensuciar</button>
+          <button class="debug-btn" id="dbgGift">🎁 Regalo</button>
           <button class="debug-btn danger" id="dbgGameOver">💀 Game Over</button>
         </div>
       </div>
@@ -4051,6 +4085,9 @@ function renderDebugPanel(){
   document.getElementById('dbgPoop').addEventListener('click', () => {
     state.poop = true; saveState(); render(); renderDebugPanel();
   });
+  document.getElementById('dbgGift').addEventListener('click', () => {
+    state.gift = true; saveState(); render(); renderDebugPanel();
+  });
   document.getElementById('dbgGameOver').addEventListener('click', () => {
     closeDebugPanel();
     debugMode = false;
@@ -4072,6 +4109,13 @@ function wireButtons(){
   document.getElementById('petCanvas').addEventListener('click', requireAlive(() => {
     if (state.poop) { btnClean(); return; } // tocar la caca limpia, no mima
     btnPet();
+  }));
+  /* stopPropagation: si no, el click burbujea hasta el listener de #screen de
+     más abajo, que limpia la caca si hay una — tocar el regalo no tiene por
+     qué limpiar caca de arriba. */
+  document.getElementById('giftFx').addEventListener('click', requireAlive((e) => {
+    e.stopPropagation();
+    collectGift();
   }));
   document.getElementById('btnReset').addEventListener('click', () => {
     showOverlay(`

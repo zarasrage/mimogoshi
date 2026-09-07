@@ -241,6 +241,19 @@ escalado) para que la primera salga en mediana a las ~3.5 horas reales. La
 higiene no baja sola — solo mientras haya caca sin limpiar (ver
 `DECAY_PER_HOUR.hygiene`).
 
+Los regalos aparecen igual que la caca — mismo modelo de dado, un solo
+`Math.random() < hours * GIFT_CHANCE_PER_HOUR` por tick, sin componer — pero
+calibrados aparte para una mediana de ~12 horas reales, verificado por
+simulación contra el tick real (`TICK_MS`/`MS_PER_GAME_HOUR`). No comparten
+escala con `POOP_CHANCE_PER_HOUR`: si se recalibra el tiempo hasta la muerte,
+`GIFT_CHANCE_PER_HOUR` NO tiene que tocarse, es un evento aparte que no
+compite por atención con nada más (no toca higiene ni ninguna otra barra).
+Al abrir uno (`collectGift()`, tocando el ícono 🎁 que aparece flotando junto
+a la mascota) da una porción de una comida mejor que la inicial
+(`GIFT_FOOD_POOL`: rica, especial o Red Bull, al azar) más `GIFT_HAPPINESS`
+de felicidad — **nunca monedas**: esas se ganan solo jugando (ver
+`finishMinigame`), y si el regalo también las diera dejaría de ser cierto.
+
 **Modo nocturno** (`isNightMode()`, 00:00 a 06:00 **hora real** del
 dispositivo — es de noche para quien juega, no para la mascota): todo decae a
 la mitad de velocidad (`NIGHT_DECAY_FACTOR`, aplicado junto a `sleepFactor` en
