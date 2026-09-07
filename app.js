@@ -306,6 +306,32 @@ function foodStock(id){
 
 function coinsLabel(n){ return `🪙 ${n}`; }
 
+/* Mejoras: se compran una sola vez (quedan compradas para siempre) y las
+   "armables" son un seguro de un solo uso — cuando dispara su efecto se
+   apagan solas y hay que volver a activarlas a mano, gratis, ya que están
+   pagadas. No hay forma de dejarlas disparando para siempre: eso volvería
+   trivial la caca o la enfermedad en vez de ser una red de contención
+   puntual. Las dos últimas todavía no hacen nada — se compran igual, listas
+   para cuando exista la función de visitar amigos, en vez de aparecer de la
+   nada ese día. */
+const UPGRADES = [
+  { id:'autoClean', name:'Seguro de limpieza', emoji:'🧹', price: 30, armable: true,
+    desc:'Limpia sola la primera caca que aparezca.' },
+  { id:'autoMed', name:'Seguro médico', emoji:'💉', price: 50, armable: true,
+    desc:'Cura sola una enfermedad si aparece.' },
+  { id:'sendVisit', name:'Pase de visita', emoji:'🚪', price: 20, armable: false,
+    desc:'Manda a tu mimogoshi a visitar a un amigo. (Próximamente)' },
+  { id:'returnVisit', name:'Silbato de regreso', emoji:'📯', price: 20, armable: false,
+    desc:'Trae de vuelta a tu mimogoshi de una visita. (Próximamente)' },
+];
+
+function upgradeById(id){ return UPGRADES.find(u => u.id === id); }
+
+function upgradeState(id){
+  const u = state.upgrades && state.upgrades[id];
+  return u || { owned: false, armed: false, timesUsed: 0 };
+}
+
 /* ===================== Estado del juego ===================== */
 
 const SAVE_KEY = 'mimogoshi.save.v2';
@@ -437,7 +463,14 @@ function freshState(name, species){
     coins: 0,
     pantry: { simple: FOOD_START_STOCK },  // porciones en la mochila por comida
     records: {},   // mejor puntaje por minijuego
+    upgrades: freshUpgrades(),
   };
+}
+
+function freshUpgrades(){
+  const u = {};
+  for (const up of UPGRADES) u[up.id] = up.armable ? { owned:false, armed:false, timesUsed:0 } : { owned:false };
+  return u;
 }
 
 function loadState(){
@@ -454,6 +487,11 @@ function loadState(){
     delete s.unlockedFoods;  // el modelo viejo era desbloqueo permanente; ahora son porciones
     if (!s.species || !SPECIES[s.species]) s.species = DEFAULT_SPECIES; // saves de especies que ya no existen
     if (!s.records || typeof s.records !== 'object') s.records = {};    // saves anteriores a los récords
+    // saves de antes de las mejoras, o de después de sumar una mejora nueva
+    if (!s.upgrades || typeof s.upgrades !== 'object') s.upgrades = {};
+    for (const up of UPGRADES){
+      if (!s.upgrades[up.id]) s.upgrades[up.id] = up.armable ? { owned:false, armed:false, timesUsed:0 } : { owned:false };
+    }
     if (!ALL_STAGES.includes(s.stage)) s.stage = 'grown';               // saves con baby/child/teen/adult_*
     return s;
   } catch (e) {
@@ -513,7 +551,20 @@ function applyDecay(hours){
     ? hours * ENERGY_RECOVER_PER_HOUR
     : -hours * decayRate('energy', state.energy) * nightFactor));
 
-  if (!state.poop && Math.random() < hours * POOP_CHANCE_PER_HOUR) state.poop = true;
+  if (!state.poop && Math.random() < hours * POOP_CHANCE_PER_HOUR){
+    state.poop = true;
+    /* El seguro de limpieza actúa en el mismo instante en que aparece la caca,
+       sea con la app abierta o en un catchUp de vuelta: el juego nunca trata
+       "estar mirando" como un estado distinto en ningún otro lado, así que
+       tampoco acá. */
+    const seguro = upgradeState('autoClean');
+    if (seguro.owned && seguro.armed){
+      state.poop = false;
+      state.hygiene = clamp(state.hygiene + 35);   // mismo efecto que btnClean
+      seguro.armed = false;
+      seguro.timesUsed = (seguro.timesUsed || 0) + 1;
+    }
+  }
   /* La higiene NO baja sola: solo se ensucia mientras haya caca sin limpiar. Así
      limpiar deja de ser un trámite periódico y pasa a ser la respuesta a algo
      que el jugador ve en pantalla. */
@@ -530,7 +581,16 @@ function applyDecay(hours){
   if (healthDelta === 0) healthDelta = HEALTH_RECOVER_PER_HOUR;
   state.health = clamp(state.health + hours * healthDelta);
 
-  if (!state.sick && Math.random() < sickChance(hours)) state.sick = true;
+  if (!state.sick && Math.random() < sickChance(hours)){
+    state.sick = true;
+    const seguro = upgradeState('autoMed');
+    if (seguro.owned && seguro.armed){
+      state.sick = false;
+      state.health = clamp(state.health + 20);   // mismo efecto que btnMed
+      seguro.armed = false;
+      seguro.timesUsed = (seguro.timesUsed || 0) + 1;
+    }
+  }
 
   /* Se sigue llevando la cuenta de qué tan bien se cuidó, pero por ahora nadie la
      lee: era lo que decidía la rama adulta (buena/neutra/mala) y esas etapas ya
@@ -919,10 +979,45 @@ function openFoodMenu(){
    comida, incluido el bocadillo simple: ya no es infinito ni gratis, hay que
    venir a comprarlo igual que el resto. */
 
+/* Pestaña activa de la tienda: vive fuera de openShop() para que sobreviva a
+   los re-render que ella misma dispara (comprar algo vuelve a llamar a
+   openShop). Un tab en vez de dos listas apiladas: la de comida ya usa todo
+   el alto disponible (`.menu-list`), y esto va a seguir creciendo con más
+   mejoras — apilar las dos listas rompería ese tope. */
+let shopTab = 'food';
+
+function upgradeRow(u){
+  const st = upgradeState(u.id);
+  if (!st.owned){
+    const alcanza = state.coins >= u.price;
+    return `
+      <div class="menu-item ${alcanza ? '' : 'locked'}" data-buy-upgrade="${u.id}">
+        <span class="emoji">${u.emoji}</span>
+        <div class="info"><b>${escapeHtml(u.name)}</b><small>${escapeHtml(u.desc)}</small></div>
+        <span class="menu-record">${coinsLabel(u.price)}</span>
+      </div>`;
+  }
+  if (!u.armable){
+    return `
+      <div class="menu-item locked">
+        <span class="emoji">${u.emoji}</span>
+        <div class="info"><b>${escapeHtml(u.name)}</b><small>${escapeHtml(u.desc)}</small></div>
+        <span class="menu-record">Comprada</span>
+      </div>`;
+  }
+  const usos = st.timesUsed ? ` · usada ${st.timesUsed} ${st.timesUsed === 1 ? 'vez' : 'veces'}` : '';
+  return `
+    <div class="menu-item" data-toggle-upgrade="${u.id}">
+      <span class="emoji">${u.emoji}</span>
+      <div class="info"><b>${escapeHtml(u.name)}</b><small>${escapeHtml(u.desc)}${usos}</small></div>
+      <span class="menu-record">${st.armed ? 'Activa ✅' : 'Apagada'}</span>
+    </div>`;
+}
+
 /* El aviso va dentro de la tarjeta y no con say(): la burbuja tiene z-index 5 y
    el overlay 10, así que un mensaje por say() con la tienda abierta queda tapado. */
 function openShop(aviso){
-  const rows = FOODS.map(f => {
+  const foodRows = FOODS.map(f => {
     const alcanza = state.coins >= f.price;
     return `
       <div class="menu-item ${alcanza ? '' : 'locked'}" data-buy="${f.id}">
@@ -934,13 +1029,21 @@ function openShop(aviso){
         <span class="menu-record">${f.price === 0 ? 'Gratis' : coinsLabel(f.price)}</span>
       </div>`;
   }).join('');
+  const upgradeRows = UPGRADES.map(upgradeRow).join('');
 
   showOverlay(`
     <h3>🛒 Tienda</h3>
     <p>${aviso ? escapeHtml(aviso) : `Tienes ${coinsLabel(state.coins)}. Se ganan monedas jugando.`}</p>
-    <div class="menu-list">${rows}</div>
+    <div class="shop-tabs">
+      <button class="shop-tab ${shopTab === 'food' ? 'active' : ''}" id="shopTabFood">Comida</button>
+      <button class="shop-tab ${shopTab === 'upgrades' ? 'active' : ''}" id="shopTabUpgrades">Mejoras</button>
+    </div>
+    <div class="menu-list">${shopTab === 'food' ? foodRows : upgradeRows}</div>
     <button class="overlay-btn" id="btnCloseShop">Cerrar</button>
   `);
+
+  document.getElementById('shopTabFood').addEventListener('click', () => { shopTab = 'food'; openShop(); });
+  document.getElementById('shopTabUpgrades').addEventListener('click', () => { shopTab = 'upgrades'; openShop(); });
 
   document.querySelectorAll('[data-buy]').forEach(el => {
     el.addEventListener('click', () => {
@@ -955,6 +1058,33 @@ function openShop(aviso){
       openShop(`¡${food.name} comprada! Te quedan ${coinsLabel(state.coins)}`);
     });
   });
+
+  document.querySelectorAll('[data-buy-upgrade]').forEach(el => {
+    el.addEventListener('click', () => {
+      const upgrade = upgradeById(el.dataset.buyUpgrade);
+      if (state.coins < upgrade.price){
+        openShop(`Te faltan ${coinsLabel(upgrade.price - state.coins)} para ${upgrade.name}`);
+        return;
+      }
+      state.coins -= upgrade.price;
+      const st = upgradeState(upgrade.id);
+      st.owned = true;
+      if (upgrade.armable) st.armed = true;   // lista para usarse apenas se compra
+      state.upgrades[upgrade.id] = st;
+      saveState(); render();
+      openShop(`¡${upgrade.name} comprada! Te quedan ${coinsLabel(state.coins)}`);
+    });
+  });
+
+  document.querySelectorAll('[data-toggle-upgrade]').forEach(el => {
+    el.addEventListener('click', () => {
+      const st = upgradeState(el.dataset.toggleUpgrade);
+      st.armed = !st.armed;
+      saveState(); render();
+      openShop();
+    });
+  });
+
   document.getElementById('btnCloseShop').addEventListener('click', hideOverlay);
 }
 

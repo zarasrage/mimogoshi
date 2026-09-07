@@ -435,6 +435,20 @@ body{
 }
 .overlay-btn:active{transform:translateY(2px); box-shadow:0 1px 0 #b8850a;}
 
+.shop-tabs{display:flex; gap:6px; margin-bottom:8px;}
+.shop-tab{
+  flex:1;
+  font-family:var(--font-pixel);
+  font-size:9px;
+  background:rgba(255,255,255,.08);
+  color:var(--screen-lit);
+  border:2px solid transparent;
+  border-radius:8px;
+  padding:8px 4px;
+  cursor:pointer;
+}
+.shop-tab.active{border-color:var(--amber); background:rgba(255,214,102,.14); color:var(--amber);}
+
 /* Tope de alto + scroll propio en la lista, no en el overlay entero: así el
    botón de abajo (Cancelar / Cerrar / Empezar) siempre queda a la vista sin
    importar cuántas filas sumen los minijuegos, las comidas o las especies —

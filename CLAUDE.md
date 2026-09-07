@@ -317,6 +317,35 @@ La Red Bull es la única que lo pisa — poca hambre (`restore: 2`), mucha energ
 tiene `z-index:5` y el overlay `10`, así que un `say()` con un overlay abierto
 queda tapado. Lo mismo vale para cualquier menú nuevo.
 
+#### Mejoras
+
+Segunda pestaña de la tienda (`shopTab`, "Comida"/"Mejoras" — un tab en vez de
+apilar dos `.menu-list`, porque la de comida ya usa todo el alto disponible y
+esto va a seguir creciendo). Catálogo en `UPGRADES`, con dos formas:
+
+- **Armables** (`armable: true`, hoy `autoClean` y `autoMed`): se compran una
+  sola vez pero funcionan como un seguro de **un solo uso**. Al comprarlas
+  quedan activadas de una; cuando disparan su efecto se desactivan solas y hay
+  que volver a activarlas a mano (gratis, ya están pagadas) para que sirvan de
+  nuevo. Nunca quedan disparando para siempre a propósito: eso volvería
+  trivial la caca o la enfermedad en vez de ser una red de contención puntual
+  para cuando no estás mirando. `autoClean` limpia sola la primera caca que
+  aparezca (mismo `+35` de higiene que `btnClean`); `autoMed` cura sola una
+  enfermedad (mismo `+20` de salud que `btnMed`). Ninguna distingue si la app
+  está abierta o cerrada al disparar — nada más en el juego trata "estar
+  mirando" como un estado aparte, así que tampoco esto. `state.upgrades[id]`
+  guarda `{owned, armed, timesUsed}`; `timesUsed` se muestra en la tienda como
+  "usada N veces", sin popup — igual que la enfermedad al aparecer, es un
+  cambio de estado silencioso que se nota en la interfaz, no con un aviso.
+- **No armables** (`armable: false`, hoy `sendVisit` y `returnVisit`): se
+  compran pero todavía no hacen nada — son el enganche para cuando exista la
+  función de visitar amigos (todavía sin backend ni pantalla propia), para
+  que no aparezcan de la nada ese día. Una vez compradas solo muestran
+  "Comprada", sin botón de activar.
+
+`loadState()` rellena `state.upgrades[id]` con el default que corresponda
+(`armable` u no) para saves viejos o para una mejora agregada después.
+
 El huevo es lo **único** que se dibuja procedural (`drawEgg()`, un óvalo): no
 vino arte para esa etapa en ninguna especie. Todo lo demás sale recortado del
 PNG tal cual, **sin tinte ni recoloreo encima** — los spritesheets ya son la
