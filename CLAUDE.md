@@ -412,6 +412,15 @@ su tamaño real en pantalla para que nada salga estirado:
   arriba y su ventana cae después del punto más alto (`BB_DUNK_WINDOW` empieza
   en 0.60, ya en la bajada — "al caer"). Si el salto completo transcurre sin
   toque, `bbLoop()` lo cancela solo llamando a `resolveJumpShot(false)`.
+
+  Las dos ventanas (`BB_LAYUP_WINDOW = [0.38, 0.70]`, `BB_DUNK_WINDOW =
+  [0.50, 0.72]`) están calibradas a mano contra una captura de pantalla real
+  marcada a mano: se ubicó dónde caía el punto más alto de cada salto y hasta
+  dónde llegaba el tramo bueno dibujado, y de ahí se sacó la fracción `t`
+  correspondiente (con la fórmula real de `bbJumpPos`, `4t(1-t)`, no a ojo).
+  Para el dunk en particular, el final de la ventana (0.72) es el instante en
+  que el personaje, ya bajando, cruza la altura del aro — no bien más abajo
+  como estaba antes.
 - **Reflejos** (`rx`): aparecen blancos que duran cada vez menos; tocar los
   buenos, no las bombas. 25 segundos y 3 vidas. Tocar el vacío corta el combo,
   así que martillar la pantalla es peor que elegir.

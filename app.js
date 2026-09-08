@@ -1657,15 +1657,22 @@ const BB_POP_CHANCE = 0.02;
    apretó dentro de la ventana — apretar antes o después tampoco cuenta — se
    acabó ahí, sin repetir el ciclo. */
 const BB_LAYUP_JUMP_MS = 650;    // dura el salto completo, de despegue a caer
-const BB_LAYUP_WINDOW = [0.38, 0.62]; // ventana alrededor del punto más alto
+/* Recalibrada a mano contra una captura marcada: el arranque (0.38) ya
+   calzaba justo con el punto más alto, pero el tramo bueno seguía un poco
+   más allá de lo que marcaba — se extiende hasta 0.70. */
+const BB_LAYUP_WINDOW = [0.38, 0.70];
 const BB_LAYUP_ARC_PX = 34;
 const BB_LAYUP_DX = 30;          // "salta en una parábola hacia la derecha"
 const BB_LAYUP_X_FRAC = 0.62;    // se acerca al aro, pero no queda debajo
 
 const BB_DUNK_JUMP_MS = 700;
-/* La ventana cae después del punto más alto (t=0.5): "al caer hay una pequeña
-   ventana de tiempo para apretar el botón". */
-const BB_DUNK_WINDOW = [0.60, 0.82];
+/* Recalibrada a mano contra una captura marcada: ahí el tramo bueno arrancaba
+   prácticamente en el punto más alto (t=0.5) y terminaba cuando el personaje
+   cruza, ya bajando, la altura del aro — no bien más abajo como estaba antes
+   (0.60-0.82). Con BB_DUNK_ARC_PX=60 y groundY como referencia, esa altura del
+   aro cae en t≈0.72 de la parábola (4t(1-t) = altura del aro / altura máxima,
+   despejando la raíz de la bajada). */
+const BB_DUNK_WINDOW = [0.50, 0.72];
 const BB_DUNK_ARC_PX = 60;       // salta lo bastante alto para pasar el aro
 const BB_DUNK_X_FRAC = 0.90;     // prácticamente debajo del aro, salta derecho hacia arriba
 
