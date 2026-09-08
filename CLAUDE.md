@@ -408,19 +408,32 @@ su tamaño real en pantalla para que nada salga estirado:
   `BB_DUNK_JUMP_MS`, y solo cuenta un toque dentro de `BB_LAYUP_WINDOW`/
   `BB_DUNK_WINDOW` (fracciones 0..1 del salto); afuera de la ventana, antes o
   después, es fallo igual que no apretar. La bandeja avanza en x mientras salta
-  (`BB_LAYUP_DX`, "parábola hacia la derecha"); el slam dunk salta derecho hacia
-  arriba y su ventana cae después del punto más alto (`BB_DUNK_WINDOW` empieza
-  en 0.60, ya en la bajada — "al caer"). Si el salto completo transcurre sin
-  toque, `bbLoop()` lo cancela solo llamando a `resolveJumpShot(false)`.
+  (`BB_LAYUP_DX_FRAC`, "parábola hacia la derecha"); el slam dunk salta derecho
+  hacia arriba y su ventana cae después del punto más alto ("al caer"). Si el
+  salto completo transcurre sin toque, `bbLoop()` lo cancela solo llamando a
+  `resolveJumpShot(false)`.
 
   Las dos ventanas (`BB_LAYUP_WINDOW = [0.38, 0.70]`, `BB_DUNK_WINDOW =
-  [0.50, 0.72]`) están calibradas a mano contra una captura de pantalla real
-  marcada a mano: se ubicó dónde caía el punto más alto de cada salto y hasta
-  dónde llegaba el tramo bueno dibujado, y de ahí se sacó la fracción `t`
-  correspondiente (con la fórmula real de `bbJumpPos`, `4t(1-t)`, no a ojo).
+  [0.50, 0.72]`) y la forma de cada salto (`BB_LAYUP_ARC_FRAC`/
+  `BB_LAYUP_DX_FRAC`/`BB_DUNK_ARC_FRAC`) están calibradas a mano contra una
+  captura de pantalla real marcada a mano: se ubicó dónde caía el punto más
+  alto de cada salto, hasta dónde llegaba el tramo bueno dibujado, y qué tan
+  alto/ancho se veía el salto completo, y de ahí se sacaron las fracciones
+  correspondientes (con la fórmula real de `bbJumpPos`, `4t(1-t)`, no a ojo).
   Para el dunk en particular, el final de la ventana (0.72) es el instante en
   que el personaje, ya bajando, cruza la altura del aro — no bien más abajo
   como estaba antes.
+
+  El alto y el ancho del salto (antes `BB_LAYUP_ARC_PX`/`BB_LAYUP_DX`/
+  `BB_DUNK_ARC_PX`, en píxeles fijos) pasan a `_FRAC`, fracción de `bb.h`/`bb.w`
+  igual que ya hacían las posiciones `X_FRAC`/`Y_FRAC` — mismo motivo que
+  `drawEgg()` dibuja sus radios como fracción del canvas: en píxeles fijos, la
+  altura que se veía bien en un canvas de prueba chico se quedaba corta en un
+  canvas real de teléfono (bastante más alto), y el dunk terminaba sin llegar
+  ni a la altura del aro. Verificado por simulación contra `bbJumpCfg()`/
+  `bbJumpPos()` reales en tres tamaños de canvas bien distintos: el dunk
+  siempre despega por encima del aro y la bandeja siempre aterriza antes de
+  llegar a él, sin importar el tamaño de pantalla.
 - **Reflejos** (`rx`): aparecen blancos que duran cada vez menos; tocar los
   buenos, no las bombas. 25 segundos y 3 vidas. Tocar el vacío corta el combo,
   así que martillar la pantalla es peor que elegir.

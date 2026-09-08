@@ -1661,20 +1661,33 @@ const BB_LAYUP_JUMP_MS = 650;    // dura el salto completo, de despegue a caer
    calzaba justo con el punto más alto, pero el tramo bueno seguía un poco
    más allá de lo que marcaba — se extiende hasta 0.70. */
 const BB_LAYUP_WINDOW = [0.38, 0.70];
-const BB_LAYUP_ARC_PX = 34;
-const BB_LAYUP_DX = 30;          // "salta en una parábola hacia la derecha"
-const BB_LAYUP_X_FRAC = 0.62;    // se acerca al aro, pero no queda debajo
+/* La forma del salto (alto/ancho) sale de esa misma captura, midiéndola contra
+   el aro —que ya se sabe dónde cae, BB_HOOP_X_FRAC/Y_FRAC, así que sirve para
+   calibrar la escala real del dibujo—: un salto bastante más ancho y apenas
+   más alto que el de antes, "largo y bajo" en vez de parejo.
+
+   Van como FRACCIÓN del canvas (de `bb.w`/`bb.h`), no en píxeles fijos, igual
+   que ya hacían las posiciones X_FRAC/Y_FRAC: en píxeles fijos, la altura
+   "correcta" en el canvas chico de prueba se queda corta en un canvas real de
+   teléfono (bastante más alto), que es justo el bug que ya evitaba `drawEgg()`
+   dibujando sus radios como fracción del canvas y no en píxeles. */
+const BB_LAYUP_ARC_FRAC = 0.195;   // alto del salto, fracción de bb.h
+const BB_LAYUP_DX_FRAC = 0.16;     // "salta en una parábola hacia la derecha", fracción de bb.w
+const BB_LAYUP_X_FRAC = 0.62;      // se acerca al aro, pero no queda debajo:
+                                    // 0.62 + 0.16 = 0.78, todavía corto de BB_HOOP_X_FRAC=0.80
 
 const BB_DUNK_JUMP_MS = 700;
 /* Recalibrada a mano contra una captura marcada: ahí el tramo bueno arrancaba
    prácticamente en el punto más alto (t=0.5) y terminaba cuando el personaje
    cruza, ya bajando, la altura del aro — no bien más abajo como estaba antes
-   (0.60-0.82). Con BB_DUNK_ARC_PX=60 y groundY como referencia, esa altura del
-   aro cae en t≈0.72 de la parábola (4t(1-t) = altura del aro / altura máxima,
-   despejando la raíz de la bajada). */
+   (0.60-0.82). */
 const BB_DUNK_WINDOW = [0.50, 0.72];
-const BB_DUNK_ARC_PX = 60;       // salta lo bastante alto para pasar el aro
-const BB_DUNK_X_FRAC = 0.90;     // prácticamente debajo del aro, salta derecho hacia arriba
+/* La captura marcada mostraba el salto llegando casi al borde de arriba de la
+   pantalla — mucho más alto que antes. Con BB_DUNK_ARC_FRAC = 0.85 el pico
+   queda bien arriba del aro (BB_HOOP_Y_FRAC = 0.24, con margen de sobra) sin
+   pegarse del todo al borde superior, donde ya dibuja el HUD ("Tiro X/3"). */
+const BB_DUNK_ARC_FRAC = 0.85;     // alto del salto, fracción de bb.h
+const BB_DUNK_X_FRAC = 0.90;       // prácticamente debajo del aro, salta derecho hacia arriba
 
 const BB_APPROACH_MS = 320;      // lo que tarda en correr hacia el aro antes de saltar
 
@@ -1864,14 +1877,14 @@ function bbStartApproach(kind){
    no repetir el if/else en cada lugar que necesita duración/ventana/altura. */
 function bbJumpCfg(){
   return bb.jumpKind === 'layup'
-    ? { durationMs: BB_LAYUP_JUMP_MS, window: BB_LAYUP_WINDOW, arcPx: BB_LAYUP_ARC_PX }
-    : { durationMs: BB_DUNK_JUMP_MS, window: BB_DUNK_WINDOW, arcPx: BB_DUNK_ARC_PX };
+    ? { durationMs: BB_LAYUP_JUMP_MS, window: BB_LAYUP_WINDOW, arcPx: bb.h * BB_LAYUP_ARC_FRAC }
+    : { durationMs: BB_DUNK_JUMP_MS, window: BB_DUNK_WINDOW, arcPx: bb.h * BB_DUNK_ARC_FRAC };
 }
 
 /* Posición del monito durante el salto: una parábola real (misma forma que
    bbArcPos), de una sola pasada — no un oscilador que sube y baja sin fin. La
-   bandeja además avanza en x (BB_LAYUP_DX): "salta en una parábola hacia la
-   derecha". El slam dunk salta derecho hacia arriba (jumpToX === jumpFromX). */
+   bandeja además avanza en x (BB_LAYUP_DX_FRAC): "salta en una parábola hacia
+   la derecha". El slam dunk salta derecho hacia arriba (jumpToX === jumpFromX). */
 function bbJumpPos(t){
   const cfg = bbJumpCfg();
   const x = bb.jumpFromX + (bb.jumpToX - bb.jumpFromX) * t;
@@ -1881,7 +1894,7 @@ function bbJumpPos(t){
 
 function bbStartJumpAim(){
   bb.jumpFromX = bb.approachTo;
-  bb.jumpToX = bb.jumpKind === 'layup' ? bb.approachTo + BB_LAYUP_DX : bb.approachTo;
+  bb.jumpToX = bb.jumpKind === 'layup' ? bb.approachTo + bb.w * BB_LAYUP_DX_FRAC : bb.approachTo;
   bb.jumpStart = performance.now();
   bb.state = 'jump_aim';
   bbSyncButtons();
