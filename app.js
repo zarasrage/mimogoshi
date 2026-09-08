@@ -1629,7 +1629,7 @@ const BB_DIFFICULTY = [
    - una Bandeja ya conseguida tiene esta MISMA chance de rebotar y pasar a Slam
      Dunk (no la pidieron por separado, se reusa el mismo número: es una sola
      perilla fácil de tocar en vez de cuatro sueltas). */
-const BB_REBOUND_CHANCE = [0.05, 0.15, 0.40];
+const BB_REBOUND_CHANCE = [0.30, 0.50, 0.70];
 
 /* Tocar el aro (near <= h < peak) ya no es "0 puntos": ahora SIEMPRE manda a
    Bandeja. Antes ese umbral decidía un resultado muerto; ahora decide el inicio
