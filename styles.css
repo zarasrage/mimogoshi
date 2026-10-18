@@ -500,6 +500,29 @@ body{
 .menu-item.selected{border-color:var(--amber);}
 .menu-item.locked{opacity:.4; cursor:not-allowed;}
 .menu-item:not(.locked):hover{background:rgba(255,255,255,.15);}
+/* Récord y botón del Megajuego apilados a la derecha: uno al lado del otro
+   le quitaban ancho al nombre y la fila pasaba a tres líneas. */
+.game-badges{
+  margin-left:auto;
+  flex-shrink:0;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:4px;
+}
+.game-badges .menu-record{margin-left:0;}
+.mega-btn{
+  font-family:var(--font-pixel);
+  font-size:8px;
+  color:var(--ink);
+  background:var(--shell);
+  border:none;
+  border-radius:6px;
+  padding:5px 6px;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.mega-btn:hover{background:var(--shell-hi);}
 
 /* Rejilla de 3 columnas, no fila con scroll horizontal: ese scroll horizontal
    competía con el scroll vertical del overlay y las especies fuera del borde

@@ -593,6 +593,26 @@ su tamaño real en pantalla para que nada salga estirado:
 Los seis suman felicidad y disparan `triggerPetAction('celebrate')` si el
 puntaje fue positivo.
 
+### Desbloqueo y Megajuego
+
+Los seis juegos del menú viven en `GAMES` (id, nombre, precio y `start`): el
+menú de Jugar se arma solo desde ahí. Se desbloquean con monedas tocándolos en
+el mismo menú, una vez y para siempre (`state.unlockedGames`). Atrapa
+estrellas es gratis (`price: 0`) a propósito: las monedas solo se ganan
+jugando, sin un juego abierto no habría cómo juntar la primera. `loadState()`
+deja desbloqueados en saves viejos los juegos que ya tienen récord. El panel de
+prueba se salta el bloqueo. El cansancio (`energy < 12`) se revisa al lanzar,
+no al abrir el menú, para poder comprar igual.
+
+**Megajuego** (`state.mega`): una partida por juego desbloqueado cada
+`MEGA_CYCLE_MS` (12 h **reales**, `Date.now()`) que paga `MEGA_COIN_MULT` (x3)
+las monedas — solo monedas, la felicidad no. Jugar el de todos los
+desbloqueados da al instante `MEGA_BONUS_PER_GAME` (10) por juego, una vez por
+ciclo. El ciclo es uno solo para todos, arranca con el primer Megajuego jugado
+y `megaState()` lo renueva entero al vencer. Se gasta en `finishMinigame()`
+(lee `megaRun`), así que una partida cortada por `forceCloseMinigames()` no lo
+consume.
+
 ### Cómo se arma un minijuego
 
 **Los mandos van abajo, no encima de la pantalla.** `showGameControls(html)`

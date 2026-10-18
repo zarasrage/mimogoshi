@@ -332,6 +332,71 @@ function upgradeState(id){
   return u || { owned: false, armed: false, timesUsed: 0 };
 }
 
+/* Minijuegos del menú de Jugar. Se desbloquean con monedas, una sola vez y para
+   siempre; Atrapa estrellas viene gratis de inicio porque las monedas solo se
+   ganan jugando (ver finishMinigame): sin un juego abierto no habría forma de
+   juntar la primera. Precios sin calibrar, un primer intento: una partida buena
+   da ~7 monedas. Combate y Tap prueba no van acá — son prototipos que solo
+   lanza el panel de prueba, que además se salta el bloqueo. */
+const GAMES = [
+  { id:'stars',      name:'Atrapa estrellas', emoji:'⭐', desc:'Esquiva la caca',          price:  0, start: () => startStarsGame() },
+  { id:'basketball', name:'Baloncesto',       emoji:'🏀', desc:'Tira en el momento justo', price: 15, start: () => startBasketballGame() },
+  { id:'reflex',     name:'Reflejos',         emoji:'🎯', desc:'Todo menos las bombas',    price: 25, start: () => startReflexGame() },
+  { id:'tap',        name:'Tap rítmico',      emoji:'🎵', desc:'Toca al cruzar la línea',  price: 35, start: () => startTapGame() },
+  { id:'snake',      name:'Snake',            emoji:'🐍', desc:'Desliza para girar',       price: 45, start: () => startSnakeGame() },
+  { id:'memory',     name:'Memorice',         emoji:'💡', desc:'Repite la secuencia',      price: 55, start: () => startMemoryGame() },
+];
+
+function gameById(id){ return GAMES.find(g => g.id === id); }
+
+function isGameUnlocked(id){
+  const g = gameById(id);
+  return !!g && (g.price === 0 || (state.unlockedGames || []).includes(id));
+}
+
+function unlockedGames(){ return GAMES.filter(g => isGameUnlocked(g.id)); }
+
+/* Megajuego: una partida por juego desbloqueado cada MEGA_CYCLE_MS de tiempo
+   REAL (Date.now(), no ageHours: es un ritmo para quien juega, igual que el
+   modo nocturno). Paga MEGA_COIN_MULT veces las monedas — solo las monedas, la
+   felicidad queda igual para no tapar el descuido. Jugar el Megajuego de todos
+   los desbloqueados da de una MEGA_BONUS_PER_GAME por juego, una vez por ciclo.
+
+   El ciclo arranca con el primer Megajuego jugado y se renueva entero 12 horas
+   después, no por juego: así hay una sola cuenta regresiva que mostrar y el
+   bonus de "completarlos todos" tiene un plazo claro. Un juego desbloqueado a
+   mitad de ciclo entra en la cuenta de ese mismo ciclo. */
+const MEGA_CYCLE_MS = 12 * 60 * 60 * 1000;
+const MEGA_COIN_MULT = 3;
+const MEGA_BONUS_PER_GAME = 10;
+
+let megaRun = null;   // id del juego que se está jugando en versión Megajuego
+
+function freshMega(){ return { cycleStart: null, played: {}, bonusPaid: false }; }
+
+/* Devuelve el ciclo vigente, renovándolo si ya venció. Un reloj que vuelve
+   atrás (cycleStart en el futuro) también lo renueva: si no, quedaría bloqueado
+   hasta que el reloj alcance la fecha vieja. */
+function megaState(){
+  if (!state.mega || typeof state.mega !== 'object') state.mega = freshMega();
+  const m = state.mega;
+  if (m.cycleStart !== null){
+    const elapsed = Date.now() - m.cycleStart;
+    if (elapsed >= MEGA_CYCLE_MS || elapsed < 0) state.mega = freshMega();
+  }
+  return state.mega;
+}
+
+function megaAvailable(id){ return isGameUnlocked(id) && !megaState().played[id]; }
+
+function megaTimeLeftLabel(){
+  const m = megaState();
+  if (m.cycleStart === null) return null;
+  const min = Math.max(1, Math.ceil((m.cycleStart + MEGA_CYCLE_MS - Date.now()) / 60000));
+  const h = Math.floor(min / 60);
+  return h > 0 ? `${h}h ${min % 60}m` : `${min}m`;
+}
+
 /* ===================== Estado del juego ===================== */
 
 const SAVE_KEY = 'mimogoshi.save.v2';
@@ -478,6 +543,8 @@ function freshState(name, species){
     pantry: { simple: FOOD_START_STOCK },  // porciones en la mochila por comida
     records: {},   // mejor puntaje por minijuego
     upgrades: freshUpgrades(),
+    unlockedGames: [],   // los gratis (price 0) no hace falta anotarlos
+    mega: freshMega(),
   };
 }
 
@@ -501,6 +568,12 @@ function loadState(){
     delete s.unlockedFoods;  // el modelo viejo era desbloqueo permanente; ahora son porciones
     if (!s.species || !SPECIES[s.species]) s.species = DEFAULT_SPECIES; // saves de especies que ya no existen
     if (!s.records || typeof s.records !== 'object') s.records = {};    // saves anteriores a los récords
+    // saves de antes del desbloqueo con monedas: quedan abiertos los juegos que
+    // ya se jugaron (tienen récord), para no quitarle a nadie algo que ya usaba
+    if (!Array.isArray(s.unlockedGames)){
+      s.unlockedGames = GAMES.filter(g => g.price > 0 && s.records[g.id] > 0).map(g => g.id);
+    }
+    if (!s.mega || typeof s.mega !== 'object' || !s.mega.played) s.mega = freshMega();
     // saves de antes de las mejoras, o de después de sumar una mejora nueva
     if (!s.upgrades || typeof s.upgrades !== 'object') s.upgrades = {};
     for (const up of UPGRADES){
@@ -699,6 +772,7 @@ function forceCloseMinigames(){
   mm = null;
   cb = null;
   activeMinigame = null;
+  megaRun = null;   // una partida cortada no gasta el Megajuego
   document.getElementById('gameCanvas').classList.add('hidden');
   document.getElementById('creatureFloor').classList.remove('hidden');
   hideGameControls();
@@ -1108,62 +1182,82 @@ function openShop(aviso){
 
 /* ===================== Menú de minijuegos ===================== */
 
-function openGamesMenu(){
+/* Un juego bloqueado se compra tocándolo, ahí mismo en el menú (no en la
+   tienda: es donde uno va a buscar a qué jugar). El aviso va dentro de la
+   tarjeta y no con say(), por lo mismo que en la tienda. El cansancio se chequea
+   recién al lanzar una partida, no al abrir el menú, para poder comprar igual. */
+function openGamesMenu(aviso){
   if (state.stage === 'egg'){ say('Todavía es un huevo…'); return; }
-  if (state.energy < 12){ say('Está muy cansado para jugar'); return; }
   if (!tryWake()) return;
+
+  const m = megaState();
+  const abiertos = unlockedGames();
+  const jugados = abiertos.filter(g => m.played[g.id]).length;
+  const renueva = megaTimeLeftLabel();
+  let megaInfo;
+  if (m.bonusPaid) megaInfo = `Megajuegos listos, vuelven en ${renueva}`;
+  else megaInfo = `MEGA x${MEGA_COIN_MULT}: ${jugados}/${abiertos.length} · todos ${coinsLabel('+' + MEGA_BONUS_PER_GAME * abiertos.length)}`
+    + (renueva ? ` · ${renueva}` : '');
 
   /* El récord va como insignia a la derecha y no dentro del texto: si va en el
      texto la descripción pasa a dos líneas y con cuatro juegos la lista ya no
      entra en la pantalla. */
-  const record = (id) => {
-    const best = bestScore(id);
-    return best > 0 ? `<span class="menu-record">★ ${best}</span>` : '';
-  };
+  const rows = GAMES.map(g => {
+    if (!isGameUnlocked(g.id)){
+      const alcanza = state.coins >= g.price;
+      return `
+      <div class="menu-item ${alcanza ? '' : 'locked'}" data-buy-game="${g.id}">
+        <span class="emoji">🔒</span>
+        <div class="info"><b>${escapeHtml(g.name)}</b><small>${escapeHtml(g.desc)}</small></div>
+        <span class="menu-record">${coinsLabel(g.price)}</span>
+      </div>`;
+    }
+    const best = bestScore(g.id);
+    return `
+      <div class="menu-item" data-play-game="${g.id}">
+        <span class="emoji">${g.emoji}</span>
+        <div class="info"><b>${escapeHtml(g.name)}</b><small>${escapeHtml(g.desc)}</small></div>
+        <div class="game-badges">
+          ${best > 0 ? `<span class="menu-record">★ ${best}</span>` : ''}
+          ${megaAvailable(g.id) ? `<button class="mega-btn" data-mega-game="${g.id}">MEGA</button>` : ''}
+        </div>
+      </div>`;
+  }).join('');
 
   showOverlay(`
     <h3>🎮 Elegir juego</h3>
-    <div class="menu-list">
-      <div class="menu-item" id="pickStars">
-        <span class="emoji">⭐</span>
-        <div class="info"><b>Atrapa estrellas</b><small>Esquiva la caca</small></div>
-        ${record('stars')}
-      </div>
-      <div class="menu-item" id="pickBasketball">
-        <span class="emoji">🏀</span>
-        <div class="info"><b>Baloncesto</b><small>Tira en el momento justo</small></div>
-        ${record('basketball')}
-      </div>
-      <div class="menu-item" id="pickReflex">
-        <span class="emoji">🎯</span>
-        <div class="info"><b>Reflejos</b><small>Todo menos las bombas</small></div>
-        ${record('reflex')}
-      </div>
-      <div class="menu-item" id="pickTap">
-        <span class="emoji">🎵</span>
-        <div class="info"><b>Tap rítmico</b><small>Toca al cruzar la línea</small></div>
-        ${record('tap')}
-      </div>
-      <div class="menu-item" id="pickSnake">
-        <span class="emoji">🐍</span>
-        <div class="info"><b>Snake</b><small>Desliza para girar</small></div>
-        ${record('snake')}
-      </div>
-      <div class="menu-item" id="pickMemory">
-        <span class="emoji">💡</span>
-        <div class="info"><b>Memorice</b><small>Repite la secuencia</small></div>
-        ${record('memory')}
-      </div>
-    </div>
+    <p>${aviso ? escapeHtml(aviso) : megaInfo}</p>
+    <div class="menu-list">${rows}</div>
     <button class="overlay-btn" id="btnCloseGames">Cancelar</button>
   `);
 
-  document.getElementById('pickStars').addEventListener('click', () => { hideOverlay(); startStarsGame(); });
-  document.getElementById('pickBasketball').addEventListener('click', () => { hideOverlay(); startBasketballGame(); });
-  document.getElementById('pickReflex').addEventListener('click', () => { hideOverlay(); startReflexGame(); });
-  document.getElementById('pickTap').addEventListener('click', () => { hideOverlay(); startTapGame(); });
-  document.getElementById('pickSnake').addEventListener('click', () => { hideOverlay(); startSnakeGame(); });
-  document.getElementById('pickMemory').addEventListener('click', () => { hideOverlay(); startMemoryGame(); });
+  const launch = (id, mega) => {
+    if (state.energy < 12){ openGamesMenu('Está muy cansado para jugar'); return; }
+    hideOverlay();
+    gameById(id).start();
+    megaRun = mega ? id : null;
+  };
+
+  document.querySelectorAll('[data-play-game]').forEach(el => {
+    el.addEventListener('click', () => launch(el.dataset.playGame, false));
+  });
+  document.querySelectorAll('[data-mega-game]').forEach(el => {
+    el.addEventListener('click', (e) => { e.stopPropagation(); launch(el.dataset.megaGame, true); });
+  });
+  document.querySelectorAll('[data-buy-game]').forEach(el => {
+    el.addEventListener('click', () => {
+      const g = gameById(el.dataset.buyGame);
+      if (state.coins < g.price){
+        openGamesMenu(`Te faltan ${coinsLabel(g.price - state.coins)} para ${g.name}`);
+        return;
+      }
+      state.coins -= g.price;
+      if (!state.unlockedGames) state.unlockedGames = [];
+      state.unlockedGames.push(g.id);
+      saveState(); render();
+      openGamesMenu(`¡${g.name} desbloqueado! Te quedan ${coinsLabel(state.coins)}`);
+    });
+  });
   document.getElementById('btnCloseGames').addEventListener('click', hideOverlay);
 }
 
@@ -1357,6 +1451,7 @@ function exitMinigame(){
   document.getElementById('creatureFloor').classList.remove('hidden');
   hideGameControls();
   activeMinigame = null;
+  megaRun = null;
 }
 
 /* Dibuja a la mascota dentro de otro canvas, apoyada en (x, suelo). `escala`
@@ -1388,7 +1483,23 @@ const COINS_PER_MERIT = 1/6;
 function finishMinigame(id, { score, merit, energyCost, hygieneCost = 0, message }){
   const record = saveBestScore(id, score);
   const happinessGain = clamp(Math.round(merit * HAPPINESS_PER_MERIT), HAPPINESS_MIN_GAIN, HAPPINESS_MAX_GAIN);
-  const coins = Math.max(0, Math.round(merit * COINS_PER_MERIT));
+  const mega = megaRun === id;
+  const baseCoins = Math.max(0, Math.round(merit * COINS_PER_MERIT));
+  let coins = mega ? baseCoins * MEGA_COIN_MULT : baseCoins;
+  /* El Megajuego se gasta al terminar la partida, no al empezarla: si la
+     mascota se muere a mitad (forceCloseMinigames), no se pierde. */
+  let bonus = 0;
+  if (mega){
+    const m = megaState();
+    if (m.cycleStart === null) m.cycleStart = Date.now();
+    m.played[id] = true;
+    const todos = unlockedGames();
+    if (!m.bonusPaid && todos.every(g => m.played[g.id])){
+      bonus = MEGA_BONUS_PER_GAME * todos.length;
+      m.bonusPaid = true;
+    }
+  }
+  coins += bonus;
 
   state.happiness = clamp(state.happiness + happinessGain);
   state.energy = clamp(state.energy - energyCost);
@@ -1397,10 +1508,11 @@ function finishMinigame(id, { score, merit, energyCost, hygieneCost = 0, message
 
   const premio = [
     happinessGain !== 0 ? `${happinessGain > 0 ? '+' : ''}${happinessGain} felicidad` : null,
-    coins > 0 ? coinsLabel('+' + coins) : null,
+    coins - bonus > 0 ? coinsLabel('+' + (coins - bonus)) + (mega ? ' (MEGA x3)' : '') : null,
+    bonus > 0 ? `¡Megajuegos completos! ${coinsLabel('+' + bonus)}` : null,
   ].filter(Boolean).join(' · ');
 
-  say((record ? `¡RÉCORD! ${message}` : message) + (premio ? ` · ${premio}` : ''), 2200);
+  say((record ? `¡RÉCORD! ${message}` : message) + (premio ? ` · ${premio}` : ''), bonus ? 3200 : 2200);
   if (happinessGain > 0) triggerPetAction('celebrate');
   exitMinigame();
   saveState(); render();
@@ -4267,7 +4379,7 @@ function renderDebugPanel(){
 
 function wireButtons(){
   document.getElementById('btnFeed').addEventListener('click', requireAlive(btnFeed));
-  document.getElementById('btnPlay').addEventListener('click', requireAlive(openGamesMenu));
+  document.getElementById('btnPlay').addEventListener('click', requireAlive(() => openGamesMenu()));
   document.getElementById('btnClean').addEventListener('click', requireAlive(btnClean));
   document.getElementById('btnFoodMenu').addEventListener('click', requireAlive(openFoodMenu));
   document.getElementById('btnShop').addEventListener('click', requireAlive(() => openShop()));
