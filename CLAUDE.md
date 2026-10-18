@@ -613,6 +613,34 @@ y `megaState()` lo renueva entero al vencer. Se gasta en `finishMinigame()`
 (lee `megaRun`), así que una partida cortada por `forceCloseMinigames()` no lo
 consume.
 
+### Niveles
+
+Cada juego del menú tiene niveles 1 a `GAME_MAX_LEVEL` (5). La experiencia
+(`state.gameXp[id]`) es el **mérito** de cada partida tal cual, sin multiplicar
+por nivel ni por Megajuego. `LEVEL_XP` está en "partidas buenas" acumuladas
+(`GOOD_GAME_MERIT = 45`): 10 para el nivel 2, 30 para el 3, 50 para el 4, 150
+para el 5. El nivel **no sube solo**: la experiencia desbloquea y el botón
+`Nv x/y` del menú gira entre los desbloqueados (`state.gameLevelPick`), para
+que nadie quede atascado en uno que le queda grande. Al desbloquear uno queda
+elegido de una.
+
+Más nivel = más difícil, así que paga más: `LEVEL_COIN_MULT` (x1 a x2) multiplica
+solo las monedas y se suma al x3 del Megajuego. Sin eso subir sería un castigo.
+El récord es por nivel (`recordKey()`; el nivel 1 usa la clave de siempre, así
+los récords viejos quedan como de nivel 1).
+
+La dificultad la lee cada juego con `levelT()` (0 en nivel 1, 1 en el máximo)
+desde la variable global `playLevel`, que `launch()` fija **antes** de
+`start()` (Snake y el chart del Tap la leen al armar su estado) y
+`exitMinigame()`/`forceCloseMinigames()` devuelven a 1 — el panel de prueba
+juega siempre en nivel 1. Qué sube en el nivel máximo: Estrellas caen 50% más
+rápido, 30% más seguido y con +15 puntos de caca; Baloncesto solo la velocidad
+de la pelota (+50%: el azar de rebotes ya es bastante); Reflejos blancos 30%
+más cortos y seguidos, +12 puntos de bombas; Tap rítmico más densidad
+(`TR_LEVEL_BONUS`), **nunca** tempo; Snake arranca a 140 ms en vez de 190 y
+acelera más; Memorice arranca con 5 luces y las muestra 30% más rápido. Tap
+prueba no tiene niveles. Números sin calibrar, un primer intento.
+
 ### Cómo se arma un minijuego
 
 **Los mandos van abajo, no encima de la pantalla.** `showGameControls(html)`

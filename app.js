@@ -359,6 +359,46 @@ function isGameUnlocked(id){
 
 function unlockedGames(){ return GAMES.filter(g => isGameUnlocked(g.id)); }
 
+/* Niveles por juego: cada partida suma su mérito como experiencia
+   (state.gameXp[id]) y la experiencia desbloquea niveles, hasta GAME_MAX_LEVEL.
+   El nivel no sube solo: se elige en el menú entre los ya desbloqueados, para
+   que nadie quede atascado en uno que le queda grande. Los umbrales están en
+   "partidas buenas" (mérito ~45, ver finishMinigame) y son acumulados: 10
+   para el nivel 2, 30 en total para el 3, 50 para el 4, 150 para el 5.
+
+   Más nivel es más difícil, así que tiene que pagar más: si no, subir sería un
+   castigo (menos puntaje, menos monedas). LEVEL_COIN_MULT multiplica solo las
+   monedas, y se suma al x3 del Megajuego. Cada juego lee la dificultad con
+   levelT(), que va de 0 (nivel 1) a 1 (nivel máximo). */
+const GAME_MAX_LEVEL = 5;
+const GOOD_GAME_MERIT = 45;
+const LEVEL_XP = [0, 10, 30, 50, 150].map(n => n * GOOD_GAME_MERIT);
+const LEVEL_COIN_MULT = [1, 1.25, 1.5, 1.75, 2];
+
+let playLevel = 1;   // nivel de la partida en curso; el panel de prueba juega en 1
+
+function levelT(){ return (playLevel - 1) / (GAME_MAX_LEVEL - 1); }
+
+function gameXp(id){ return (state.gameXp && state.gameXp[id]) || 0; }
+
+function maxLevelFor(id){
+  const xp = gameXp(id);
+  let lvl = 1;
+  while (lvl < GAME_MAX_LEVEL && xp >= LEVEL_XP[lvl]) lvl++;
+  return lvl;
+}
+
+/* Nivel elegido en el menú, recortado al máximo desbloqueado. */
+function pickedLevel(id){
+  const p = (state.gameLevelPick && state.gameLevelPick[id]) || maxLevelFor(id);
+  return Math.min(Math.max(1, p), maxLevelFor(id));
+}
+
+/* El récord es por nivel: un puntaje en nivel 1 y otro en nivel 5 no se pueden
+   comparar. El nivel 1 usa la clave de siempre, así los récords de antes de los
+   niveles quedan como récord de nivel 1. */
+function recordKey(id, level){ return level > 1 ? `${id}:${level}` : id; }
+
 /* Megajuego: una partida por juego desbloqueado cada MEGA_CYCLE_MS de tiempo
    REAL (Date.now(), no ageHours: es un ritmo para quien juega, igual que el
    modo nocturno). Paga MEGA_COIN_MULT veces las monedas — solo las monedas, la
@@ -548,6 +588,8 @@ function freshState(name, species){
     upgrades: freshUpgrades(),
     unlockedGames: [],   // los gratis (price 0) no hace falta anotarlos
     mega: freshMega(),
+    gameXp: {},          // experiencia acumulada por juego
+    gameLevelPick: {},   // nivel elegido en el menú por juego
   };
 }
 
@@ -577,6 +619,8 @@ function loadState(){
       s.unlockedGames = GAMES.filter(g => g.price > 0 && s.records[g.id] > 0).map(g => g.id);
     }
     if (!s.mega || typeof s.mega !== 'object' || !s.mega.played) s.mega = freshMega();
+    if (!s.gameXp || typeof s.gameXp !== 'object') s.gameXp = {};               // saves anteriores a los niveles
+    if (!s.gameLevelPick || typeof s.gameLevelPick !== 'object') s.gameLevelPick = {};
     // saves de antes de las mejoras, o de después de sumar una mejora nueva
     if (!s.upgrades || typeof s.upgrades !== 'object') s.upgrades = {};
     for (const up of UPGRADES){
@@ -776,6 +820,7 @@ function forceCloseMinigames(){
   cb = null;
   activeMinigame = null;
   megaRun = null;   // una partida cortada no gasta el Megajuego
+  playLevel = 1;
   document.getElementById('gameCanvas').classList.add('hidden');
   document.getElementById('creatureFloor').classList.remove('hidden');
   hideGameControls();
@@ -1215,12 +1260,21 @@ function openGamesMenu(aviso){
         <span class="menu-record">${coinsLabel(g.price)}</span>
       </div>`;
     }
-    const best = bestScore(g.id);
+    const lvl = pickedLevel(g.id);
+    const max = maxLevelFor(g.id);
+    const best = bestScore(recordKey(g.id, lvl));
+    /* Mientras no se haya jugado, la línea chica explica el juego; después
+       muestra cuánto falta para el próximo nivel, que es lo que interesa. */
+    const xp = gameXp(g.id);
+    const sub = xp === 0 ? escapeHtml(g.desc)
+      : max >= GAME_MAX_LEVEL ? `${xp} xp · nivel máx.`
+      : `${xp}/${LEVEL_XP[max]} xp`;
     return `
       <div class="menu-item" data-play-game="${g.id}">
         <span class="emoji">${g.emoji}</span>
-        <div class="info"><b>${escapeHtml(g.name)}</b><small>${escapeHtml(g.desc)}</small></div>
+        <div class="info"><b>${escapeHtml(g.name)}</b><small>${sub}</small></div>
         <div class="game-badges">
+          ${max > 1 ? `<button class="lvl-btn" data-level-game="${g.id}">Nv ${lvl}/${max}</button>` : ''}
           ${best > 0 ? `<span class="menu-record">★ ${best}</span>` : ''}
           ${megaAvailable(g.id) ? `<button class="mega-btn" data-mega-game="${g.id}">MEGA</button>` : ''}
         </div>
@@ -1234,12 +1288,27 @@ function openGamesMenu(aviso){
     <button class="overlay-btn" id="btnCloseGames">Cancelar</button>
   `);
 
+  /* playLevel va antes de start(): varios juegos leen la dificultad al armar
+     su estado inicial (Snake, el chart del Tap rítmico). */
   const launch = (id, mega) => {
     if (state.energy < 12){ openGamesMenu('Está muy cansado para jugar'); return; }
     hideOverlay();
-    gameById(id).start();
+    playLevel = pickedLevel(id);
     megaRun = mega ? id : null;
+    gameById(id).start();
   };
+
+  /* Tocar el nivel lo hace girar entre los desbloqueados: 1, 2, ..., máx, 1. */
+  document.querySelectorAll('[data-level-game]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = el.dataset.levelGame;
+      const lvl = pickedLevel(id);
+      state.gameLevelPick[id] = lvl >= maxLevelFor(id) ? 1 : lvl + 1;
+      saveState();
+      openGamesMenu();
+    });
+  });
 
   document.querySelectorAll('[data-play-game]').forEach(el => {
     el.addEventListener('click', () => launch(el.dataset.playGame, false));
@@ -1455,6 +1524,7 @@ function exitMinigame(){
   hideGameControls();
   activeMinigame = null;
   megaRun = null;
+  playLevel = 1;
 }
 
 /* Dibuja a la mascota dentro de otro canvas, apoyada en (x, suelo). `escala`
@@ -1484,10 +1554,10 @@ const COINS_PER_MERIT = 1/6;
 
 /* Cierre común: aplica el premio, paga, avisa el récord y deja todo guardado. */
 function finishMinigame(id, { score, merit, energyCost, hygieneCost = 0, message }){
-  const record = saveBestScore(id, score);
+  const record = saveBestScore(recordKey(id, playLevel), score);
   const happinessGain = clamp(Math.round(merit * HAPPINESS_PER_MERIT), HAPPINESS_MIN_GAIN, HAPPINESS_MAX_GAIN);
   const mega = megaRun === id;
-  const baseCoins = Math.max(0, Math.round(merit * COINS_PER_MERIT));
+  const baseCoins = Math.max(0, Math.round(merit * COINS_PER_MERIT * LEVEL_COIN_MULT[playLevel - 1]));
   let coins = mega ? baseCoins * MEGA_COIN_MULT : baseCoins;
   /* El Megajuego se gasta al terminar la partida, no al empezarla: si la
      mascota se muere a mitad (forceCloseMinigames), no se pierde. */
@@ -1504,6 +1574,20 @@ function finishMinigame(id, { score, merit, energyCost, hygieneCost = 0, message
   }
   coins += bonus;
 
+  /* La experiencia es el mérito tal cual, sin multiplicar por nivel ni por
+     Megajuego: mide cuánto jugaste bien, no cuánto pagó. Solo los juegos del
+     menú tienen niveles (no los prototipos del panel de prueba). */
+  let subio = 0;
+  if (gameById(id) && merit > 0){
+    const antes = maxLevelFor(id);
+    state.gameXp[id] = gameXp(id) + Math.round(merit);
+    const despues = maxLevelFor(id);
+    if (despues > antes){
+      subio = despues;
+      state.gameLevelPick[id] = despues;   // queda elegido el nivel nuevo, se puede bajar en el menú
+    }
+  }
+
   state.happiness = clamp(state.happiness + happinessGain);
   state.energy = clamp(state.energy - energyCost);
   if (hygieneCost) state.hygiene = clamp(state.hygiene - hygieneCost);
@@ -1513,9 +1597,10 @@ function finishMinigame(id, { score, merit, energyCost, hygieneCost = 0, message
     happinessGain !== 0 ? `${happinessGain > 0 ? '+' : ''}${happinessGain} felicidad` : null,
     coins - bonus > 0 ? coinsLabel('+' + (coins - bonus)) + (mega ? ' (MEGA x3)' : '') : null,
     bonus > 0 ? `¡Megajuegos completos! ${coinsLabel('+' + bonus)}` : null,
+    subio ? `¡Nivel ${subio} desbloqueado!` : null,
   ].filter(Boolean).join(' · ');
 
-  say((record ? `¡RÉCORD! ${message}` : message) + (premio ? ` · ${premio}` : ''), bonus ? 3200 : 2200);
+  say((record ? `¡RÉCORD! ${message}` : message) + (premio ? ` · ${premio}` : ''), (bonus || subio) ? 3200 : 2200);
   if (happinessGain > 0) triggerPetAction('celebrate');
   exitMinigame();
   saveState(); render();
@@ -1644,14 +1729,14 @@ function sgLoop(t){
 
   sg.spawnIn -= dt;
   if (sg.spawnIn <= 0){
-    sg.spawnIn = 0.50 - 0.32*progress;          // 0.50s → 0.18s entre caídas
+    sg.spawnIn = (0.50 - 0.32*progress) * (1 - 0.3*levelT());   // 0.50s → 0.18s entre caídas; -30% en nivel 5
     const roll = Math.random();
-    const poopChance = 0.24 + 0.36*progress;    // 24% → 60% de caca
+    const poopChance = 0.24 + 0.36*progress + 0.15*levelT();    // 24% → 60% de caca; +15 puntos en nivel 5
     const kind = roll < poopChance ? 'poop' : (roll > 0.95 ? 'gold' : 'star');
     sg.items.push({
       x: 16 + Math.random()*(gc.width - 32),
       y: -12,
-      vy: (110 + 160*progress) * (0.85 + Math.random()*0.4),
+      vy: (110 + 160*progress) * (1 + 0.5*levelT()) * (0.85 + Math.random()*0.4),
       kind,
     });
   }
@@ -2066,7 +2151,7 @@ function bbLoop(t){
 
   if (bb.state === 'aim'){
     const diff = BB_DIFFICULTY[bb.shot];
-    bb.phase += dt * 2.6 * diff.speed;
+    bb.phase += dt * 2.6 * diff.speed * (1 + 0.5*levelT());   // solo la velocidad sube por nivel: el azar ya es bastante
   } else if (bb.state === 'approach'){
     const t2 = Math.min(1, (now - bb.approachStart) / BB_APPROACH_MS);
     bb.monoAtX = bb.approachFrom + (bb.approachTo - bb.approachFrom) * t2;
@@ -2324,10 +2409,10 @@ function rxLoop(t){
 
   rx.spawnIn -= dt;
   if (rx.spawnIn <= 0){
-    rx.spawnIn = 0.78 - 0.44*progress;            // 0.78s → 0.34s entre blancos
-    const ttl = 1.55 - 0.75*progress;             // 1.55s → 0.80s de vida
+    rx.spawnIn = (0.78 - 0.44*progress) * (1 - 0.3*levelT());   // 0.78s → 0.34s entre blancos; -30% en nivel 5
+    const ttl = (1.55 - 0.75*progress) * (1 - 0.3*levelT());    // 1.55s → 0.80s de vida; -30% en nivel 5
     const roll = Math.random();
-    const bombChance = 0.18 + 0.22*progress;      // 18% → 40% bombas
+    const bombChance = 0.18 + 0.22*progress + 0.12*levelT();    // 18% → 40% bombas; +12 puntos en nivel 5
     const kind = roll < bombChance ? 'bomb' : (roll > 0.96 ? 'gold' : 'good');
     const { x, y } = rxPlaceTarget();
     rx.targets.push({ x, y, kind, ttl, life: ttl });
@@ -2483,6 +2568,10 @@ const TR_MIN_SAME_LANE_GAP = TR_BEAT_SEC * 0.75;
 const TR_OFFBEAT_CHANCE = [0.05, 0.55];  // corchea extra entre dos negras
 const TR_DOUBLE_CHANCE  = [0.06, 0.28];  // pareja en otro carril, mismo instante
 const TR_HOLD_CHANCE    = [0.05, 0.16];  // nota sostenida
+/* Lo que suma cada rampa en el nivel máximo: la dificultad por nivel también es
+   densidad sobre la misma grilla, nunca tempo. Los resguardos de
+   trBuildChart() siguen valiendo igual. */
+const TR_LEVEL_BONUS = { offbeat: 0.25, double: 0.12, hold: 0.06 };
 
 function trRamp(rango, progress){ return rango[0] + (rango[1] - rango[0]) * progress; }
 
@@ -2627,11 +2716,11 @@ function trBuildChart(){
     const lane = pickLane(t);
     if (lane === null) continue;             // grilla ocupada: queda un silencio
 
-    const esHold = Math.random() < trRamp(TR_HOLD_CHANCE, progress);
+    const esHold = Math.random() < trRamp(TR_HOLD_CHANCE, progress) + TR_LEVEL_BONUS.hold*levelT();
     push(t, lane, esHold ? TR_HOLD_SEC : 0);
     const usados = [lane];
 
-    if (!esHold && Math.random() < trRamp(TR_DOUBLE_CHANCE, progress)){
+    if (!esHold && Math.random() < trRamp(TR_DOUBLE_CHANCE, progress) + TR_LEVEL_BONUS.double*levelT()){
       const pareja = pickLane(t, [lane]);
       if (pareja !== null) usados.push(push(t, pareja, 0));
     }
@@ -2641,7 +2730,7 @@ function trBuildChart(){
     /* Contratiempo: la corchea justo al medio de las dos negras. Siempre nota
        simple — si además pudiera ser doble o sostenida, la parte densa del
        final se vuelve ilegible. */
-    if (Math.random() < trRamp(TR_OFFBEAT_CHANCE, progress)){
+    if (Math.random() < trRamp(TR_OFFBEAT_CHANCE, progress) + TR_LEVEL_BONUS.offbeat*levelT()){
       const tOff = trBeatTime(TR_LEAD_IN_BEATS + b + 0.5);
       const laneOff = pickLane(tOff);
       if (laneOff !== null){
@@ -3536,7 +3625,7 @@ function startSnakeGame(){
     nextDir: { x:1, y:0 },
     food: null,
     score: 0,
-    stepMs: SN_START_MS,
+    stepMs: SN_START_MS - 50*levelT(),   // 190 → 140 ms en nivel 5
     acc: 0,
     dead: false,
     deadUntil: 0,
@@ -3624,7 +3713,7 @@ function snStep(){
   sn.body.unshift({ x:nx, y:ny });
   if (sn.food && nx === sn.food.x && ny === sn.food.y){
     sn.score += 1;
-    sn.stepMs = Math.max(SN_MIN_MS, sn.stepMs - SN_SPEEDUP);
+    sn.stepMs = Math.max(SN_MIN_MS - 15*levelT(), sn.stepMs - SN_SPEEDUP*(1 + 0.5*levelT()));
     snPlaceFood();
   } else {
     sn.body.pop();
@@ -3770,7 +3859,7 @@ function startMemoryGame(){
    la sexta ronda ya nadie la sigue. */
 function mmNextRound(){
   mm.round += 1;
-  const nuevas = mm.round === 1 ? MM_START_LEN : 1;
+  const nuevas = mm.round === 1 ? MM_START_LEN + Math.round(2*levelT()) : 1;   // 3 → 5 luces en nivel 5
   for (let i = 0; i < nuevas; i++){
     mm.sequence.push(Math.floor(Math.random()*mm.lights.length));
   }
@@ -3850,8 +3939,9 @@ function mmLoop(t){
 
   if (mm.phase === 'showing'){
     /* Acelera con la ronda: la secuencia larga además se muestra más rápido. */
-    const onMs  = Math.max(200, 420 - mm.round*18);
-    const offMs = Math.max(90,  180 - mm.round*8);
+    const rapido = 1 - 0.3*levelT();   // -30% en nivel 5
+    const onMs  = Math.max(200, 420 - mm.round*18) * rapido;
+    const offMs = Math.max(90,  180 - mm.round*8) * rapido;
     if (mm.timer <= 0){
       if (mm.lit >= 0){
         mm.lit = -1;

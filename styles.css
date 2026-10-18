@@ -500,8 +500,8 @@ body{
 .menu-item.selected{border-color:var(--amber);}
 .menu-item.locked{opacity:.4; cursor:not-allowed;}
 .menu-item:not(.locked):hover{background:rgba(255,255,255,.15);}
-/* Récord y botón del Megajuego apilados a la derecha: uno al lado del otro
-   le quitaban ancho al nombre y la fila pasaba a tres líneas. */
+/* Nivel, récord y botón del Megajuego apilados a la derecha: uno al lado del
+   otro le quitaban ancho al nombre y la fila pasaba a tres líneas. */
 .game-badges{
   margin-left:auto;
   flex-shrink:0;
@@ -517,6 +517,20 @@ body{
   color:var(--ink);
   background:var(--shell);
   border:none;
+  border-radius:6px;
+  padding:5px 6px;
+  cursor:pointer;
+  white-space:nowrap;
+}
+/* Nivel elegido / máximo desbloqueado: se toca para girar entre los
+   desbloqueados. Va arriba en la misma columna que el récord y el MEGA, para
+   no quitarle ancho al nombre. */
+.lvl-btn{
+  font-family:var(--font-pixel);
+  font-size:8px;
+  color:var(--screen-lit);
+  background:rgba(255,255,255,.12);
+  border:1px solid rgba(255,255,255,.3);
   border-radius:6px;
   padding:5px 6px;
   cursor:pointer;
