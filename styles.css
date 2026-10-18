@@ -319,7 +319,7 @@ body{
   pointer-events:none;
   transition:opacity .2s ease, transform .2s ease;
   /* Antes era nowrap: los mensajes largos ("¡RÉCORD! 96 pts (combo 12) · +15
-     felicidad · 🪙 +10") se hacían más anchos que la pantalla y el overflow
+     felicidad · 💰 +10") se hacían más anchos que la pantalla y el overflow
      hidden de .screen les cortaba las puntas. Ahora envuelven. */
   max-width:calc(100% - 24px);
   text-align:center;

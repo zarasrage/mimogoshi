@@ -304,7 +304,10 @@ function foodStock(id){
   return (state.pantry && state.pantry[id]) || 0;
 }
 
-function coinsLabel(n){ return `🪙 ${n}`; }
+/* Solo emojis de Unicode 11 o anterior: la moneda (Unicode 13) y las
+   burbujas (Unicode 14) salían como un cuadro vacío en teléfonos con un
+   sistema un poco más viejo, que no traen esos glifos. */
+function coinsLabel(n){ return `💰 ${n}`; }
 
 /* Mejoras: se compran una sola vez (quedan compradas para siempre) y las
    "armables" son un seguro de un solo uso — cuando dispara su efecto se
@@ -980,7 +983,7 @@ const btnClean = () => {
   catchUp();
   state.hygiene = clamp(state.hygiene + 35);
   state.poop = false;
-  floatFx('🫧');
+  floatFx('🧼');
   say(state.stage === 'egg' ? 'Huevo brillante' : '¡Ya quedó limpio!');
   if (state.stage !== 'egg') triggerPetAction('clean');
   saveState(); render();
@@ -2441,7 +2444,7 @@ function endReflexGame(){
    sosteniendo, no solo si tocaste. */
 
 const TR_LANES = 3;
-const TR_LANE_CHAR = ['🍬','🎮','🫧'];
+const TR_LANE_CHAR = ['🍬','🎮','🧼'];
 const TR_PERFECT = 0.09;      // ventana de acierto perfecto, en segundos (simétrica)
 /* La ventana de acierto normal es ASIMÉTRICA a propósito. Un toque adelantado
    ahora suena cuantizado al pulso (trSfxHit recibe el `at` de la nota, no el

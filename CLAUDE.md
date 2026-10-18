@@ -722,6 +722,9 @@ pantalla completa.
 ## Convenciones
 
 - Todo el copy en español (Chile).
+- Emojis solo de **Unicode 11 o anterior** (2018). 🪙 y 🫧 (Unicode 13 y 14)
+  salían como un cuadro vacío en teléfonos con sistema más viejo; se
+  cambiaron por 💰 y 🧼. Antes de sumar un emoji nuevo, revisar su versión.
 - Los mensajes de commit también en español, explicando el **porqué** del cambio
   y no solo el qué.
 - Nada de emojis ni de identificadores de modelo en commits o en el código.
