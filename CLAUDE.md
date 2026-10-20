@@ -479,10 +479,31 @@ más alto, pero no rompe.
 
 Cuarta clase de cosas en Estilo (`kind:'furni'`, sección "Muebles", la primera):
 14 muebles que la mascota **usa**. Catálogo de precios en `STYLE_ITEMS`; arte y
-guion en `FURNI_ART`. Se ponen hasta **tres** a la vez, en tres lugares fijos
-del piso (`FURNI_SLOTS`: izq. 21%, centro 50%, der. 79%); al poner uno va al
-primer lugar libre (`FURNI_SLOT_ORDER`) y con los tres ocupados la tienda avisa
-que hay que sacar uno. `state.style.furniture = {izq, centro, der}`.
+guion en `FURNI_ART`. Se ponen hasta `FURNI_MAX` (3) a la vez, **en cualquier
+parte del piso**: `state.style.furniture = [{id, x}]`, con `x` = centro del
+mueble como fracción del ancho del piso. (Antes eran tres lugares fijos,
+izq./centro/der.; `loadState()` convierte esos saves con `LEGACY_FURNI_SLOTS`
+y los muebles quedan donde estaban.)
+
+- **Poner uno** (Personalizar, o al comprarlo): `findFurniSpot()` busca el
+  lugar libre más cerca del centro. Si no cabe, o ya hay tres, se avisa en la
+  hoja (`toggleStyleItem()` devuelve el aviso en vez de `true`).
+- **Acomodar** (Personalizar → "Acomodar muebles", `enterArrange()`): la hoja
+  se cierra (tapaba justo el piso), la mascota queda quieta, transparente y sin
+  recibir toques (`.arranging`), y los mandos de abajo se cambian por "Listo"
+  con los mismos `showGameControls()` de los minijuegos. Los muebles se
+  arrastran solo en horizontal, que es lo que es el piso en esta vista
+  (`startFurniDrag()`, con pointer events: anda con dedo y con mouse).
+  Mientras se arrastra se marca en rojo si choca con otro; al soltarlo
+  encima de otro, se corre solo al lugar libre más cercano, o vuelve a donde
+  estaba si no hay.
+- **Encimarse**: los muebles con `free: true` (pelota y plato) no chocan con
+  nada y van en una capa propia (`#furniMid`), delante de los otros muebles y
+  detrás de la mascota. Pero al *poner* uno igual se le busca lugar despejado
+  (`strict`): si no, la pelota y el plato aparecían uno encima del otro en el
+  centro. Encimarlos queda para cuando uno los arrastra a propósito.
+- Separación mínima entre muebles: `FURNI_GAP_PX`. Ningún mueble se sale del
+  piso (`furniBounds()`).
 
 **Arte:** pixel art dibujado con código (`pxPainter()`: `r`, `box` con contorno,
 `disc`, `line`), no emojis: no hay emoji de tocador ni de tobogán que exista en

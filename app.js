@@ -433,7 +433,7 @@ function freshStyle(){
   const owned = {};
   for (const it of STYLE_ITEMS) if (it.price === 0) owned[it.id] = true;
   return { owned, shell:'rosa', screen:'verde', hat:null, deco:{ pared:null, izq:null, der:null },
-    furniture:{ izq:null, centro:null, der:null } };
+    furniture:[] };   // muebles puestos: [{ id, x }], x = centro como fracción del piso
 }
 
 function isStyleEquipped(it){
@@ -441,24 +441,26 @@ function isStyleEquipped(it){
   if (it.kind === 'shell') return st.shell === it.id;
   if (it.kind === 'screen') return st.screen === it.id;
   if (it.kind === 'hat') return st.hat === it.id;
-  if (it.kind === 'furni') return Object.values(st.furniture).includes(it.id);
+  if (it.kind === 'furni') return st.furniture.some(f => f.id === it.id);
   return st.deco[it.slot] === it.id;
 }
 
 /* Carcasa y pantalla no se pueden sacar (siempre hay una); accesorio, adorno
-   y mueble sí: tocar el que ya está puesto lo saca. Un mueble va al primer
-   lugar libre; devuelve false si los tres están ocupados. */
+   y mueble sí: tocar el que ya está puesto lo saca. Un mueble nuevo va al
+   lugar libre del piso más cerca del centro (findFurniSpot). Devuelve true si
+   se pudo, o el aviso de por qué no (ya hay FURNI_MAX, o no cabe). */
 function toggleStyleItem(it){
   const st = state.style;
   if (it.kind === 'shell') st.shell = it.id;
   else if (it.kind === 'screen') st.screen = it.id;
   else if (it.kind === 'hat') st.hat = st.hat === it.id ? null : it.id;
   else if (it.kind === 'furni'){
-    const puesto = Object.keys(st.furniture).find(s => st.furniture[s] === it.id);
-    if (puesto){ st.furniture[puesto] = null; return true; }
-    const libre = FURNI_SLOT_ORDER.find(s => !st.furniture[s]);
-    if (!libre) return false;
-    st.furniture[libre] = it.id;
+    const i = st.furniture.findIndex(f => f.id === it.id);
+    if (i >= 0){ st.furniture.splice(i, 1); return true; }
+    if (st.furniture.length >= FURNI_MAX) return `Ya hay ${FURNI_MAX} muebles puestos: toca uno de los puestos para sacarlo`;
+    const x = findFurniSpot(it.id, 0.5, true) ?? findFurniSpot(it.id, 0.5);
+    if (x === null) return 'No cabe en el piso: acomoda los muebles o saca uno';
+    st.furniture.push({ id: it.id, x });
   }
   else st.deco[it.slot] = st.deco[it.slot] === it.id ? null : it.id;
   return true;
@@ -815,14 +817,17 @@ function loadState(){
       const id = s.style.deco[slot];
       if (!id || !vale(id, 'deco') || styleItemById(id).slot !== slot) s.style.deco[slot] = null;
     }
-    if (!s.style.furniture || typeof s.style.furniture !== 'object') s.style.furniture = { ...base.furniture };
-    const vistos = new Set();
-    for (const slot of Object.keys(base.furniture)){
-      const id = s.style.furniture[slot];
-      if (!id || !vale(id, 'furni') || !FURNI_ART[id] || vistos.has(id)) s.style.furniture[slot] = null;
-      else vistos.add(id);
+    /* Antes los muebles iban en tres lugares fijos ({izq, centro, der}); ahora
+       cada uno guarda su posición libre. Los de antes quedan donde estaban. */
+    let muebles = s.style.furniture;
+    if (muebles && !Array.isArray(muebles) && typeof muebles === 'object'){
+      muebles = Object.entries(LEGACY_FURNI_SLOTS).filter(([slot]) => muebles[slot]).map(([slot, x]) => ({ id: muebles[slot], x }));
     }
-    for (const slot of Object.keys(s.style.furniture)) if (!(slot in base.furniture)) delete s.style.furniture[slot];
+    if (!Array.isArray(muebles)) muebles = [];
+    const vistos = new Set();
+    s.style.furniture = muebles.filter(f => f && vale(f.id, 'furni') && FURNI_ART[f.id] && !vistos.has(f.id) && vistos.add(f.id))
+      .slice(0, FURNI_MAX)
+      .map(f => ({ id: f.id, x: (typeof f.x === 'number' && isFinite(f.x)) ? Math.min(0.95, Math.max(0.05, f.x)) : 0.5 }));
     // saves con 'grown' (antes de la escalera de tamaños) o con una etapa fantasma
     if (!ALL_STAGES.includes(s.stage)) s.stage = 'adult';
     return s;
@@ -884,7 +889,7 @@ function applyDecay(hours){
   state.happiness= clamp(state.happiness- hours * decayRate('happiness', state.happiness) * sleepFactor * nightFactor);
   /* Con cama puesta recupera un poco más rápido (ver "Muebles"). Se mira el
      save y no si está acostada en este momento: así vale igual en catchUp(). */
-  const bedMult = state.style && Object.values(state.style.furniture || {}).includes('cama') ? FURNI_BED_ENERGY_MULT : 1;
+  const bedMult = state.style && Array.isArray(state.style.furniture) && state.style.furniture.some(f => f.id === 'cama') ? FURNI_BED_ENERGY_MULT : 1;
   state.energy   = clamp(state.energy   + (state.sleeping
     ? hours * ENERGY_RECOVER_PER_HOUR * bedMult
     : -hours * decayRate('energy', state.energy) * nightFactor));
@@ -987,6 +992,7 @@ function tick(){
 
 function triggerGameOver(){
   gameOver = true;
+  exitArrange();
   clearInterval(tickTimer);
   forceCloseMinigames();
   showOverlay(`
@@ -1083,7 +1089,7 @@ function updateLed(){
 /* ===================== Movimiento pasivo ===================== */
 
 function updateWalker(dt){
-  if (activeMinigame) return;
+  if (activeMinigame || arranging) return;
   const mood = displayMood();
   const now = performance.now();
   if (walker.activity){
@@ -1285,8 +1291,9 @@ function updateHat(drawn){
 }
 
 /* ===================== Muebles =====================
-   Se compran en la pestaña Estilo y se ponen hasta tres a la vez, en tres
-   lugares fijos del piso (FURNI_SLOTS). Son pixel art dibujado acá mismo, no
+   Se compran en la pestaña Estilo y se ponen hasta FURNI_MAX a la vez, en
+   cualquier lugar del piso: en Personalizar, "Acomodar muebles" deja
+   arrastrarlos (ver enterArrange). Son pixel art dibujado acá mismo, no
    emojis: no hay emoji de tocador ni de tobogán que funcione en teléfonos
    viejos, y al lado del sprite un emoji se ve de otro mundo.
 
@@ -1305,9 +1312,11 @@ function updateHat(drawn){
    FURNI_JOY de felicidad, con tope de FURNI_JOY_PER_HOUR por hora real para
    que dejarla sola con muebles no sea una forma de no cuidarla. */
 
-const FURNI_SLOTS = { izq: 0.21, centro: 0.5, der: 0.79 };
-const FURNI_SLOT_ORDER = ['izq', 'der', 'centro'];   // en qué orden se llenan
-const FURNI_SLOT_NAMES = { izq: 'izq.', centro: 'centro', der: 'der.' };
+const FURNI_MAX = 3;
+/* Los tres lugares fijos de antes; solo sirven para migrar saves viejos. */
+const LEGACY_FURNI_SLOTS = { izq: 0.21, centro: 0.5, der: 0.79 };
+/* Separación mínima entre dos muebles, en px CSS. */
+const FURNI_GAP_PX = 4;
 
 const FURNI_VISIT_CHANCE = 0.45;      // al terminar cada paseo, chance de ir a un mueble
 const FURNI_VISIT_GAP_MS = 14000;     // pausa mínima (aprox.) entre una visita y otra
@@ -1380,7 +1389,7 @@ const FURNI_ART = {
       { hop: { x: f.x(21), y: 0 }, ms: 450, h: 12 },
     ] },
 
-  plato: { w: 12, h: 7, routine: 'eat',
+  plato: { w: 12, h: 7, routine: 'eat', free: true,
     parts: [
       { id: 'base', draw: p => {
         p.r(0, 2, 12, 1, FP.O);
@@ -1464,7 +1473,7 @@ const FURNI_ART = {
       { anim: 'happy', ms: 700, fx: ['⭐'] },
     ] },
 
-  pelota: { w: 9, h: 9,
+  pelota: { w: 9, h: 9, free: true,
     parts: [{ id: 'ball', draw: p => {
       p.disc(4.5, 4.5, 4.5, (x, y) => y < 4 ? FP.red : y === 4 ? FP.O : FP.white);
       p.r(2, 2, 1, 1, FP.pinkL);
@@ -1702,14 +1711,15 @@ function renderFurniture(){
   for (const rt of furniRt) rt.removed = true;
   furniRt = [];
   const back = document.getElementById('furniBack');
+  const mid = document.getElementById('furniMid');
   const front = document.getElementById('furniFront');
-  back.innerHTML = ''; front.innerHTML = '';
+  back.innerHTML = ''; mid.innerHTML = ''; front.innerHTML = '';
   const s = furniDeviceScale(), k = s / DPR;
-  for (const slot of FURNI_SLOT_ORDER){
-    const id = state.style.furniture[slot];
-    const art = id && FURNI_ART[id];
+  for (const entry of state.style.furniture){
+    const id = entry.id;
+    const art = FURNI_ART[id];
     if (!art) continue;
-    const rt = { id, slot, x: FURNI_SLOTS[slot], els: {}, ballDx: 0, ballRot: 0, swing: 0, on: false, food: false };
+    const rt = { id, entry, x: entry.x, els: {}, ballDx: 0, ballRot: 0, swing: 0, on: false, food: false };
     for (const part of art.parts){
       /* Backing store en píxeles físicos y escala entera, igual que la
          mascota: cada píxel del arte ocupa exactamente s píxeles de pantalla. */
@@ -1723,7 +1733,10 @@ function renderFurniture(){
       c.style.height = (art.h * k) + 'px';
       c.style.left = (rt.x * 100) + '%';
       if (part.pivot) c.style.transformOrigin = `${part.pivot[0] * k}px ${part.pivot[1] * k}px`;
-      (part.z === 'front' ? front : back).appendChild(c);
+      /* Los "libres" (pelota, plato) van en una capa propia, delante de los
+         otros muebles y detrás de la mascota: se pueden encimar. */
+      (part.z === 'front' ? front : art.free ? mid : back).appendChild(c);
+      c.addEventListener('pointerdown', e => startFurniDrag(rt, e));
       rt.els[part.id] = { el: c, part };
     }
     furniRt.push(rt);
@@ -1749,6 +1762,129 @@ function updateFurniture(){
 }
 
 function furniPlaced(id){ return furniRt.find(rt => rt.id === id && !rt.removed); }
+
+/* ---------- ubicación libre y modo acomodar ---------- */
+
+/* ¿Choca el mueble `id` puesto en `x` con alguno de los otros? Los "libres"
+   (pelota, plato) no chocan con nada: se pueden encimar. Con `strict` sí
+   chocan: al PONER un mueble se le busca un lugar despejado igual, si no la
+   pelota y el plato aparecían uno encima del otro en el centro; encimarlos
+   queda para cuando uno los arrastra a propósito. Todo en fracción del
+   piso, usando el ancho real del dibujo. */
+function furniOverlaps(id, x, fw, strict){
+  if (FURNI_ART[id].free && !strict) return false;
+  const k = furniK();
+  const half = FURNI_ART[id].w * k / 2;
+  return state.style.furniture.some(f => {
+    if (f.id === id || (FURNI_ART[f.id].free && !strict)) return false;
+    const otherHalf = FURNI_ART[f.id].w * k / 2;
+    return Math.abs(f.x - x) * fw < half + otherHalf + FURNI_GAP_PX;
+  });
+}
+
+/* Límites para que el mueble entero quede dentro del piso. */
+function furniBounds(id, fw){
+  const half = FURNI_ART[id].w * furniK() / 2 + 2;
+  return [Math.min(0.5, half / fw), Math.max(0.5, 1 - half / fw)];
+}
+
+/* El lugar libre más cercano a `x0`, buscando hacia los dos lados; null si
+   no cabe en ninguna parte. */
+function findFurniSpot(id, x0, strict){
+  const fw = floorWidth();
+  const [lo, hi] = furniBounds(id, fw);
+  const start = Math.min(hi, Math.max(lo, x0));
+  for (let d = 0; d <= 1; d += 0.005){
+    for (const x of [start - d, start + d]){
+      if (x >= lo && x <= hi && !furniOverlaps(id, x, fw, strict)) return x;
+    }
+  }
+  return null;
+}
+
+/* Modo acomodar: se entra desde Personalizar. La hoja se cierra para ver el
+   piso entero (la hoja tapaba justo el piso), la mascota queda quieta y
+   transparente para no estorbar, y los mandos de abajo se cambian por
+   "Listo" (los mismos showGameControls de los minijuegos), así no se puede
+   abrir otra cosa a medio acomodar. */
+let arranging = false;
+
+function enterArrange(){
+  hideOverlay();
+  if (walker.activity) endFurniActivity();
+  walker.y = 0;
+  arranging = true;
+  document.getElementById('creatureFloor').classList.add('arranging');
+  showGameControls(`
+    <div class="game-hint">Arrastra los muebles por el piso</div>
+    <button class="gbtn gbtn-lg" id="btnArrangeDone">Listo</button>
+  `);
+  document.getElementById('btnArrangeDone').addEventListener('click', () => { exitArrange(); openPersonalize(); });
+  renderFurniture();
+}
+
+function exitArrange(){
+  if (!arranging) return;
+  arranging = false;
+  document.getElementById('creatureFloor').classList.remove('arranging');
+  hideGameControls();
+  saveState();
+  renderFurniture();
+}
+
+/* Arrastre de un mueble, solo en modo acomodar. Mientras se arrastra se
+   marca en rojo si choca con otro; al soltarlo, si choca, se corre al lugar
+   libre más cercano (y si no hay ninguno, vuelve a donde estaba). */
+function startFurniDrag(rt, e){
+  if (!arranging || rt.removed) return;
+  e.preventDefault();
+  const rect = document.getElementById('creatureFloor').getBoundingClientRect();
+  const fw = rect.width;
+  const [lo, hi] = furniBounds(rt.id, fw);
+  const x0 = rt.x, px0 = e.clientX;
+  const parts = Object.values(rt.els).map(p => p.el);
+  const place = x => {
+    rt.x = x;
+    for (const el of parts) el.style.left = (x * 100) + '%';
+  };
+  parts.forEach(el => el.classList.add('dragging'));
+  const move = ev => {
+    place(Math.min(hi, Math.max(lo, x0 + (ev.clientX - px0) / fw)));
+    const choca = furniOverlapsAt(rt, fw);
+    parts.forEach(el => el.classList.toggle('blocked', choca));
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+    let x = rt.x;
+    if (furniOverlapsAt(rt, fw)) x = findFurniSpotFrom(rt, x) ?? x0;
+    place(x);
+    rt.entry.x = x;
+    parts.forEach(el => el.classList.remove('dragging', 'blocked'));
+    saveState();
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+}
+
+/* Mientras se arrastra, la posición en vivo está en rt.x y no en el save:
+   se prueba con esa. */
+function furniOverlapsAt(rt, fw){
+  const guardado = rt.entry.x;
+  rt.entry.x = rt.x;
+  const choca = furniOverlaps(rt.id, rt.x, fw);
+  rt.entry.x = guardado;
+  return choca;
+}
+function findFurniSpotFrom(rt, x){
+  const guardado = rt.entry.x;
+  rt.entry.x = x;
+  const spot = findFurniSpot(rt.id, x);
+  rt.entry.x = guardado;
+  return spot;
+}
 
 /* ---------- motor de rutinas ---------- */
 
@@ -2176,9 +2312,8 @@ function styleTile(it, mode){
   }
   const estado = puesto ? 'En uso' : mode === 'mine' ? 'Usar' : owned ? 'Tuyo ✓' : coinsLabel(it.price);
   const alcanza = owned || state.coins >= it.price;
-  const enSlot = it.kind === 'furni' && Object.keys(state.style.furniture).find(s => state.style.furniture[s] === it.id);
   const lugar = it.kind === 'deco' ? `<small class="tile-slot">${DECO_SLOT_NAMES[it.slot]}</small>`
-    : it.kind === 'furni' ? `<small class="tile-slot">${enSlot ? 'en ' + FURNI_SLOT_NAMES[enSlot] : it.use}</small>` : '';
+    : it.kind === 'furni' ? `<small class="tile-slot">${it.use}</small>` : '';
   return `
     <button class="style-tile ${puesto ? 'on' : ''} ${owned ? 'owned' : ''} ${alcanza ? '' : 'locked'}" data-style="${it.id}">
       ${swatch}
@@ -2263,10 +2398,10 @@ function openShop(aviso){
         }
         state.coins -= it.price;
         state.style.owned[it.id] = true;
-        const puesto = isStyleEquipped(it) || toggleStyleItem(it);   // se estrena apenas se compra
+        const puesto = isStyleEquipped(it) || toggleStyleItem(it) === true;   // se estrena apenas se compra
         saveState(); applyStyle(); render();
         reopen(puesto ? `¡${it.name} comprado y puesto! Cámbialo cuando quieras en Personalizar`
-          : `¡${it.name} comprado! Ya hay 3 muebles puestos: ponlo desde Personalizar`);
+          : `¡${it.name} comprado! No había espacio: ponlo desde Personalizar`);
         return;
       }
       /* Lo ya comprado se pone y se saca en Personalizar, no acá: la tienda
@@ -2339,9 +2474,14 @@ function openPersonalize(aviso){
     <h3>🎨 Personalizar</h3>
     <p class="${aviso ? 'sheet-note warn' : ''}">${aviso ? escapeHtml(aviso) : 'Toca algo para ponérselo o sacárselo.'}</p>
     <div class="menu-list style-list">${styleRows('mine')}</div>
-    <button class="overlay-btn secondary" id="btnClosePersonalize">Cerrar</button>
+    <div class="overlay-actions">
+      ${state.style.furniture.length ? '<button class="overlay-btn" id="btnArrange">Acomodar muebles</button>' : ''}
+      <button class="overlay-btn secondary" id="btnClosePersonalize">Cerrar</button>
+    </div>
   `, hideOverlay);
   document.getElementById('overlay').classList.add('clear');
+  const arr = document.getElementById('btnArrange');
+  if (arr) arr.addEventListener('click', enterArrange);
 
   const reopen = (msg) => {
     const scroll = document.querySelector('.overlay-card .menu-list').scrollTop;
@@ -2351,10 +2491,8 @@ function openPersonalize(aviso){
   document.querySelectorAll('[data-style]').forEach(el => {
     el.addEventListener('click', () => {
       const it = styleItemById(el.dataset.style);
-      if (!toggleStyleItem(it)){
-        reopen('Ya hay 3 muebles puestos: toca uno de los puestos para sacarlo');
-        return;
-      }
+      const ok = toggleStyleItem(it);
+      if (ok !== true){ reopen(ok); return; }
       saveState(); applyStyle(); render();
       reopen();
     });
@@ -5809,7 +5947,7 @@ function wireButtons(){
   });
 
   document.getElementById('screen').addEventListener('click', (e) => {
-    if (e.target.closest('.overlay') || e.target.closest('#gameCanvas')) return;
+    if (arranging || e.target.closest('.overlay') || e.target.closest('#gameCanvas')) return;
     if (state.poop) { btnClean(); return; }
   });
 }
