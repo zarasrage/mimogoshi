@@ -276,15 +276,24 @@ Simulación por ticks (`TICK_MS = 4000`, `MS_PER_GAME_HOUR = 60000`): hambre,
 felicidad, energía, higiene y salud bajan solas; `catchUp()` recupera el tiempo
 que pasó con la pestaña cerrada (con tope de 3 días).
 
-Todos los ritmos de decaimiento (`DECAY_PER_HOUR`, `HEALTH_DECAY_PER_HOUR`,
-`POOP_CHANCE_PER_HOUR`, `SICK_CHANCE_PER_HOUR*`) están escalados por el mismo
-factor (~3.54x) para que, totalmente descuidada y fuera del horario nocturno,
-la mascota muera en una mediana de ~12 horas reales — sin tocar los umbrales
-(`DISTRESS_AT`, `HEALTH_RISK_AT`, `SICK_LOW_HEALTH_AT`), que son valores de
-barra y no de tiempo, así que no hace falta escalarlos para mantener las
-proporciones. Si se vuelve a recalibrar el tiempo hasta la muerte, hay que
-volver a escalar **todos** estos números juntos, no uno solo — si no se
-rompen las proporciones entre barras.
+Los ritmos de decaimiento (`DECAY_PER_HOUR`, `HEALTH_DECAY_PER_HOUR`,
+`POOP_CHANCE_PER_HOUR`, `SICK_CHANCE_PER_HOUR*`) se calibraron primero todos
+juntos, con el mismo factor (~3.54x), para que una mascota totalmente
+descuidada muriera en una mediana de ~12 horas reales. Después, **a propósito
+y por pedido**, se rompió esa proporción en dos lugares:
+- hambre, felicidad e higiene bajan **al doble** de rápido (hay que atenderla
+  más seguido): 100/424.5, 100/530.5 y 100/212 h de juego;
+- la salud baja **2.5 veces más lento** (`HEALTH_DECAY_PER_HOUR` = 100/1060):
+  las barras se vacían antes, pero morirse por eso tarda más.
+
+Resultado, medido por simulación contra `applyDecay()`/`maybeAutoSleep()`
+reales (ticks de 4 s, sin modo nocturno, 400 corridas): totalmente descuidada
+se pone triste por primera vez a las **~3.9 h** reales (antes 7.3) y muere en
+una mediana de **~16.8 h** (p10 12.2, p90 21; antes 11.5). Los umbrales
+(`DISTRESS_AT`, `HEALTH_RISK_AT`, `SICK_LOW_HEALTH_AT`) no se tocaron: son
+valores de barra, no de tiempo. Si se vuelve a recalibrar, conviene repetir esa
+simulación en vez de razonar con un factor, porque las proporciones ya no son
+uniformes.
 
 La caca aparece con `POOP_CHANCE_PER_HOUR`: calibrada (dentro de ese mismo
 escalado) para que la primera salga en mediana a las ~3.5 horas reales. La

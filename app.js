@@ -640,11 +640,16 @@ const RED_ZONE = 25;           // bajo esto, ni alimentarlo/jugar lo despierta
    HEALTH_RISK_AT, SICK_LOW_HEALTH_AT, DISTRESS_MULT) NO se tocan: son valores
    de barra, no de tiempo, y no necesitan escalarse para que la proporción se
    mantenga. */
+/* Hambre, felicidad e higiene van al doble de rápido que esa calibración
+   (pedido explícito: que haya que atenderla más seguido), y la salud baja 2.5
+   veces más lento (ver HEALTH_DECAY_PER_HOUR): las barras se vacían antes,
+   pero morirse por eso tarda más. Ver CLAUDE.md para el tiempo hasta la muerte
+   que da esta combinación. */
 const DECAY_PER_HOUR = {
-  hunger:    100 / 849,    // 849 h de juego ≈ 14.1 horas reales
-  happiness: 100 / 1061,   // 1061 h de juego ≈ 17.7 horas reales
+  hunger:    100 / 424.5,  // 424.5 h de juego ≈ 7.1 horas reales (antes 849, el doble)
+  happiness: 100 / 530.5,  // 530.5 h de juego ≈ 8.8 horas reales (antes 1061)
   energy:    100 / 3395,   // 3395 h de juego ≈ 56.6 horas reales
-  hygiene:   100 / 424,    // 424 h de juego ≈ 7.1 horas reales, pero solo si hay caca
+  hygiene:   100 / 212,    // 212 h de juego ≈ 3.5 horas reales, pero solo si hay caca (antes 424)
 };
 const ENERGY_RECOVER_PER_HOUR = 100 / 212;  // durmiendo: barra entera en ~3.5 horas reales
 
@@ -671,7 +676,7 @@ const DISTRESS_MULT = 1.5;
    las otras barras esté bajo HEALTH_RISK_AT, y estar enfermo. Con las dos a la
    vez la salud cae al doble. */
 const HEALTH_RISK_AT = 30;
-const HEALTH_DECAY_PER_HOUR = 100 / 424;   // ~7.1 horas reales por cada causa sola
+const HEALTH_DECAY_PER_HOUR = 100 / 1060;  // ~17.7 horas reales por cada causa sola (antes 424: 2.5 veces más lento)
 const HEALTH_RECOVER_PER_HOUR = 0.424;     // solo si no hay ninguna causa activa
 
 /* Probabilidad de enfermarse, por hora de juego. */
