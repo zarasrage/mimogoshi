@@ -1379,7 +1379,7 @@ function styleTile(it){
     swatch = `<span class="swatch shell" style="background:linear-gradient(150deg, ${it.colors.join(', ')})"></span>`;
   } else if (it.kind === 'screen'){
     const [bg, hi, lit] = it.lcd;
-    swatch = `<span class="swatch screen" style="background:radial-gradient(120% 120% at 50% 0%, ${hi}, ${bg} 70%); color:rgb(${lit})">▪▪</span>`;
+    swatch = `<span class="swatch lcd" style="background:radial-gradient(120% 120% at 50% 0%, ${hi}, ${bg} 70%); color:rgb(${lit})">▪▪</span>`;
   } else {
     swatch = `<span class="swatch emoji">${it.emoji}</span>`;
   }
