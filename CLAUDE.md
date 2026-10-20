@@ -56,26 +56,43 @@ se ve: con escala fraccionaria unos píxeles salen de 2 y otros de 3, y en una
 cara de 32x32 eso junta los ojos con la boca en un borrón que parece una
 segunda cara dibujada encima.
 
+Ojo: "píxeles en pantalla" son píxeles **físicos**, no px CSS. Un teléfono 3x
+tiene 3 físicos por cada px CSS, y ahí está el margen para tener tamaños que no
+sean múltiplos de 32 sin romper la regla.
+
 La cadena está calibrada así y **no hay que romperla**:
 
 - El arte es de 32x32 por frame.
-- `CANVAS_W`/`CANVAS_H` = **96** → `pixelScale()` da 3 (96/32), el sprite llena
-  el canvas justo.
-- `#petCanvas` en CSS mide **96x96**, o sea 1:1 con su backing store del HTML.
-  Así la única escala que queda es la del dispositivo (2x/3x), que ya es entera.
+- `#petCanvas` en CSS mide **96x96** px CSS, pero su backing store va en
+  píxeles físicos: `fitPetCanvas()` lo deja en `96 * devicePixelRatio`
+  (`DPR`). El `width`/`height` del HTML (96) es solo el valor inicial.
+- El tamaño por etapa (`STAGE_CSS_PX = {child:50, teen:64, adult:78}`) es un
+  **objetivo** en px CSS. `stageDeviceScale()` lo pasa a una escala **entera
+  en píxeles físicos** (`round(objetivo * DPR / 32)`), y esa es la que recibe
+  `drawSprite()`. En un teléfono 3x da 53 / 64 / 75 px; en uno 2x, 48 / 64 / 80.
+  Antes eran escalas enteras de px CSS (32 / 64 / 96): el recién nacido salía
+  diminuto, el adulto llenaba la pieza y los saltos entre etapas eran bruscos.
+- Lo que no es la mascota principal sigue como antes, a escala entera de px
+  CSS sobre canvas 1:1: `CANVAS_W`/`CANVAS_H` = 96 son el `box` por defecto de
+  `drawSprite()`, y los minijuegos dibujan con `drawPetAt()` a escala 2.
 
-Para cambiarle el tamaño a la mascota hay que mover **los tres a la vez**
-(`CANVAS_W`/`CANVAS_H`, el `width`/`height` del `<canvas>` en el HTML y el CSS) y
-solo a múltiplos de 32: 64, 96, 128, 192. Poner `width:50px` sobre un canvas de
-80 (como estaba antes) reescala por 0.625 y arruina todo el pixel art.
+Nunca escalar el canvas con CSS a un tamaño que no sea su backing store
+dividido por `DPR`: poner `width:50px` sobre un canvas de 80 (como estaba antes)
+reescala por 0.625 y arruina todo el pixel art. Para cambiar el tamaño de la
+mascota se tocan los objetivos de `STAGE_CSS_PX`, nada más.
 
 Lo mismo aplica a las miniaturas del selector de especie (`speciesThumbStyle()`
 acepta `s`; el picker de la pantalla de inicio usa `s=1`, 32px — ver más abajo)
 y a la mascota dentro de los minijuegos, que se dibuja con `drawPetAt()` a escala
 2 usando `ctx.translate()` y **sin** `ctx.scale()`.
 
-`drawEgg()` dibuja sus radios como fracción de `CANVAS_W`/`CANVAS_H`, no en
-píxeles fijos: si no, al agrandar la mascota el huevo se queda chico abajo.
+`drawEgg()` dibuja sus radios como fracción del `box` (el tamaño real del
+canvas), no en píxeles fijos: si no, al agrandar la mascota el huevo se queda
+chico abajo.
+
+`drawSprite()` devuelve lo que dibujó (`species`, `frame`, `scale`, `dx`, `dy`,
+`box`) en píxeles del canvas; quien necesite ubicar algo encima (el accesorio)
+lo pasa a px CSS dividiendo por `box.w / CANVAS_W`.
 
 `ctx.imageSmoothingEnabled = false` y `image-rendering:pixelated` en el CSS son
 necesarios pero **no** suficientes: no arreglan una escala fraccionaria.
@@ -308,10 +325,8 @@ el mismo compromiso que ya hace `sleepFactor` con horas acumuladas.
   sacó porque **no había arte por edad**: cada especie tiene un solo diseño,
   así que las etapas se veían idénticas. Esta escalera nueva no repite ese
   error: la única diferencia entre `child`/`teen`/`adult` es el **tamaño**
-  (`STAGE_SCALE = {child:1, teen:2, adult:3}`, en el `scaleOverride` que ya
-  aceptaba `drawSprite()`) — mismo sprite, mismas animaciones, sin arte nuevo.
-  1 = 32px (recién nacido), 2 = 64px, 3 = 96px (llena el canvas, el tamaño de
-  siempre). La mascota dentro de los minijuegos (`drawPetAt()`) sigue siempre
+  (`STAGE_CSS_PX`, ver "La regla de oro") — mismo sprite, mismas animaciones,
+  sin arte nuevo. La mascota dentro de los minijuegos (`drawPetAt()`) sigue siempre
   a escala 2 fija, sin importar la etapa — no vale la pena reajustar el layout
   de cada minijuego por esto. Como `ageHours` sigue subiendo mientras la
   mascota esté viva, una ya establecida casi siempre tiene `ageHours` muy por
@@ -436,7 +451,61 @@ algo, porque antenas y orejas dejaban el accesorio flotando. Con `file://` el
 navegador no deja leer píxeles y cae a la parte de arriba de la celda: queda
 más alto, pero no rompe.
 
-El huevo es lo **único** que se dibuja procedural (`drawEgg()`, un óvalo): no
+#### Muebles
+
+Cuarta clase de cosas en Estilo (`kind:'furni'`, sección "Muebles", la primera):
+14 muebles que la mascota **usa**. Catálogo de precios en `STYLE_ITEMS`; arte y
+guion en `FURNI_ART`. Se ponen hasta **tres** a la vez, en tres lugares fijos
+del piso (`FURNI_SLOTS`: izq. 21%, centro 50%, der. 79%); al poner uno va al
+primer lugar libre (`FURNI_SLOT_ORDER`) y con los tres ocupados la tienda avisa
+que hay que sacar uno. `state.style.furniture = {izq, centro, der}`.
+
+**Arte:** pixel art dibujado con código (`pxPainter()`: `r`, `box` con contorno,
+`disc`, `line`), no emojis: no hay emoji de tocador ni de tobogán que exista en
+teléfonos viejos, y al lado del sprite un emoji se ve de otro estilo. Cada
+mueble tiene `parts` que van como canvas separados: `z:'front'` va delante de la
+mascota (el borde de la bañera), `show` las muestra solo con una bandera de su
+estado (`food` en el plato, `on` en tele y radiocasete), `pivot` gira (el asiento
+del columpio) y la pieza `ball` se traslada. Un píxel del arte mide lo mismo que
+uno de la mascota adulta (`furniDeviceScale()`), así que también va a escala
+entera en píxeles físicos.
+
+**Guion:** `script(f)` devuelve pasos que corre `runFurniActivity()`, en
+píxeles del arte respecto del centro del mueble (`f.x`) y alto sobre el piso
+(`f.y`): `go` (caminar), `hop` (salto en parábola), `slide` (lineal: subir la
+escalera, tirarse por el tobogán), `bounce` (trampolín), `kick` (patear la
+pelota) y, si no es ninguno, quedarse haciendo algo (`anim`, `ms` o `until`,
+`fx` con partículas, `flip` para bailar, `swing` para el columpio). **No hay
+arte nuevo**: todo combina las animaciones que ya tiene cada especie
+(`walker.anim` manda sobre el ánimo en `pickAnimation()` y se repite en loop)
+con movimiento (`walker.y` es la altura sobre el piso) y partículas
+(`petFx()`). Si algún día llega arte propio (maquillarse, trepar), basta con
+nombrar esa animación en el guion.
+
+Dos tipos:
+- **De rutina** (`routine`): cama (`sleep`), plato (`eat`), bañera (`clean`).
+  Reemplazan dónde pasa algo que ya existía: `triggerPetAction()` desvía comer y
+  limpiarse a `startFurniRoutine()`, y `updateWalker()` manda a la cama apenas
+  se duerme. Las barras ya se movieron en el botón; esto es solo lo que se ve.
+  Van más rápido que un paseo y no se cortan por estar triste o enferma, que es
+  justo cuando más se la alimenta.
+- **Espontáneos** (el resto): al terminar un paseo, con `FURNI_VISIT_CHANCE` y
+  una pausa mínima de `FURNI_VISIT_GAP_MS` entre visitas, elige uno (nunca el
+  mismo dos veces seguidas) y va. Se cortan si se duerme, se pone triste o
+  enferma, si se la toca o si empieza un minijuego; si quedó arriba de un
+  mueble, cae al piso.
+
+Efectos en las barras, chicos a propósito: dormir con cama puesta recupera
+energía `FURNI_BED_ENERGY_MULT` (x1.25) más rápido (se mira el save, así vale
+también en `catchUp()`), y cada visita espontánea da `FURNI_JOY` (+1) de
+felicidad con tope `FURNI_JOY_PER_HOUR` (6) por hora real (`state.furniJoy`):
+dejarla sola con muebles no puede reemplazar cuidarla.
+
+**Ids únicos en todo `STYLE_ITEMS`**: el mueble radiocasete se llamaba `radio` y
+chocaba con el adorno 📻 `radio`; `styleItemById()` devolvía el adorno y tocar el
+mueble ponía y sacaba el adorno.
+
+De la mascota, el huevo es lo **único** que se dibuja procedural (`drawEgg()`, un óvalo): no
 vino arte para esa etapa en ninguna especie. Todo lo demás sale recortado del
 PNG tal cual, **sin tinte ni recoloreo encima** — los spritesheets ya son la
 ilustración terminada, y aplicarles un wash de color por etapa pintaba también
