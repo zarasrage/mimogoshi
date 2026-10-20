@@ -432,13 +432,38 @@ function megaState(){
 
 function megaAvailable(id){ return isGameUnlocked(id) && !megaState().played[id]; }
 
-function megaTimeLeftLabel(){
+/* Milisegundos hasta que se renueve el ciclo; null si todavía no arrancó. */
+function megaMsLeft(){
   const m = megaState();
   if (m.cycleStart === null) return null;
-  const min = Math.max(1, Math.ceil((m.cycleStart + MEGA_CYCLE_MS - Date.now()) / 60000));
-  const h = Math.floor(min / 60);
-  return h > 0 ? `${h}h ${min % 60}m` : `${min}m`;
+  return Math.max(0, m.cycleStart + MEGA_CYCLE_MS - Date.now());
 }
+
+/* "05:12:33" (o "05:12" con corto=true, para la etiqueta chica de la tarjeta). */
+function megaClockLabel(ms, corto){
+  const s = Math.ceil(ms / 1000);
+  const hh = String(Math.floor(s / 3600)).padStart(2, '0');
+  const mm = String(Math.floor(s / 60) % 60).padStart(2, '0');
+  const ss = String(s % 60).padStart(2, '0');
+  return corto ? `${hh}:${mm}` : `${hh}:${mm}:${ss}`;
+}
+
+/* Los relojes del Megajuego en pantalla ([data-mega-clock], y su barra en
+   [data-mega-bar]) se refrescan solos cada segundo mientras haya alguno a la
+   vista: sin esto, la cuenta regresiva quedaba congelada en lo que decía al
+   abrir el menú. Un solo intervalo global, que no hace nada si no hay
+   relojes; así ninguna hoja tiene que acordarse de arrancarlo ni pararlo. */
+function tickMegaClocks(){
+  const clocks = document.querySelectorAll('[data-mega-clock]');
+  const bars = document.querySelectorAll('[data-mega-bar]');
+  if (!clocks.length && !bars.length) return;
+  const ms = megaMsLeft();
+  clocks.forEach(el => {
+    el.textContent = ms === null || ms <= 0 ? '¡listo!' : megaClockLabel(ms, el.dataset.megaClock === 'short');
+  });
+  bars.forEach(el => { el.style.width = ms === null ? '0%' : (ms / MEGA_CYCLE_MS * 100).toFixed(2) + '%'; });
+}
+if (typeof window !== 'undefined') setInterval(tickMegaClocks, 1000);
 
 /* ===================== Estado del juego ===================== */
 
@@ -1263,20 +1288,26 @@ function levelDots(id){
   return `<span class="lvl-dots">${html}</span>`;
 }
 
+/* El banner lleva la cuenta regresiva del ciclo: es el mismo plazo para
+   "volver a tener Megajuegos" y para "completarlos todos y cobrar el bonus". */
 function megaBanner(){
   const m = megaState();
   const abiertos = unlockedGames();
   const jugados = abiertos.filter(g => m.played[g.id]).length;
-  const renueva = megaTimeLeftLabel();
+  const ms = megaMsLeft();
+  const reloj = ms === null ? '' : `
+      <span class="mega-clock">⏳ <span data-mega-clock>${megaClockLabel(ms)}</span></span>
+      <div class="mega-track"><div data-mega-bar style="width:${(ms / MEGA_CYCLE_MS * 100).toFixed(2)}%"></div></div>`;
   if (m.bonusPaid){
-    return `<div class="mega-banner done"><b>MEGA</b><span>Completos · vuelven en ${renueva}</span></div>`;
+    return `<div class="mega-banner done"><b>MEGA</b><span>Completos · vuelven en</span>${reloj}</div>`;
   }
   const pips = abiertos.map(g => `<i class="${m.played[g.id] ? 'on' : ''}"></i>`).join('');
   return `
     <div class="mega-banner">
       <b>MEGA x${MEGA_COIN_MULT}</b>
       <span class="mega-pips">${pips}</span>
-      <span>Todos: ${coinsLabel('+' + MEGA_BONUS_PER_GAME * abiertos.length)}${renueva ? ` · ${renueva}` : ''}</span>
+      <span>${jugados}/${abiertos.length} · todos ${coinsLabel('+' + MEGA_BONUS_PER_GAME * abiertos.length)}</span>
+      ${reloj}
     </div>`;
 }
 
@@ -1298,7 +1329,8 @@ function openGamesMenu(aviso){
     const best = bestScore(recordKey(g.id, pickedLevel(g.id)));
     return `
       <button class="game-card" data-g="${g.id}" data-open-game="${g.id}">
-        ${megaAvailable(g.id) ? '<span class="gc-mega">MEGA</span>' : ''}
+        ${megaAvailable(g.id) ? '<span class="gc-mega">MEGA</span>'
+          : megaMsLeft() !== null ? `<span class="gc-mega used">⏳ <span data-mega-clock="short">${megaClockLabel(megaMsLeft(), true)}</span></span>` : ''}
         <span class="gc-emoji">${g.emoji}</span>
         <b class="gc-name">${escapeHtml(g.name)}</b>
         <span class="gc-meta">${levelDots(g.id)}${best > 0 ? `<span class="gc-best">★ ${best}</span>` : ''}</span>
@@ -1333,13 +1365,16 @@ function openGamesMenu(aviso){
 }
 
 /* playLevel va antes de start(): varios juegos leen la dificultad al armar
-   su estado inicial (Snake, el chart del Tap rítmico). Devuelve false si no
+   su estado inicial (Snake, el chart del Tap rítmico). El Megajuego se juega
+   siempre en el nivel más difícil desbloqueado, no en el elegido: es la
+   partida especial del ciclo y paga x3, así que va con todo (y el x3 se suma
+   al multiplicador de ese nivel). Devuelve false si no
    se pudo lanzar (cansancio), para que quien llama muestre el aviso donde
    corresponda. */
 function launchGame(id, mega){
   if (state.energy < 12) return false;
   hideOverlay();
-  playLevel = pickedLevel(id);
+  playLevel = mega ? maxLevelFor(id) : pickedLevel(id);
   megaRun = mega ? id : null;
   gameById(id).start();
   return true;
@@ -1397,7 +1432,12 @@ function openGameDetail(id, aviso){
       </div>
     </div>
     <div class="overlay-actions">
-      ${mega ? `<button class="overlay-btn mega" id="btnPlayMega"><span>Jugar MEGA</span><small>x${MEGA_COIN_MULT} monedas · 1 vez cada 12 h</small></button>` : ''}
+      ${mega ? `<button class="overlay-btn mega" id="btnPlayMega"><span>Jugar MEGA · ${LEVEL_NAMES[max - 1]}</span><small>Tu nivel más difícil · x${MEGA_COIN_MULT} monedas · 1 vez cada 12 h</small></button>`
+        : megaMsLeft() !== null ? `
+        <div class="mega-wait">
+          <div class="mega-wait-row"><b>MEGA usado</b><span>vuelve en ⏳ <span data-mega-clock>${megaClockLabel(megaMsLeft())}</span></span></div>
+          <div class="mega-track"><div data-mega-bar style="width:${(megaMsLeft() / MEGA_CYCLE_MS * 100).toFixed(2)}%"></div></div>
+        </div>` : ''}
       <button class="overlay-btn ${mega ? 'secondary' : ''}" id="btnPlayGame">Jugar · ${LEVEL_NAMES[pick - 1]}</button>
     </div>
   `, hideOverlay);

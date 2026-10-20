@@ -646,6 +646,18 @@ y `megaState()` lo renueva entero al vencer. Se gasta en `finishMinigame()`
 (lee `megaRun`), así que una partida cortada por `forceCloseMinigames()` no lo
 consume.
 
+El Megajuego se juega **siempre en el nivel más difícil desbloqueado**
+(`maxLevelFor()`), no en el elegido en la ficha: es la partida especial del
+ciclo, así que va con todo, y su x3 se multiplica con el `LEVEL_COIN_MULT` de
+ese nivel. Lo fija `launchGame()`.
+
+La cuenta regresiva del ciclo se ve en vivo: cualquier elemento con
+`data-mega-clock` (`"short"` para HH:MM) o `data-mega-bar` lo refresca
+`tickMegaClocks()`, un solo `setInterval` global de 1 s que no hace nada si no
+hay relojes a la vista — ninguna hoja tiene que arrancarlo ni pararlo. Aparece
+en el banner de la grilla (con barra que se vacía), en la etiqueta de las
+tarjetas cuyo MEGA ya se jugó y en la ficha ("MEGA usado · vuelve en").
+
 ### Niveles
 
 Cada juego del menú tiene niveles 1 a `GAME_MAX_LEVEL` (5). La experiencia
@@ -726,8 +738,9 @@ Tres hojas, como la tienda de una app:
    un botón chico que giraba 1→2→3→1 sin mostrar a dónde iba). Tocar uno
    desbloqueado lo elige; uno bloqueado dice cuánta xp le falta. Debajo, récord
    del nivel, multiplicador de monedas y barra de xp (`levelProgress()`). Si
-   queda Megajuego, "Jugar MEGA" va como botón principal y "Jugar" como
-   secundario. El cansancio se avisa dentro de la ficha.
+   queda Megajuego, "Jugar MEGA · <nivel máx.>" va como botón principal y
+   "Jugar" como secundario; si ya se usó, en su lugar va el reloj de cuánto
+   falta. El cansancio se avisa dentro de la ficha.
 3. **Resultado** (`showGameResult()`): reemplaza al `say()` de una línea que
    duraba 3 segundos. Puntaje grande, insignia de récord, premios en chips y
    la barra de xp animándose desde donde estaba antes de la partida (desde 0

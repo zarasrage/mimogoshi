@@ -752,6 +752,15 @@ body{
   0%,100%{box-shadow:0 4px 10px -4px rgba(255,255,255,.5);}
   50%{box-shadow:0 4px 18px 0 rgba(255,255,255,.75);}
 }
+/* MEGA ya jugado en este ciclo: la misma etiqueta, apagada y con lo que falta. */
+.gc-mega.used{
+  color:#fff;
+  background:rgba(0,0,0,.25);
+  box-shadow:none;
+  animation:none;
+  letter-spacing:0;
+  font-variant-numeric:tabular-nums;
+}
 .game-card.locked{
   background:var(--surface);
   box-shadow:0 0 0 1.5px var(--stroke) inset;
@@ -801,7 +810,51 @@ body{
   color:transparent;
   filter:brightness(1.3);
 }
-.mega-banner.done{opacity:.7;}
+.mega-banner.done b{filter:grayscale(.4) brightness(1.2);}
+.mega-clock{
+  font-weight:900;
+  color:var(--text);
+  font-variant-numeric:tabular-nums;   /* que los dígitos no bailen al contar */
+}
+/* Barra del tiempo que le queda al ciclo: se vacía de a poco hasta renovarse. */
+.mega-track{
+  flex-basis:100%;
+  height:4px;
+  border-radius:2px;
+  background:rgba(255,255,255,.1);
+  overflow:hidden;
+}
+.mega-track > div{
+  height:100%;
+  border-radius:2px;
+  background:var(--brand);
+  transition:width 1s linear;
+}
+.mega-wait{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  padding:11px 14px;
+  border-radius:var(--r-md);
+  background:var(--surface);
+  box-shadow:0 0 0 1px rgba(255,140,192,.25) inset;
+}
+.mega-wait-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+  font-size:13px; font-weight:700;
+  color:var(--text-soft);
+}
+.mega-wait-row b{
+  font-weight:900; letter-spacing:.4px;
+  background:var(--brand);
+  -webkit-background-clip:text; background-clip:text;
+  color:transparent;
+  filter:brightness(1.3);
+}
+.mega-wait-row [data-mega-clock]{color:var(--text); font-weight:900; font-variant-numeric:tabular-nums;}
 .mega-pips{display:inline-flex; gap:4px;}
 .mega-pips i{width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,.18);}
 .mega-pips i.on{background:#ff8cc0; box-shadow:0 0 6px #ff8cc0;}
