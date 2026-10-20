@@ -1228,93 +1228,92 @@ function openShop(aviso){
   document.getElementById('btnCloseShop').addEventListener('click', hideOverlay);
 }
 
-/* ===================== Menú de minijuegos ===================== */
+/* ===================== Menú de minijuegos =====================
+   Dos pantallas, como la tienda de una app: la grilla de juegos y la ficha de
+   cada uno. El nivel, el récord por nivel, la experiencia y el Megajuego viven
+   en la ficha y no en la fila de la lista: amontonados en la fila (Nv 1/3 +
+   ★ récord + MEGA apilados a la derecha) no se entendía qué era cada cosa, y
+   el nivel se elegía tocando un botón chico que giraba 1→2→3→1 sin mostrar
+   a dónde iba. En la ficha los cinco niveles están a la vista, con su nombre,
+   cuánto pagan y qué falta para los bloqueados.
 
-/* Un juego bloqueado se compra tocándolo, ahí mismo en el menú (no en la
+   Un juego bloqueado se compra tocándolo, ahí mismo en la grilla (no en la
    tienda: es donde uno va a buscar a qué jugar). El aviso va dentro de la
-   tarjeta y no con say(), por lo mismo que en la tienda. El cansancio se chequea
+   hoja y no con say(), por lo mismo que en la tienda. El cansancio se chequea
    recién al lanzar una partida, no al abrir el menú, para poder comprar igual. */
-function openGamesMenu(aviso){
-  if (state.stage === 'egg'){ say('Todavía es un huevo…'); return; }
-  if (!tryWake()) return;
 
+const LEVEL_NAMES = ['Fácil', 'Normal', 'Difícil', 'Experto', 'Leyenda'];
+
+/* Progreso hacia el próximo nivel, 0..1, y cuánto falta. En el máximo es 1. */
+function levelProgress(id){
+  const xp = gameXp(id);
+  const max = maxLevelFor(id);
+  if (max >= GAME_MAX_LEVEL) return { frac: 1, falta: 0, max };
+  const desde = LEVEL_XP[max - 1], hasta = LEVEL_XP[max];
+  return { frac: clamp((xp - desde) / (hasta - desde) * 100) / 100, falta: hasta - xp, max };
+}
+
+/* Cinco puntos, uno por nivel: lleno = desbloqueado, con anillo = el elegido. */
+function levelDots(id){
+  const max = maxLevelFor(id), pick = pickedLevel(id);
+  let html = '';
+  for (let l = 1; l <= GAME_MAX_LEVEL; l++){
+    html += `<i class="${l <= max ? 'on' : ''} ${l === pick ? 'pick' : ''}"></i>`;
+  }
+  return `<span class="lvl-dots">${html}</span>`;
+}
+
+function megaBanner(){
   const m = megaState();
   const abiertos = unlockedGames();
   const jugados = abiertos.filter(g => m.played[g.id]).length;
   const renueva = megaTimeLeftLabel();
-  let megaInfo;
-  if (m.bonusPaid) megaInfo = `Megajuegos listos, vuelven en ${renueva}`;
-  else megaInfo = `MEGA x${MEGA_COIN_MULT}: ${jugados}/${abiertos.length} · todos ${coinsLabel('+' + MEGA_BONUS_PER_GAME * abiertos.length)}`
-    + (renueva ? ` · ${renueva}` : '');
+  if (m.bonusPaid){
+    return `<div class="mega-banner done"><b>MEGA</b><span>Completos · vuelven en ${renueva}</span></div>`;
+  }
+  const pips = abiertos.map(g => `<i class="${m.played[g.id] ? 'on' : ''}"></i>`).join('');
+  return `
+    <div class="mega-banner">
+      <b>MEGA x${MEGA_COIN_MULT}</b>
+      <span class="mega-pips">${pips}</span>
+      <span>Todos: ${coinsLabel('+' + MEGA_BONUS_PER_GAME * abiertos.length)}${renueva ? ` · ${renueva}` : ''}</span>
+    </div>`;
+}
 
-  /* El récord va como insignia a la derecha y no dentro del texto: si va en el
-     texto la descripción pasa a dos líneas y con cuatro juegos la lista ya no
-     entra en la pantalla. */
-  const rows = GAMES.map(g => {
+function openGamesMenu(aviso){
+  if (state.stage === 'egg'){ say('Todavía es un huevo…'); return; }
+  if (!tryWake()) return;
+
+  const cards = GAMES.map(g => {
     if (!isGameUnlocked(g.id)){
       const alcanza = state.coins >= g.price;
       return `
-      <div class="menu-item ${alcanza ? '' : 'locked'}" data-buy-game="${g.id}">
-        <span class="emoji">🔒</span>
-        <div class="info"><b>${escapeHtml(g.name)}</b><small>${escapeHtml(g.desc)}</small></div>
-        <span class="menu-record">${coinsLabel(g.price)}</span>
-      </div>`;
+      <button class="game-card locked ${alcanza ? 'can-buy' : ''}" data-g="${g.id}" data-buy-game="${g.id}">
+        <span class="gc-emoji">${g.emoji}</span>
+        <span class="gc-lock">🔒</span>
+        <b class="gc-name">${escapeHtml(g.name)}</b>
+        <span class="gc-price">${coinsLabel(g.price)}</span>
+      </button>`;
     }
-    const lvl = pickedLevel(g.id);
-    const max = maxLevelFor(g.id);
-    const best = bestScore(recordKey(g.id, lvl));
-    /* Mientras no se haya jugado, la línea chica explica el juego; después
-       muestra cuánto falta para el próximo nivel, que es lo que interesa. */
-    const xp = gameXp(g.id);
-    const sub = xp === 0 ? escapeHtml(g.desc)
-      : max >= GAME_MAX_LEVEL ? `${xp} xp · nivel máx.`
-      : `${xp}/${LEVEL_XP[max]} xp`;
+    const best = bestScore(recordKey(g.id, pickedLevel(g.id)));
     return `
-      <div class="menu-item" data-play-game="${g.id}">
-        <span class="emoji">${g.emoji}</span>
-        <div class="info"><b>${escapeHtml(g.name)}</b><small>${sub}</small></div>
-        <div class="game-badges">
-          ${max > 1 ? `<button class="lvl-btn" data-level-game="${g.id}">Nv ${lvl}/${max}</button>` : ''}
-          ${best > 0 ? `<span class="menu-record">★ ${best}</span>` : ''}
-          ${megaAvailable(g.id) ? `<button class="mega-btn" data-mega-game="${g.id}">MEGA</button>` : ''}
-        </div>
-      </div>`;
+      <button class="game-card" data-g="${g.id}" data-open-game="${g.id}">
+        ${megaAvailable(g.id) ? '<span class="gc-mega">MEGA</span>' : ''}
+        <span class="gc-emoji">${g.emoji}</span>
+        <b class="gc-name">${escapeHtml(g.name)}</b>
+        <span class="gc-meta">${levelDots(g.id)}${best > 0 ? `<span class="gc-best">★ ${best}</span>` : ''}</span>
+      </button>`;
   }).join('');
 
   showOverlay(`
-    <h3>🎮 Elegir juego</h3>
-    <p>${aviso ? escapeHtml(aviso) : megaInfo}</p>
-    <div class="menu-list">${rows}</div>
-    <button class="overlay-btn secondary" id="btnCloseGames">Cancelar</button>
+    <h3>Juegos</h3>
+    ${aviso ? `<p class="sheet-note">${escapeHtml(aviso)}</p>` : megaBanner()}
+    <div class="menu-list game-grid">${cards}</div>
+    <button class="overlay-btn secondary" id="btnCloseGames">Cerrar</button>
   `, hideOverlay);
 
-  /* playLevel va antes de start(): varios juegos leen la dificultad al armar
-     su estado inicial (Snake, el chart del Tap rítmico). */
-  const launch = (id, mega) => {
-    if (state.energy < 12){ openGamesMenu('Está muy cansado para jugar'); return; }
-    hideOverlay();
-    playLevel = pickedLevel(id);
-    megaRun = mega ? id : null;
-    gameById(id).start();
-  };
-
-  /* Tocar el nivel lo hace girar entre los desbloqueados: 1, 2, ..., máx, 1. */
-  document.querySelectorAll('[data-level-game]').forEach(el => {
-    el.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const id = el.dataset.levelGame;
-      const lvl = pickedLevel(id);
-      state.gameLevelPick[id] = lvl >= maxLevelFor(id) ? 1 : lvl + 1;
-      saveState();
-      openGamesMenu();
-    });
-  });
-
-  document.querySelectorAll('[data-play-game]').forEach(el => {
-    el.addEventListener('click', () => launch(el.dataset.playGame, false));
-  });
-  document.querySelectorAll('[data-mega-game]').forEach(el => {
-    el.addEventListener('click', (e) => { e.stopPropagation(); launch(el.dataset.megaGame, true); });
+  document.querySelectorAll('[data-open-game]').forEach(el => {
+    el.addEventListener('click', () => openGameDetail(el.dataset.openGame));
   });
   document.querySelectorAll('[data-buy-game]').forEach(el => {
     el.addEventListener('click', () => {
@@ -1327,10 +1326,146 @@ function openGamesMenu(aviso){
       if (!state.unlockedGames) state.unlockedGames = [];
       state.unlockedGames.push(g.id);
       saveState(); render();
-      openGamesMenu(`¡${g.name} desbloqueado! Te quedan ${coinsLabel(state.coins)}`);
+      openGameDetail(g.id, `¡Desbloqueado! Te quedan ${coinsLabel(state.coins)}`);
     });
   });
   document.getElementById('btnCloseGames').addEventListener('click', hideOverlay);
+}
+
+/* playLevel va antes de start(): varios juegos leen la dificultad al armar
+   su estado inicial (Snake, el chart del Tap rítmico). Devuelve false si no
+   se pudo lanzar (cansancio), para que quien llama muestre el aviso donde
+   corresponda. */
+function launchGame(id, mega){
+  if (state.energy < 12) return false;
+  hideOverlay();
+  playLevel = pickedLevel(id);
+  megaRun = mega ? id : null;
+  gameById(id).start();
+  return true;
+}
+
+/* Ficha de un juego: los cinco niveles a la vista. Tocar uno desbloqueado lo
+   elige (y queda guardado, como antes con el botón que giraba); tocar uno
+   bloqueado solo cuenta cuánta experiencia le falta. */
+function openGameDetail(id, aviso){
+  const g = gameById(id);
+  const max = maxLevelFor(id);
+  const pick = pickedLevel(id);
+  const prog = levelProgress(id);
+
+  const niveles = LEVEL_NAMES.map((nombre, i) => {
+    const l = i + 1;
+    const abierto = l <= max;
+    return `
+      <button class="lvl-step ${abierto ? '' : 'locked'} ${l === pick ? 'active' : ''}" data-lvl="${l}">
+        <span class="lvl-num">${abierto ? l : '🔒'}</span>
+        <span class="lvl-name">${nombre}</span>
+      </button>`;
+  }).join('');
+
+  const best = bestScore(recordKey(id, pick));
+  const mult = LEVEL_COIN_MULT[pick - 1];
+  const xpLine = prog.max >= GAME_MAX_LEVEL
+    ? `${gameXp(id)} xp · todos los niveles abiertos`
+    : `${gameXp(id)} / ${LEVEL_XP[prog.max]} xp para ${LEVEL_NAMES[prog.max]}`;
+  const mega = megaAvailable(id);
+
+  showOverlay(`
+    <div class="detail-head">
+      <button class="back-btn" id="btnBackGames" aria-label="Volver">‹</button>
+      <span>Juegos</span>
+    </div>
+    <div class="game-hero" data-g="${id}">
+      <span class="hero-emoji">${g.emoji}</span>
+      <div class="hero-info">
+        <h3>${escapeHtml(g.name)}</h3>
+        <small>${escapeHtml(g.desc)}</small>
+      </div>
+    </div>
+    <div class="menu-list detail-body">
+      <div class="section-label">Nivel</div>
+      <div class="lvl-picker">${niveles}</div>
+      <p class="sheet-note" id="lvlNote">${aviso ? escapeHtml(aviso) : ''}</p>
+      <div class="stat-tiles">
+        <div class="stat-tile"><b>${best > 0 ? best : '—'}</b><span>Récord ${LEVEL_NAMES[pick - 1].toLowerCase()}</span></div>
+        <div class="stat-tile"><b>x${mult}</b><span>Monedas</span></div>
+      </div>
+      <div class="xp-row">
+        <div class="xp-bar"><div class="xp-fill" style="width:${Math.round(prog.frac * 100)}%"></div></div>
+        <small>${xpLine}</small>
+      </div>
+    </div>
+    <div class="overlay-actions">
+      ${mega ? `<button class="overlay-btn mega" id="btnPlayMega"><span>Jugar MEGA</span><small>x${MEGA_COIN_MULT} monedas · 1 vez cada 12 h</small></button>` : ''}
+      <button class="overlay-btn ${mega ? 'secondary' : ''}" id="btnPlayGame">Jugar · ${LEVEL_NAMES[pick - 1]}</button>
+    </div>
+  `, hideOverlay);
+
+  const note = document.getElementById('lvlNote');
+  const cansado = () => { note.textContent = 'Está muy cansado para jugar'; note.classList.add('warn'); };
+
+  document.querySelectorAll('[data-lvl]').forEach(el => {
+    el.addEventListener('click', () => {
+      const l = +el.dataset.lvl;
+      if (l > max){
+        note.textContent = `${LEVEL_NAMES[l - 1]}: faltan ${LEVEL_XP[l - 1] - gameXp(id)} xp. Juega bien para abrirlo.`;
+        note.classList.remove('warn');
+        return;
+      }
+      state.gameLevelPick[id] = l;
+      saveState();
+      openGameDetail(id);
+    });
+  });
+  document.getElementById('btnBackGames').addEventListener('click', () => openGamesMenu());
+  document.getElementById('btnPlayGame').addEventListener('click', () => { if (!launchGame(id, false)) cansado(); });
+  if (mega) document.getElementById('btnPlayMega').addEventListener('click', () => { if (!launchGame(id, true)) cansado(); });
+}
+
+/* Hoja de resultado al terminar una partida. Antes era un say() de una línea
+   ("¡RÉCORD! 75 pts (combo 12) · +15 felicidad · 💰 +10 · ¡Nivel 2
+   desbloqueado!") que duraba 3 segundos: lo más satisfactorio del juego se
+   leía de pasada o no se leía. El overlay va sin desenfoque (.clear) para que
+   se vea a la mascota celebrando arriba. La barra de experiencia arranca donde
+   estaba antes de la partida y se llena hasta donde quedó. */
+function showGameResult(r){
+  const g = gameById(r.id);
+  const chips = [
+    r.happinessGain > 0 ? `<span class="chip">⭐ +${r.happinessGain}</span>` : '',
+    r.coins > 0 ? `<span class="chip gold">${coinsLabel('+' + r.coins)}${r.mega ? ' · MEGA' : ''}</span>` : '',
+    r.bonus > 0 ? `<span class="chip gold">Megajuegos completos ${coinsLabel('+' + r.bonus)}</span>` : '',
+  ].join('');
+  const xp = g ? `
+    <div class="xp-row">
+      <div class="xp-bar"><div class="xp-fill" id="resXp" style="width:${Math.round(r.xpFrom * 100)}%"></div></div>
+      <small>${r.levelUp ? `¡Nivel ${LEVEL_NAMES[r.levelUp - 1]} desbloqueado!` : r.xpGain > 0 ? `+${r.xpGain} xp` : 'Sin experiencia esta vez'}</small>
+    </div>` : '';
+
+  showOverlay(`
+    <div class="result-head ${r.record ? 'record' : ''}">
+      ${r.record ? '<span class="result-badge">¡RÉCORD!</span>' : ''}
+      <div class="result-score">${r.score}</div>
+      <p>${escapeHtml(r.message)}</p>
+      ${g ? `<small class="result-level">${escapeHtml(g.name)} · ${LEVEL_NAMES[r.level - 1]}</small>` : ''}
+    </div>
+    ${chips ? `<div class="result-chips">${chips}</div>` : ''}
+    ${xp}
+    <div class="overlay-actions row">
+      ${g ? `<button class="overlay-btn" id="btnAgain">${r.levelUp ? `Probar ${LEVEL_NAMES[r.levelUp - 1]}` : 'Otra vez'}</button>` : ''}
+      <button class="overlay-btn secondary" id="btnResultDone">Listo</button>
+    </div>
+  `, hideOverlay);
+  document.getElementById('overlay').classList.add('clear');
+
+  const fill = document.getElementById('resXp');
+  if (fill) requestAnimationFrame(() => requestAnimationFrame(() => {
+    fill.style.width = Math.round(r.xpTo * 100) + '%';
+  }));
+  document.getElementById('btnResultDone').addEventListener('click', hideOverlay);
+  if (g) document.getElementById('btnAgain').addEventListener('click', () => {
+    if (!launchGame(r.id, false)) openGameDetail(r.id, 'Está muy cansado para jugar');
+  });
 }
 
 /* Ajusta la resolución interna del canvas del minijuego a su tamaño real en
@@ -1578,6 +1713,8 @@ function finishMinigame(id, { score, merit, energyCost, hygieneCost = 0, message
      Megajuego: mide cuánto jugaste bien, no cuánto pagó. Solo los juegos del
      menú tienen niveles (no los prototipos del panel de prueba). */
   let subio = 0;
+  const xpFrom = gameById(id) ? levelProgress(id).frac : 0;
+  const xpAntes = gameXp(id);
   if (gameById(id) && merit > 0){
     const antes = maxLevelFor(id);
     state.gameXp[id] = gameXp(id) + Math.round(merit);
@@ -1593,17 +1730,19 @@ function finishMinigame(id, { score, merit, energyCost, hygieneCost = 0, message
   if (hygieneCost) state.hygiene = clamp(state.hygiene - hygieneCost);
   state.coins += coins;
 
-  const premio = [
-    happinessGain !== 0 ? `${happinessGain > 0 ? '+' : ''}${happinessGain} felicidad` : null,
-    coins - bonus > 0 ? coinsLabel('+' + (coins - bonus)) + (mega ? ' (MEGA x3)' : '') : null,
-    bonus > 0 ? `¡Megajuegos completos! ${coinsLabel('+' + bonus)}` : null,
-    subio ? `¡Nivel ${subio} desbloqueado!` : null,
-  ].filter(Boolean).join(' · ');
-
-  say((record ? `¡RÉCORD! ${message}` : message) + (premio ? ` · ${premio}` : ''), (bonus || subio) ? 3200 : 2200);
+  const level = playLevel;
   if (happinessGain > 0) triggerPetAction('celebrate');
   exitMinigame();
   saveState(); render();
+  showGameResult({
+    id, score, message, record, level, mega, bonus,
+    happinessGain, coins: coins - bonus,
+    xpGain: gameXp(id) - xpAntes, levelUp: subio,
+    /* Si subió de nivel la barra arranca de 0 en el tramo nuevo: llenarla
+       hasta el tope del tramo viejo y saltar se lee como un error. */
+    xpFrom: subio ? 0 : xpFrom,
+    xpTo: gameById(id) ? levelProgress(id).frac : 0,
+  });
 }
 
 /* ===================== Minijuego 1: atrapar estrellas =====================
@@ -4248,7 +4387,7 @@ function showOverlay(html, onDismiss){
   const overlay = document.getElementById('overlay');
   document.getElementById('overlayCard').innerHTML = html;
   overlay.onclick = onDismiss ? (e => { if (e.target === overlay) onDismiss(); }) : null;
-  overlay.classList.remove('hidden');
+  overlay.classList.remove('hidden', 'clear');
 }
 
 function hideOverlay(){

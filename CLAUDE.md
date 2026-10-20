@@ -652,10 +652,11 @@ Cada juego del menú tiene niveles 1 a `GAME_MAX_LEVEL` (5). La experiencia
 (`state.gameXp[id]`) es el **mérito** de cada partida tal cual, sin multiplicar
 por nivel ni por Megajuego. `LEVEL_XP` está en "partidas buenas" acumuladas
 (`GOOD_GAME_MERIT = 45`): 10 para el nivel 2, 30 para el 3, 50 para el 4, 150
-para el 5. El nivel **no sube solo**: la experiencia desbloquea y el botón
-`Nv x/y` del menú gira entre los desbloqueados (`state.gameLevelPick`), para
+para el 5. El nivel **no sube solo**: la experiencia desbloquea y se elige en
+la ficha del juego entre los desbloqueados (`state.gameLevelPick`), para
 que nadie quede atascado en uno que le queda grande. Al desbloquear uno queda
-elegido de una.
+elegido de una. Cada nivel tiene nombre (`LEVEL_NAMES`: Fácil, Normal,
+Difícil, Experto, Leyenda).
 
 Más nivel = más difícil, así que paga más: `LEVEL_COIN_MULT` (x1 a x2) multiplica
 solo las monedas y se suma al x3 del Megajuego. Sin eso subir sería un castigo.
@@ -688,8 +689,8 @@ Lo compartido está justo debajo de `fitGameCanvas()` y conviene reusarlo:
 
 - `enterMinigame(id)` / `exitMinigame()`: alta y baja del canvas (esconder al
   monito, mostrar el canvas, `catchUp()`, `activeMinigame`).
-- `finishMinigame(id, {...})`: aplica premio y costo, guarda el récord y avisa
-  "¡RÉCORD!" si corresponde.
+- `finishMinigame(id, {...})`: aplica premio y costo, guarda el récord y abre
+  la hoja de resultado (`showGameResult()`, ver abajo).
 - `drawPetAt(ctx, x, suelo, mood, escala)`: dibuja a la mascota dentro del canvas
   de un minijuego (la canasta de estrellas y el jugador de baloncesto son el
   sprite real). La `escala` **tiene que ser entera**: se usa 2 (64px) porque el
@@ -709,9 +710,36 @@ Cada juego guarda su estado en una variable global (`sg`, `bb`, `rx`, `tr`, `sn`
 corre si la mascota se muere a mitad de partida.
 
 Los récords viven en `state.records[id]`, o sea dentro del save (`loadState()` los
-rellena vacíos para saves viejos). Se muestran como insignia en el menú de Jugar;
-si van dentro del texto de la descripción, esta pasa a dos líneas y con cuatro
-juegos la lista deja el botón de Cancelar fuera de la pantalla.
+rellena vacíos para saves viejos).
+
+### Menú de Jugar: grilla, ficha y resultado
+
+Tres hojas, como la tienda de una app:
+
+1. **Grilla** (`openGamesMenu()`): tarjetas de 2 columnas con el color propio
+   de cada juego (`--g1`/`--g2` por `data-g` en el CSS — al sumar un juego hay
+   que darle su par), puntitos de nivel (`levelDots()`), récord del nivel
+   elegido y la etiqueta MEGA si le queda. Arriba, `megaBanner()` con un punto
+   por juego desbloqueado. Los bloqueados se compran tocándolos y, al
+   comprarlos, abren su ficha.
+2. **Ficha** (`openGameDetail(id)`): los cinco niveles a la vista (antes era
+   un botón chico que giraba 1→2→3→1 sin mostrar a dónde iba). Tocar uno
+   desbloqueado lo elige; uno bloqueado dice cuánta xp le falta. Debajo, récord
+   del nivel, multiplicador de monedas y barra de xp (`levelProgress()`). Si
+   queda Megajuego, "Jugar MEGA" va como botón principal y "Jugar" como
+   secundario. El cansancio se avisa dentro de la ficha.
+3. **Resultado** (`showGameResult()`): reemplaza al `say()` de una línea que
+   duraba 3 segundos. Puntaje grande, insignia de récord, premios en chips y
+   la barra de xp animándose desde donde estaba antes de la partida (desde 0
+   si subió de nivel). El overlay va con `.clear` (sin desenfoque) para que se
+   vea a la mascota celebrando arriba; `showOverlay()` saca esa clase en
+   cualquier otra hoja. "Otra vez" relanza con `launchGame()` (o "Probar
+   <nivel>" si se acaba de abrir uno); los prototipos del panel de prueba no
+   están en `GAMES` y solo muestran "Listo".
+
+`launchGame(id, mega)` fija `playLevel` y `megaRun` antes de `start()` y
+devuelve `false` si está muy cansado, para que quien llama ponga el aviso
+donde corresponda.
 
 ### Combate (prototipo, todavía no en el menú de Jugar)
 

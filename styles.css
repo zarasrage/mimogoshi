@@ -614,7 +614,7 @@ body{
   margin:0 -4px;
   padding:2px 4px 4px;
 }
-.menu-list:not(.species-list){
+.menu-list:not(.species-list):not(.game-grid){
   display:flex;
   flex-direction:column;
   gap:8px;
@@ -669,52 +669,321 @@ body{
 @media (hover:hover){
   .menu-item:not(.locked):hover{background:var(--surface-hi);}
 }
-/* Nivel, récord y botón del Megajuego apilados a la derecha: uno al lado del
-   otro le quitaban ancho al nombre y la fila pasaba a tres líneas. */
-.game-badges{
-  margin-left:auto;
-  flex-shrink:0;
+/* ---------- juegos: grilla, ficha y resultado ----------
+   Cada juego tiene su par de colores (--g1/--g2, por data-g): la tarjeta de la
+   grilla y el encabezado de la ficha usan el mismo, así se reconoce al entrar. */
+[data-g="stars"]     {--g1:#ffbe4f; --g2:#ff6a88;}
+[data-g="basketball"]{--g1:#ff9a3d; --g2:#e0452a;}
+[data-g="reflex"]    {--g1:#ff5a7a; --g2:#a8208a;}
+[data-g="tap"]       {--g1:#8f7bff; --g2:#c25bff;}
+[data-g="snake"]     {--g1:#3ad987; --g2:#0f9a8c;}
+[data-g="memory"]    {--g1:#45c8ff; --g2:#4f68ff;}
+
+.game-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+.game-card{
+  position:relative;
+  min-height:108px;
   display:flex;
   flex-direction:column;
-  align-items:flex-end;
-  gap:4px;
-}
-.game-badges .menu-record{margin-left:0;}
-.mega-btn{
-  font-family:var(--font-ui);
-  font-weight:900;
-  font-size:11px;
-  letter-spacing:.6px;
-  color:#fff;
-  background:var(--brand);
+  justify-content:flex-end;
+  align-items:flex-start;
+  gap:6px;
+  padding:12px;
   border:none;
-  border-radius:999px;
-  padding:5px 10px;
+  border-radius:var(--r-lg);
+  overflow:hidden;
+  text-align:left;
+  color:#fff;
+  font-family:var(--font-ui);
+  background:linear-gradient(145deg, var(--g1), var(--g2));
+  box-shadow:0 12px 24px -14px var(--g2), 0 1px 0 rgba(255,255,255,.35) inset;
   cursor:pointer;
-  white-space:nowrap;
-  box-shadow:0 4px 12px -4px var(--brand-glow);
+  transition:transform .14s var(--ease-spring);
+}
+.game-card::after{
+  content:'';
+  position:absolute;
+  inset:0;
+  background:radial-gradient(80% 60% at 0% 0%, rgba(255,255,255,.28), transparent 60%);
+  pointer-events:none;
+}
+.game-card:active{transform:scale(.95);}
+/* El emoji grande y corrido fuera del borde es la "portada" del juego. */
+.gc-emoji{
+  position:absolute;
+  top:-6px; right:-8px;
+  font-size:56px;
+  line-height:1;
+  transform:rotate(-12deg);
+  filter:drop-shadow(0 6px 8px rgba(0,0,0,.25));
+}
+.gc-name{
+  position:relative;
+  font-size:15px;
+  font-weight:900;
+  line-height:1.15;
+  text-shadow:0 1px 2px rgba(0,0,0,.2);
+  max-width:85%;
+}
+.gc-meta{position:relative; display:flex; align-items:center; gap:8px;}
+.gc-best{
+  font-size:11px; font-weight:900;
+  background:rgba(0,0,0,.2);
+  border-radius:999px;
+  padding:2px 7px;
+}
+.gc-mega{
+  position:absolute;
+  top:9px; left:9px;
+  z-index:1;
+  font-size:10px; font-weight:900; letter-spacing:.6px;
+  color:#a43cff;
+  background:#fff;
+  border-radius:999px;
+  padding:3px 8px;
+  box-shadow:0 4px 12px -2px rgba(255,255,255,.6);
   animation:megaPulse 2s ease-in-out infinite;
 }
 @keyframes megaPulse{
-  0%,100%{box-shadow:0 4px 12px -4px var(--brand-glow);}
-  50%{box-shadow:0 4px 18px -2px var(--brand-glow);}
+  0%,100%{box-shadow:0 4px 10px -4px rgba(255,255,255,.5);}
+  50%{box-shadow:0 4px 18px 0 rgba(255,255,255,.75);}
 }
-/* Nivel elegido / máximo desbloqueado: se toca para girar entre los
-   desbloqueados. Va arriba en la misma columna que el récord y el MEGA, para
-   no quitarle ancho al nombre. */
-.lvl-btn{
-  font-family:var(--font-ui);
-  font-weight:800;
-  font-size:11px;
-  color:var(--text);
-  background:transparent;
-  border:1.5px solid rgba(255,255,255,.28);
+.game-card.locked{
+  background:var(--surface);
+  box-shadow:0 0 0 1.5px var(--stroke) inset;
+  color:var(--text-soft);
+}
+.game-card.locked::after{display:none;}
+.game-card.locked .gc-emoji{filter:grayscale(1); opacity:.22;}
+.game-card.locked:not(.can-buy){opacity:.55;}
+.game-card.can-buy{box-shadow:0 0 0 1.5px rgba(255,206,75,.55) inset;}
+.gc-lock{position:absolute; top:10px; left:10px; font-size:15px;}
+.gc-price{
+  position:relative;
+  font-size:12px; font-weight:900;
+  color:var(--amber);
+  background:rgba(255,206,75,.13);
   border-radius:999px;
   padding:3px 9px;
-  cursor:pointer;
-  white-space:nowrap;
 }
-.lvl-btn:active, .mega-btn:active{transform:scale(.92);}
+
+.lvl-dots{display:inline-flex; gap:4px; align-items:center;}
+.lvl-dots i{
+  width:7px; height:7px;
+  border-radius:50%;
+  background:rgba(255,255,255,.3);
+}
+.lvl-dots i.on{background:#fff;}
+.lvl-dots i.pick{box-shadow:0 0 0 2px rgba(255,255,255,.45); transform:scale(1.15);}
+
+.mega-banner{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-wrap:wrap;
+  gap:6px 10px;
+  padding:9px 12px;
+  margin-bottom:12px;
+  border-radius:var(--r-md);
+  background:linear-gradient(135deg, rgba(255,111,174,.16), rgba(123,107,255,.16));
+  box-shadow:0 0 0 1px rgba(255,140,192,.3) inset;
+  font-size:12px; font-weight:700;
+  color:var(--text-soft);
+}
+.mega-banner b{
+  font-weight:900; letter-spacing:.5px;
+  background:var(--brand);
+  -webkit-background-clip:text; background-clip:text;
+  color:transparent;
+  filter:brightness(1.3);
+}
+.mega-banner.done{opacity:.7;}
+.mega-pips{display:inline-flex; gap:4px;}
+.mega-pips i{width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,.18);}
+.mega-pips i.on{background:#ff8cc0; box-shadow:0 0 6px #ff8cc0;}
+
+.overlay-card .sheet-note{font-size:13px; color:var(--text-soft); margin:0 0 12px;}
+.sheet-note:empty{display:none;}
+.sheet-note.warn{color:#ffb3ba;}
+
+/* Ficha */
+.detail-head{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin:-6px 0 10px;
+  font-size:13px; font-weight:800;
+  color:var(--text-soft);
+}
+.back-btn{
+  width:34px; height:34px;
+  display:grid; place-items:center;
+  padding:0 0 3px;
+  border:none;
+  border-radius:50%;
+  background:var(--surface-hi);
+  color:var(--text);
+  font-size:24px; font-weight:700; line-height:1;
+  cursor:pointer;
+}
+.back-btn:active{transform:scale(.9);}
+.game-hero{
+  position:relative;
+  overflow:hidden;
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:14px;
+  margin-bottom:14px;
+  border-radius:22px;
+  text-align:left;
+  color:#fff;
+  background:linear-gradient(135deg, var(--g1), var(--g2));
+  box-shadow:0 16px 30px -18px var(--g2);
+}
+.game-hero::after{
+  content:'';
+  position:absolute; inset:0;
+  background:radial-gradient(70% 90% at 0% 0%, rgba(255,255,255,.3), transparent 60%);
+  pointer-events:none;
+}
+.hero-emoji{
+  flex-shrink:0;
+  width:62px; height:62px;
+  display:grid; place-items:center;
+  font-size:36px;
+  border-radius:19px;
+  background:rgba(255,255,255,.22);
+  box-shadow:0 1px 0 rgba(255,255,255,.4) inset;
+}
+.hero-info{position:relative; z-index:1; display:flex; flex-direction:column; gap:2px; min-width:0;}
+.overlay-card .hero-info h3{margin:0; font-size:21px; text-shadow:0 1px 2px rgba(0,0,0,.2);}
+.hero-info small{font-size:13px; font-weight:700; opacity:.9;}
+
+.detail-body{text-align:left;}
+.section-label{
+  font-size:11px; font-weight:800;
+  letter-spacing:.8px;
+  text-transform:uppercase;
+  color:var(--text-soft);
+}
+/* Los cinco niveles a la vista: un selector que gira de a uno escondía cuáles
+   había y cuáles faltaban. */
+.lvl-picker{display:grid; grid-template-columns:repeat(5, 1fr); gap:6px;}
+.lvl-step{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:3px;
+  padding:10px 2px 8px;
+  border:none;
+  border-radius:14px;
+  background:var(--surface);
+  box-shadow:0 0 0 1.5px var(--stroke) inset;
+  color:var(--text);
+  cursor:pointer;
+  transition:transform .12s var(--ease-spring), background .2s ease;
+}
+.lvl-step:active{transform:scale(.92);}
+.lvl-num{font-size:19px; font-weight:900; line-height:1.1;}
+.lvl-name{font-size:9.5px; font-weight:800; color:var(--text-soft);}
+.lvl-step.active{
+  background:var(--brand);
+  box-shadow:0 8px 18px -8px var(--brand-glow), 0 1px 0 rgba(255,255,255,.35) inset;
+}
+.lvl-step.active .lvl-name{color:#fff;}
+.lvl-step.locked{opacity:.45;}
+.lvl-step.locked .lvl-num{font-size:14px; line-height:1.55;}
+
+.stat-tiles{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+.stat-tile{
+  display:flex;
+  flex-direction:column;
+  gap:1px;
+  padding:10px 12px;
+  border-radius:14px;
+  background:var(--surface);
+}
+.stat-tile b{font-size:20px; font-weight:900;}
+.stat-tile span{font-size:11px; font-weight:700; color:var(--text-soft);}
+
+.xp-row{margin:2px 0 4px; text-align:left;}
+.xp-bar{
+  height:8px;
+  border-radius:4px;
+  background:rgba(255,255,255,.1);
+  overflow:hidden;
+}
+.xp-fill{
+  height:100%;
+  border-radius:4px;
+  background:var(--brand);
+  box-shadow:0 0 10px var(--brand-glow);
+  transition:width 1.1s cubic-bezier(.2,.8,.2,1) .25s;
+}
+.xp-row small{display:block; margin-top:6px; font-size:11.5px; font-weight:700; color:var(--text-soft);}
+
+.overlay-card > .overlay-actions{margin-top:12px;}
+.overlay-actions.row{display:grid; grid-template-columns:1fr 1fr;}
+.overlay-btn.mega{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:1px;
+  box-shadow:0 12px 28px -8px var(--brand-glow), 0 1px 0 rgba(255,255,255,.35) inset;
+}
+.overlay-btn.mega span{font-size:16px; letter-spacing:.4px;}
+.overlay-btn.mega small{font-size:11px; font-weight:700; opacity:.85;}
+
+/* Resultado: sin desenfoque, para ver a la mascota celebrando arriba. */
+.overlay.clear{
+  background:linear-gradient(180deg, transparent 30%, rgba(12,6,26,.45));
+  -webkit-backdrop-filter:none;
+  backdrop-filter:none;
+}
+.result-head{display:flex; flex-direction:column; align-items:center; gap:4px;}
+.result-score{
+  font-size:56px;
+  font-weight:900;
+  line-height:1;
+  letter-spacing:-1px;
+  background:linear-gradient(180deg, #fff, #ffc6e0);
+  -webkit-background-clip:text; background-clip:text;
+  color:transparent;
+  animation:scorePop .5s var(--ease-spring);
+}
+.result-head.record .result-score{
+  background:linear-gradient(180deg, #ffe58a, #ff9f43);
+  -webkit-background-clip:text; background-clip:text;
+  filter:drop-shadow(0 0 14px rgba(255,190,80,.45));
+}
+@keyframes scorePop{
+  from{transform:scale(.4); opacity:0;}
+  to{transform:scale(1); opacity:1;}
+}
+.result-badge{
+  font-size:12px; font-weight:900; letter-spacing:1px;
+  color:#4a2600;
+  background:linear-gradient(135deg, #ffe066, #ffa53d);
+  border-radius:999px;
+  padding:4px 12px;
+  box-shadow:0 6px 16px -6px rgba(255,170,60,.8);
+  animation:scorePop .5s var(--ease-spring) .1s both;
+}
+.overlay-card .result-head p{margin:2px 0 0;}
+.result-level{font-size:11.5px; font-weight:800; color:var(--text-soft); text-transform:uppercase; letter-spacing:.6px;}
+.result-chips{display:flex; flex-wrap:wrap; justify-content:center; gap:6px; margin:12px 0 10px;}
+.chip{
+  font-size:13px; font-weight:800;
+  background:var(--surface-hi);
+  border-radius:999px;
+  padding:5px 11px;
+}
+.chip.gold{color:var(--amber); background:rgba(255,206,75,.13);}
 
 /* Rejilla de 3 columnas, no fila con scroll horizontal: ese scroll horizontal
    competía con el scroll vertical del overlay y las especies fuera del borde
@@ -994,5 +1263,6 @@ body{
 }
 
 @media (prefers-reduced-motion: reduce){
-  .device, .led, .overlay, .overlay-card, .mega-btn{animation:none;}
+  .device, .led, .overlay, .overlay-card, .gc-mega, .result-score, .result-badge{animation:none;}
+  .xp-fill{transition:none;}
 }
