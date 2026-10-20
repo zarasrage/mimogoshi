@@ -274,6 +274,7 @@ function drawSprite(ctx, stage, mood, walkFrame, noClear, scaleOverride){
   const dy = CANVAS_H - dh; // apoyado en el piso
 
   ctx.drawImage(species.image, frame.x, frame.y, frame.w, frame.h, dx, dy, dw, dh);
+  return { species, frame, scale, dx, dy };   // para ubicar el accesorio (updateHat)
 }
 
 /* ===================== Comida ===================== */
@@ -333,6 +334,82 @@ function upgradeById(id){ return UPGRADES.find(u => u.id === id); }
 function upgradeState(id){
   const u = state.upgrades && state.upgrades[id];
   return u || { owned: false, armed: false, timesUsed: 0 };
+}
+
+/* Estilo: cosas que se compran solo para verse distinto, sin efecto en las
+   barras. Cuatro tipos, cada uno con su forma de equiparse:
+   - shell (carcasa del aparato) y screen (color de la pantalla LCD): siempre
+     hay una puesta; las de price 0 vienen de fábrica.
+   - hat: un accesorio a la vez en la cabeza de la mascota, o ninguno.
+   - deco: un adorno por lugar de la pieza (slot: pared, izq, der), o ninguno.
+   Los colores viven acá y no en el CSS: applyStyle() los pone como variables
+   sobre #device, así una carcasa nueva es una línea en este catálogo. */
+const STYLE_ITEMS = [
+  { id:'rosa',      kind:'shell', name:'Chicle',    price:  0, colors:['#ff8cc0', '#ff5d9e', '#b44dff'] },
+  { id:'menta',     kind:'shell', name:'Menta',     price: 40, colors:['#a6f5d6', '#3fd6a5', '#1f8fb0'] },
+  { id:'oceano',    kind:'shell', name:'Océano',    price: 40, colors:['#8fd3ff', '#4f8dff', '#5b4bd6'] },
+  { id:'atardecer', kind:'shell', name:'Atardecer', price: 50, colors:['#ffd27a', '#ff8a5c', '#e8457a'] },
+  { id:'lima',      kind:'shell', name:'Lima',      price: 50, colors:['#e2ff8a', '#8fd94f', '#2f9e6a'] },
+  { id:'noche',     kind:'shell', name:'Noche',     price: 60, colors:['#6a6288', '#3a3256', '#17122a'] },
+  { id:'oro',       kind:'shell', name:'Oro',       price: 80, colors:['#fff1a8', '#f2c041', '#c27c12'] },
+
+  /* screen: fondo, brillo del fondo, color de lo encendido (r,g,b) y borde. */
+  { id:'verde',  kind:'screen', name:'Verde',   price:  0, lcd:['#0e1b12', '#1a3320', '200,242,194', '#0a1109'] },
+  { id:'ambar',  kind:'screen', name:'Ámbar',   price: 45, lcd:['#1c1206', '#3a2608', '255,204,128', '#120b03'] },
+  { id:'azul',   kind:'screen', name:'Hielo',   price: 45, lcd:['#0a1424', '#142a4a', '170,215,255', '#060c16'] },
+  { id:'malva',  kind:'screen', name:'Malva',   price: 45, lcd:['#1d0f24', '#3a1a48', '255,190,235', '#12081a'] },
+  { id:'retro',  kind:'screen', name:'Retro',   price: 70, lcd:['#8bac0f', '#a4c41a', '15,56,15',    '#306230'] },
+
+  { id:'flor',     kind:'hat', name:'Flor',     emoji:'🌸', price: 15 },
+  { id:'mono',     kind:'hat', name:'Moño',     emoji:'🎀', price: 20 },
+  { id:'jockey',   kind:'hat', name:'Jockey',   emoji:'🧢', price: 25 },
+  { id:'copa',     kind:'hat', name:'Galera',   emoji:'🎩', price: 35 },
+  { id:'birrete',  kind:'hat', name:'Birrete',  emoji:'🎓', price: 40 },
+  { id:'corona',   kind:'hat', name:'Corona',   emoji:'👑', price: 60 },
+
+  { id:'cuadro',   kind:'deco', slot:'pared', name:'Cuadro',    emoji:'🖼️', price: 20 },
+  { id:'reloj',    kind:'deco', slot:'pared', name:'Reloj',     emoji:'🕰️', price: 25 },
+  { id:'arcoiris', kind:'deco', slot:'pared', name:'Arcoíris',  emoji:'🌈', price: 35 },
+  { id:'cactus',   kind:'deco', slot:'izq',   name:'Cactus',    emoji:'🌵', price: 15 },
+  { id:'tulipan',  kind:'deco', slot:'izq',   name:'Tulipanes', emoji:'🌷', price: 20 },
+  { id:'arbolito', kind:'deco', slot:'izq',   name:'Arbolito',  emoji:'🎄', price: 35 },
+  { id:'radio',    kind:'deco', slot:'der',   name:'Radio',     emoji:'📻', price: 20 },
+  { id:'peluche',  kind:'deco', slot:'der',   name:'Peluche',   emoji:'🧸', price: 25 },
+  { id:'trofeo',   kind:'deco', slot:'der',   name:'Trofeo',    emoji:'🏆', price: 40 },
+];
+
+const STYLE_SECTIONS = [
+  { kind:'shell',  title:'Carcasa' },
+  { kind:'screen', title:'Pantalla' },
+  { kind:'hat',    title:'Accesorios' },
+  { kind:'deco',   title:'Decoración' },
+];
+const DECO_SLOT_NAMES = { pared:'pared', izq:'suelo izq.', der:'suelo der.' };
+
+function styleItemById(id){ return STYLE_ITEMS.find(it => it.id === id); }
+
+function freshStyle(){
+  const owned = {};
+  for (const it of STYLE_ITEMS) if (it.price === 0) owned[it.id] = true;
+  return { owned, shell:'rosa', screen:'verde', hat:null, deco:{ pared:null, izq:null, der:null } };
+}
+
+function isStyleEquipped(it){
+  const st = state.style;
+  if (it.kind === 'shell') return st.shell === it.id;
+  if (it.kind === 'screen') return st.screen === it.id;
+  if (it.kind === 'hat') return st.hat === it.id;
+  return st.deco[it.slot] === it.id;
+}
+
+/* Carcasa y pantalla no se pueden sacar (siempre hay una); accesorio y adorno
+   sí: tocar el que ya está puesto lo saca. */
+function toggleStyleItem(it){
+  const st = state.style;
+  if (it.kind === 'shell') st.shell = it.id;
+  else if (it.kind === 'screen') st.screen = it.id;
+  else if (it.kind === 'hat') st.hat = st.hat === it.id ? null : it.id;
+  else st.deco[it.slot] = st.deco[it.slot] === it.id ? null : it.id;
 }
 
 /* Minijuegos del menú de Jugar. Se desbloquean con monedas, una sola vez y para
@@ -615,6 +692,7 @@ function freshState(name, species){
     mega: freshMega(),
     gameXp: {},          // experiencia acumulada por juego
     gameLevelPick: {},   // nivel elegido en el menú por juego
+    style: freshStyle(), // carcasa, pantalla, accesorio y adornos (pestaña Estilo)
   };
 }
 
@@ -650,6 +728,20 @@ function loadState(){
     if (!s.upgrades || typeof s.upgrades !== 'object') s.upgrades = {};
     for (const up of UPGRADES){
       if (!s.upgrades[up.id]) s.upgrades[up.id] = up.armable ? { owned:false, armed:false, timesUsed:0 } : { owned:false };
+    }
+    // saves de antes de la pestaña Estilo, o con algo que ya no está en el catálogo
+    const base = freshStyle();
+    if (!s.style || typeof s.style !== 'object') s.style = base;
+    if (!s.style.owned || typeof s.style.owned !== 'object') s.style.owned = {};
+    Object.assign(s.style.owned, base.owned);
+    if (!s.style.deco || typeof s.style.deco !== 'object') s.style.deco = { ...base.deco };
+    const vale = (id, kind) => { const it = styleItemById(id); return it && it.kind === kind && s.style.owned[id]; };
+    if (!vale(s.style.shell, 'shell')) s.style.shell = base.shell;
+    if (!vale(s.style.screen, 'screen')) s.style.screen = base.screen;
+    if (s.style.hat && !vale(s.style.hat, 'hat')) s.style.hat = null;
+    for (const slot of Object.keys(base.deco)){
+      const id = s.style.deco[slot];
+      if (!id || !vale(id, 'deco') || styleItemById(id).slot !== slot) s.style.deco[slot] = null;
     }
     // saves con 'grown' (antes de la escalera de tamaños) o con una etapa fantasma
     if (!ALL_STAGES.includes(s.stage)) s.stage = 'adult';
@@ -960,9 +1052,10 @@ function render(){
 
   const canvas = document.getElementById('petCanvas');
   const ctx = canvas.getContext('2d');
-  drawSprite(ctx, displayStage(), displayMood(), walker.frame, false, STAGE_SCALE[displayStage()]);
+  const drawn = drawSprite(ctx, displayStage(), displayMood(), walker.frame, false, STAGE_SCALE[displayStage()]);
   canvas.style.left = (walker.x*100) + '%';
   canvas.style.transform = `translateX(-50%) scaleX(${walker.dir})`;
+  updateHat(drawn);
 
   document.getElementById('btnMed').disabled = !state.sick;
   document.getElementById('feedIcon').textContent = foodById(state.selectedFood).emoji;
@@ -978,6 +1071,103 @@ function loopRender(t){
   updateWalker(dt);
   render();
   animFrame = requestAnimationFrame(loopRender);
+}
+
+/* ===================== Estilo: carcasa, pantalla, adornos y accesorio ===================== */
+
+/* Pone los colores de la carcasa y de la pantalla como variables CSS sobre
+   #device y arma los adornos de la pieza. Se llama al arrancar y cada vez que
+   se compra o se cambia algo en la pestaña Estilo; no en cada frame. */
+function applyStyle(){
+  const st = state.style;
+  const device = document.getElementById('device');
+  const shell = styleItemById(st.shell) || styleItemById('rosa');
+  const screen = styleItemById(st.screen) || styleItemById('verde');
+  ['--shell-a', '--shell-b', '--shell-c'].forEach((v, i) => device.style.setProperty(v, shell.colors[i]));
+  const [bg, hi, lit, edge] = screen.lcd;
+  device.style.setProperty('--screen', bg);
+  device.style.setProperty('--screen-hi', hi);
+  device.style.setProperty('--screen-lit-rgb', lit);
+  device.style.setProperty('--screen-lit', `rgb(${lit})`);
+  device.style.setProperty('--screen-edge', edge);
+
+  const room = document.getElementById('decoLayer');
+  room.innerHTML = Object.entries(st.deco)
+    .filter(([, id]) => id && styleItemById(id))
+    .map(([slot, id]) => `<span class="deco deco-${slot}">${styleItemById(id).emoji}</span>`)
+    .join('');
+}
+
+/* Dónde está la cabeza dentro de cada frame (fila más alta con píxeles opacos
+   y el centro de esa franja), en píxeles del arte. Se mide una vez por frame
+   leyendo el spritesheet y se cachea. Abriendo el archivo con file:// el
+   navegador no deja leer los píxeles (canvas "contaminado"): ahí cae a la
+   parte de arriba de la celda, centrado — el accesorio queda un poco más
+   alto, pero no rompe nada. */
+const headCache = new Map();
+const HEAD_MIN_WIDTH = 0.45;   // fracción del ancho máximo del sprite que ya cuenta como cabeza
+function frameHead(species, frame){
+  const key = species.id + ':' + frame.x + ',' + frame.y;
+  let head = headCache.get(key);
+  if (head) return head;
+  head = { top: 0, cx: frame.w / 2 };
+  try {
+    const c = document.createElement('canvas');
+    c.width = frame.w; c.height = frame.h;
+    const cx = c.getContext('2d');
+    cx.drawImage(species.image, frame.x, frame.y, frame.w, frame.h, 0, 0, frame.w, frame.h);
+    const px = cx.getImageData(0, 0, frame.w, frame.h).data;
+    const opaque = (x, y) => px[(y * frame.w + x) * 4 + 3] > 0;
+    /* La cabeza es la primera fila "ancha", no la primera con algo: una
+       antena, un rulo o las puntas de las orejas son filas de pocos píxeles,
+       y apoyar el accesorio ahí lo dejaba flotando sobre la cabeza. */
+    const ancho = [];
+    for (let y = 0; y < frame.h; y++){
+      let n = 0;
+      for (let x = 0; x < frame.w; x++) if (opaque(x, y)) n++;
+      ancho.push(n);
+    }
+    const maxAncho = Math.max(...ancho);
+    const top = ancho.findIndex(n => n > 0 && n >= maxAncho * HEAD_MIN_WIDTH);
+    if (top >= 0){
+      /* El centro sale de las primeras filas de la cabeza y no de la primera
+         sola, por si la fila de arriba está cargada a un lado. */
+      let min = frame.w, max = -1;
+      for (let y = top; y < Math.min(frame.h, top + 4); y++){
+        for (let x = 0; x < frame.w; x++) if (opaque(x, y)){ min = Math.min(min, x); max = Math.max(max, x); }
+      }
+      head = { top, cx: (min + max + 1) / 2 };
+    }
+  } catch (e) { /* file:// o imagen sin cargar: queda el valor por defecto */ }
+  headCache.set(key, head);
+  return head;
+}
+
+/* Tamaño del accesorio en píxeles del arte: se multiplica por la escala de la
+   etapa, así crece junto con la mascota. Cuánto se hunde en la cabeza, como
+   fracción de su alto: apoyado justo encima se ve flotando. */
+const HAT_ART_PX = 12;
+const HAT_SINK = 0.3;
+
+/* El accesorio es un elemento aparte encima del canvas y no un dibujo dentro
+   de él: a escala 3 la mascota llena los 96px del canvas y cualquier cosa
+   sobre su cabeza quedaba recortada por el borde de arriba. Sigue al canvas
+   con el mismo left y el mismo espejo (scaleX) cuando camina. */
+function updateHat(drawn){
+  const el = document.getElementById('petHat');
+  const hat = state.style.hat && styleItemById(state.style.hat);
+  if (!hat || !drawn || displayMood() === 'dead'){ el.classList.add('hidden'); return; }
+  const { species, frame, scale, dx, dy } = drawn;
+  const head = frameHead(species, frame);
+  const size = HAT_ART_PX * scale;
+  const headY = dy + head.top * scale;                       // desde arriba del canvas
+  const offX = dx + head.cx * scale - CANVAS_W / 2;          // respecto del centro del canvas
+  el.textContent = hat.emoji;
+  el.style.fontSize = size + 'px';
+  el.style.left = (walker.x * 100) + '%';
+  el.style.bottom = (4 + CANVAS_H - headY - size * HAT_SINK) + 'px';
+  el.style.transform = `translateX(-50%) scaleX(${walker.dir}) translateX(${offX}px)`;
+  el.classList.remove('hidden');
 }
 
 /* ===================== FX helpers ===================== */
@@ -1179,6 +1369,38 @@ function upgradeRow(u){
     </div>`;
 }
 
+/* Una casilla de la pestaña Estilo. La muestra es el color mismo (carcasa y
+   pantalla) o el emoji (accesorio y adorno); abajo, el precio o el estado. */
+function styleTile(it){
+  const owned = state.style.owned[it.id];
+  const puesto = owned && isStyleEquipped(it);
+  let swatch;
+  if (it.kind === 'shell'){
+    swatch = `<span class="swatch shell" style="background:linear-gradient(150deg, ${it.colors.join(', ')})"></span>`;
+  } else if (it.kind === 'screen'){
+    const [bg, hi, lit] = it.lcd;
+    swatch = `<span class="swatch screen" style="background:radial-gradient(120% 120% at 50% 0%, ${hi}, ${bg} 70%); color:rgb(${lit})">▪▪</span>`;
+  } else {
+    swatch = `<span class="swatch emoji">${it.emoji}</span>`;
+  }
+  const estado = puesto ? 'En uso' : owned ? 'Usar' : it.price === 0 ? 'Gratis' : coinsLabel(it.price);
+  const alcanza = owned || state.coins >= it.price;
+  const lugar = it.kind === 'deco' ? `<small class="tile-slot">${DECO_SLOT_NAMES[it.slot]}</small>` : '';
+  return `
+    <button class="style-tile ${puesto ? 'on' : ''} ${owned ? 'owned' : ''} ${alcanza ? '' : 'locked'}" data-style="${it.id}">
+      ${swatch}
+      <b>${escapeHtml(it.name)}</b>${lugar}
+      <span class="tile-state">${estado}</span>
+    </button>`;
+}
+
+function styleRows(){
+  return STYLE_SECTIONS.map(sec => `
+    <div class="section-label">${sec.title}</div>
+    <div class="style-grid">${STYLE_ITEMS.filter(it => it.kind === sec.kind).map(styleTile).join('')}</div>
+  `).join('');
+}
+
 /* El aviso va dentro de la tarjeta y no con say(): la burbuja tiene z-index 5 y
    el overlay 10, así que un mensaje por say() con la tienda abierta queda tapado. */
 function openShop(aviso){
@@ -1202,13 +1424,49 @@ function openShop(aviso){
     <div class="shop-tabs">
       <button class="shop-tab ${shopTab === 'food' ? 'active' : ''}" id="shopTabFood">Comida</button>
       <button class="shop-tab ${shopTab === 'upgrades' ? 'active' : ''}" id="shopTabUpgrades">Mejoras</button>
+      <button class="shop-tab ${shopTab === 'style' ? 'active' : ''}" id="shopTabStyle">Estilo</button>
     </div>
-    <div class="menu-list">${shopTab === 'food' ? foodRows : upgradeRows}</div>
+    <div class="menu-list ${shopTab === 'style' ? 'style-list' : ''}">${
+      shopTab === 'food' ? foodRows : shopTab === 'upgrades' ? upgradeRows : styleRows()}</div>
     <button class="overlay-btn secondary" id="btnCloseShop">Cerrar</button>
   `, hideOverlay);
 
   document.getElementById('shopTabFood').addEventListener('click', () => { shopTab = 'food'; openShop(); });
   document.getElementById('shopTabUpgrades').addEventListener('click', () => { shopTab = 'upgrades'; openShop(); });
+  document.getElementById('shopTabStyle').addEventListener('click', () => { shopTab = 'style'; openShop(); });
+
+  /* En Estilo el fondo va sin desenfoque (.clear): lo que se compra se ve
+     puesto en el aparato de atrás en el mismo momento. */
+  if (shopTab === 'style') document.getElementById('overlay').classList.add('clear');
+
+  /* Re-render que no pierde el scroll: comprar o cambiar algo vuelve a armar
+     la hoja entera, y sin esto la lista saltaba arriba a cada toque. */
+  const reopen = (msg) => {
+    const scroll = document.querySelector('.overlay-card .menu-list').scrollTop;
+    openShop(msg);
+    document.querySelector('.overlay-card .menu-list').scrollTop = scroll;
+  };
+
+  document.querySelectorAll('[data-style]').forEach(el => {
+    el.addEventListener('click', () => {
+      const it = styleItemById(el.dataset.style);
+      if (!state.style.owned[it.id]){
+        if (state.coins < it.price){
+          reopen(`Te faltan ${coinsLabel(it.price - state.coins)} para ${it.name}`);
+          return;
+        }
+        state.coins -= it.price;
+        state.style.owned[it.id] = true;
+        if (!isStyleEquipped(it)) toggleStyleItem(it);   // se estrena apenas se compra
+        saveState(); applyStyle(); render();
+        reopen(`¡${it.name} comprado! Te quedan ${coinsLabel(state.coins)}`);
+        return;
+      }
+      toggleStyleItem(it);
+      saveState(); applyStyle(); render();
+      reopen();
+    });
+  });
 
   document.querySelectorAll('[data-buy]').forEach(el => {
     el.addEventListener('click', () => {
@@ -4700,6 +4958,7 @@ function boot(){
   catchUp();
   saveState();
   wireButtons();
+  applyStyle();
   render();
   if (!animFrame) animFrame = requestAnimationFrame(loopRender);
   if (!tickTimer) tickTimer = setInterval(tick, TICK_MS);

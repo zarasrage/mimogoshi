@@ -393,6 +393,49 @@ esto va a seguir creciendo). Catálogo en `UPGRADES`, con dos formas:
 `loadState()` rellena `state.upgrades[id]` con el default que corresponda
 (`armable` u no) para saves viejos o para una mejora agregada después.
 
+#### Estilo
+
+Tercera pestaña de la tienda: cosas que solo cambian cómo se ve, sin efecto en
+ninguna barra. Catálogo en `STYLE_ITEMS`, en cuatro secciones
+(`STYLE_SECTIONS`):
+
+- **Carcasa** (`kind:'shell'`, `colors` = los tres colores del degradado del
+  aparato) y **Pantalla** (`kind:'screen'`, `lcd` = fondo, brillo, lo encendido
+  en `r,g,b` y borde): siempre hay una puesta; las de `price: 0` (Chicle y
+  Verde) vienen de fábrica.
+- **Accesorios** (`kind:'hat'`): uno a la vez en la cabeza, o ninguno.
+- **Decoración** (`kind:'deco'`): un adorno por lugar (`slot`: `pared`, `izq`,
+  `der`), o ninguno.
+
+Comprar algo lo deja puesto de una; tocar uno ya comprado lo pone (o lo saca,
+si es accesorio o adorno). En esta pestaña el overlay va con `.clear` y la
+hoja no pasa del 66% de alto, así lo comprado se ve puesto atrás al tiro.
+`state.style` = `{owned, shell, screen, hat, deco:{pared, izq, der}}`;
+`loadState()` lo rellena para saves viejos y saca lo que ya no exista en el
+catálogo o no esté comprado.
+
+Los colores viven en el catálogo, **no** en el CSS: `applyStyle()` los pone
+como variables (`--shell-a/b/c`, `--screen`, `--screen-hi`, `--screen-lit`,
+`--screen-lit-rgb`, `--screen-edge`) sobre `#device`. Todo color de la LCD en
+el CSS tiene que salir de esas variables (lo encendido con transparencia va
+como `rgba(var(--screen-lit-rgb), .x)`), si no queda verde con cualquier
+pantalla. `--screen-lit` se pone aparte y no derivado de `--screen-lit-rgb`:
+una variable que usa otra se resuelve donde se define (`:root`) y no se
+actualiza al pisar la de adentro en `#device`.
+
+Los adornos son emojis en `#decoLayer`, detrás de la mascota y con
+`pointer-events:none`, en los bordes (3%) para no pisar la caca ni el
+regalo (16%). El accesorio es `#petHat`, un elemento aparte encima del canvas
+y **no** un dibujo dentro de él: a escala 3 la mascota llena los 96px y
+cualquier cosa sobre su cabeza quedaba cortada por el borde de arriba.
+`updateHat()` lo mueve cada frame con el mismo `left` y `scaleX` que el canvas,
+usando lo que devuelve `drawSprite()` (frame, escala, posición). La cabeza la
+mide `frameHead()` leyendo los píxeles del frame (cacheado): es la primera
+fila con al menos `HEAD_MIN_WIDTH` del ancho del sprite, no la primera con
+algo, porque antenas y orejas dejaban el accesorio flotando. Con `file://` el
+navegador no deja leer píxeles y cae a la parte de arriba de la celda: queda
+más alto, pero no rompe.
+
 El huevo es lo **único** que se dibuja procedural (`drawEgg()`, un óvalo): no
 vino arte para esa etapa en ninguna especie. Todo lo demás sale recortado del
 PNG tal cual, **sin tinte ni recoloreo encima** — los spritesheets ya son la

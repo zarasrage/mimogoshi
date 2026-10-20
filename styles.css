@@ -10,8 +10,14 @@
   --shell-a:#ff8cc0;
   --shell-b:#ff5d9e;
   --shell-c:#b44dff;
+  /* La pantalla LCD sale de estas variables: la pestaña Estilo las pisa sobre
+     #device (applyStyle) para cambiarle el color. Lo encendido va también en
+     r,g,b sueltos para poder usarlo con transparencia en rgba(). */
   --screen:#0e1b12;
-  --screen-lit:#c8f2c2;
+  --screen-hi:#1a3320;
+  --screen-edge:#0a1109;
+  --screen-lit-rgb:200,242,194;
+  --screen-lit:rgb(var(--screen-lit-rgb));
   --lcd-line: rgba(0,0,0,.08);
   --ink:#1c1024;
   --ink-soft:#5a4a63;
@@ -250,7 +256,7 @@ body{
   position:relative;
   background:
     linear-gradient(0deg, var(--lcd-line) 1px, transparent 1px) 0 0/100% 4px,
-    radial-gradient(120% 120% at 50% 0%, #1a3320, var(--screen) 70%);
+    radial-gradient(120% 120% at 50% 0%, var(--screen-hi), var(--screen) 70%);
   border-radius:14px;
   overflow:hidden;
   padding:10px 10px 12px;
@@ -260,7 +266,7 @@ body{
   min-height:clamp(290px, 42vh, 420px);
   display:flex;
   flex-direction:column;
-  box-shadow:0 0 0 3px #0a1109 inset;
+  box-shadow:0 0 0 3px var(--screen-edge) inset;
 }
 
 /* La pantalla de "elegir especie y nombre" no tiene mascota ni barras que
@@ -277,7 +283,7 @@ body{
   position:absolute;
   inset:0;
   pointer-events:none;
-  background:radial-gradient(60% 40% at 50% 10%, rgba(200,242,194,.12), transparent 70%);
+  background:radial-gradient(60% 40% at 50% 10%, rgba(var(--screen-lit-rgb),.12), transparent 70%);
   mix-blend-mode:screen;
 }
 
@@ -288,7 +294,7 @@ body{
   font-family:var(--font-pixel);
   font-size:10px;
   color:var(--screen-lit);
-  text-shadow:0 0 6px rgba(200,242,194,.5);
+  text-shadow:0 0 6px rgba(var(--screen-lit-rgb),.5);
   margin-bottom:2px;
 }
 
@@ -306,7 +312,7 @@ body{
   flex:1;
   min-height:106px;   /* el canvas de 96px + los 4px de piso, con algo de aire */
   margin-top:6px;
-  border-bottom:2px solid rgba(200,242,194,.15);
+  border-bottom:2px solid rgba(var(--screen-lit-rgb),.15);
 }
 
 #petCanvas{
@@ -351,7 +357,30 @@ body{
   50%{ transform:translateY(-4px) scale(1.08); }
 }
 
-.creature-floor.hidden, #gameCanvas.hidden, .poop-fx.hidden, .gift-fx.hidden{display:none;}
+/* Adornos comprados en la pestaña Estilo: detrás de la mascota y sin recibir
+   toques, así la caca y el regalo (que están más adentro, al 16%) se siguen
+   tocando aunque haya un adorno al lado. */
+.deco-layer{position:absolute; inset:0; pointer-events:none;}
+.deco{
+  position:absolute;
+  font-size:26px;
+  line-height:1;
+  filter:drop-shadow(0 2px 2px rgba(0,0,0,.35));
+}
+.deco-izq  {left:3%;  bottom:4px;}
+.deco-der  {right:3%; bottom:4px;}
+.deco-pared{left:8%;  top:4px; font-size:22px; opacity:.9;}
+
+/* Accesorio de la cabeza: lo ubica updateHat() cada frame. */
+.pet-hat{
+  position:absolute;
+  line-height:1;
+  pointer-events:none;
+  filter:drop-shadow(0 2px 2px rgba(0,0,0,.35));
+  will-change:left, transform;
+}
+
+.creature-floor.hidden, #gameCanvas.hidden, .pet-hat.hidden, .poop-fx.hidden, .gift-fx.hidden{display:none;}
 
 #gameCanvas{
   image-rendering:pixelated;
@@ -430,7 +459,7 @@ body{
   background:rgba(0,0,0,.35);
   border-radius:4px;
   overflow:hidden;
-  box-shadow:0 0 0 1px rgba(200,242,194,.15) inset;
+  box-shadow:0 0 0 1px rgba(var(--screen-lit-rgb),.15) inset;
 }
 
 .stat-fill{
@@ -1037,6 +1066,65 @@ body{
   padding:5px 11px;
 }
 .chip.gold{color:var(--amber); background:rgba(255,206,75,.13);}
+
+/* ---------- tienda: pestaña Estilo ---------- */
+.style-list{text-align:left;}
+.style-list .section-label{margin:4px 0 8px;}
+.style-list .section-label:not(:first-child){margin-top:16px;}
+.style-grid{display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;}
+.style-tile{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:3px;
+  padding:10px 4px 8px;
+  border:none;
+  border-radius:var(--r-md);
+  background:var(--surface);
+  box-shadow:0 0 0 1.5px var(--stroke) inset;
+  color:var(--text);
+  font-family:var(--font-ui);
+  cursor:pointer;
+  transition:transform .12s var(--ease-spring);
+}
+.style-tile:active{transform:scale(.94);}
+.style-tile b{font-size:12px; font-weight:800; line-height:1.2;}
+.tile-slot{font-size:9.5px; font-weight:700; color:var(--text-soft); margin-top:-2px;}
+.tile-state{
+  font-size:11px; font-weight:900;
+  color:var(--amber);
+  background:rgba(255,206,75,.13);
+  border-radius:999px;
+  padding:2px 8px;
+  margin-top:2px;
+}
+.style-tile.owned .tile-state{color:var(--text); background:var(--surface-hi);}
+.style-tile.on{
+  background:linear-gradient(135deg, rgba(255,111,174,.18), rgba(140,100,255,.14));
+  box-shadow:0 0 0 2px #ff8cc0 inset, 0 0 0 4px rgba(255,111,174,.14);
+}
+.style-tile.on .tile-state{color:#fff; background:var(--brand);}
+.style-tile.locked{opacity:.45;}
+.swatch{
+  width:44px; height:44px;
+  display:grid; place-items:center;
+  border-radius:14px;
+  margin-bottom:3px;
+  box-shadow:0 1px 0 rgba(255,255,255,.35) inset, 0 6px 14px -8px rgba(0,0,0,.6);
+}
+.swatch.shell{border-radius:50%;}
+.swatch.screen{
+  font-size:16px; letter-spacing:-2px;
+  border-radius:10px;
+  box-shadow:0 0 0 3px #2e2146, 0 6px 14px -8px rgba(0,0,0,.6);
+}
+.swatch.emoji{
+  font-size:26px;
+  background:linear-gradient(145deg, rgba(255,255,255,.16), rgba(255,255,255,.05));
+}
+/* Con el fondo sin desenfoque (resultado, Estilo) la hoja no sube hasta arriba:
+   lo de atrás —la mascota celebrando, la carcasa nueva— tiene que verse. */
+.overlay.clear .overlay-card{max-height:66%;}
 
 /* Rejilla de 3 columnas, no fila con scroll horizontal: ese scroll horizontal
    competía con el scroll vertical del overlay y las especies fuera del borde
