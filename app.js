@@ -5498,6 +5498,7 @@ function renderDebugPanel(){
         <button class="debug-btn wide ${debugMode ? 'active':''}" id="dbgToggleGod">
           ${debugMode ? '✅ Stats al máximo: ON' : '⬜ Stats al máximo: OFF'}
         </button>
+        <button class="debug-btn wide" id="dbgCoins" style="margin-top:6px">💰 +1000 monedas</button>
       </div>
       <div class="debug-section">
         <h4>Etapa del monito</h4>
@@ -5590,6 +5591,11 @@ function renderDebugPanel(){
   document.getElementById('dbgMemory').addEventListener('click', () => { closeDebugPanel(); startMemoryGame(); });
   document.getElementById('dbgCombat').addEventListener('click', () => { closeDebugPanel(); startCombatGame(); });
   document.getElementById('dbgTapPrueba').addEventListener('click', () => { closeDebugPanel(); startTapPruebaGame(); });
+  /* Para probar la tienda (muebles, estilo, juegos) sin tener que jugar
+     partidas. Son monedas reales del save: no se devuelven al apagar nada. */
+  document.getElementById('dbgCoins').addEventListener('click', () => {
+    state.coins += 1000; saveState(); render(); renderDebugPanel();
+  });
   document.getElementById('dbgPoop').addEventListener('click', () => {
     state.poop = true; saveState(); render(); renderDebugPanel();
   });
