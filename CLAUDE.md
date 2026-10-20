@@ -182,7 +182,8 @@ una fila entera.
 El número de especies **va a seguir creciendo**, así que el selector no puede
 depender de que quepan todas de una — esa cuenta se rompe apenas se agrega la
 próxima. Por eso `.species-list` comparte la regla de `.menu-list` (la misma
-que ya usan las listas de comida y minijuegos): tope de alto + scroll propio,
+que ya usan las listas de comida y minijuegos): tope de alto + scroll propio
+(el tope es lo que deja libre la hoja, ver "Interfaz" más abajo),
 así el nombre y "Empezar" quedan siempre fijos debajo, visibles, sin importar
 cuántas especies haya. Con 6 (dos filas) todavía entran enteras sin scrollear;
 de la tercera fila en adelante aparece el scroll — y a diferencia del scroll
@@ -209,6 +210,38 @@ seguía atado al `clamp(290px, 42vh, 420px)` pensado para la pantalla de juego
 —con mascota, barras y mandos reales—, que le quedaba corto a esta pantalla sin
 nada de eso. `.screen.onboarding` afloja ese clamp a `clamp(290px, 62vh, 560px)`:
 puede porque en esta pantalla no hay nada más abajo compitiendo por alto.
+
+## Interfaz (menús y botones)
+
+Dos estilos a propósito: la **pantalla LCD** (verde, pixel, retro) es donde
+vive la mascota; todo lo de alrededor —botones, menús, panel de prueba— va
+como una **app moderna de teléfono**, pensando en que esto termine empaquetado
+como app de tienda. Tokens en `:root` de `styles.css` (`--brand` es el único
+degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
+
+- **Menús = hoja inferior.** `#overlay` es hijo de `.device`, no de `#screen`:
+  cubre el aparato entero y `.overlay-card` sube desde abajo. Metido en los
+  ~300px de la LCD, la tienda mostraba dos filas y media. La tarjeta es una
+  columna flex donde solo `.menu-list` cede alto (`flex:0 1 auto;
+  min-height:0`) y se lleva el scroll: el botón de abajo queda siempre visible
+  sin un `max-height` en píxeles.
+- `showOverlay(html, onDismiss)`: si se pasa `onDismiss`, tocar el fondo fuera
+  de la hoja la cierra. Lo pasan los menús con Cerrar/Cancelar; inicio y game
+  over no.
+- Botones de hoja: `.overlay-btn` (primario, degradado), `.overlay-btn
+  secondary` (Cerrar/Cancelar — nunca el degradado en la acción de salir) y
+  `.overlay-btn danger`. Varios juntos van en `.overlay-actions`. Toda
+  confirmación destructiva lleva su Cancelar (la de Reiniciar no tenía y no
+  había forma de salir).
+- `.controls`: tarjetas blancas con el ícono en un "squircle" de color propio
+  (`--tint` por id): las acciones se reconocen por color y posición.
+  Reiniciar va como píldora discreta, no como tarjeta.
+- Todo lo tocable lleva `-webkit-tap-highlight-color:transparent`,
+  `user-select:none` y `touch-action:manipulation`; los `:hover` van dentro de
+  `@media (hover:hover)` para que no queden pegados en el teléfono. El `<input>`
+  usa 16px (con menos, Safari de iPhone hace zoom al enfocar).
+- Preparado para app a pantalla completa: `viewport-fit=cover`, `theme-color`
+  y padding con `env(safe-area-inset-*)` en `body` y en la hoja.
 
 ## Estado del juego
 

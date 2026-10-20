@@ -1098,8 +1098,8 @@ function openFoodMenu(){
   showOverlay(`
     <h3>🍽️ Elegir comida</h3>
     <div class="menu-list">${rows}</div>
-    <button class="overlay-btn" id="btnCloseMenu">Cerrar</button>
-  `);
+    <button class="overlay-btn secondary" id="btnCloseMenu">Cerrar</button>
+  `, hideOverlay);
 
   /* A las que no tienen porciones no se les engancha nada: ya salen en gris y
      con cursor de "no". Un say() acá tampoco se vería, queda bajo el overlay. */
@@ -1179,8 +1179,8 @@ function openShop(aviso){
       <button class="shop-tab ${shopTab === 'upgrades' ? 'active' : ''}" id="shopTabUpgrades">Mejoras</button>
     </div>
     <div class="menu-list">${shopTab === 'food' ? foodRows : upgradeRows}</div>
-    <button class="overlay-btn" id="btnCloseShop">Cerrar</button>
-  `);
+    <button class="overlay-btn secondary" id="btnCloseShop">Cerrar</button>
+  `, hideOverlay);
 
   document.getElementById('shopTabFood').addEventListener('click', () => { shopTab = 'food'; openShop(); });
   document.getElementById('shopTabUpgrades').addEventListener('click', () => { shopTab = 'upgrades'; openShop(); });
@@ -1285,8 +1285,8 @@ function openGamesMenu(aviso){
     <h3>🎮 Elegir juego</h3>
     <p>${aviso ? escapeHtml(aviso) : megaInfo}</p>
     <div class="menu-list">${rows}</div>
-    <button class="overlay-btn" id="btnCloseGames">Cancelar</button>
-  `);
+    <button class="overlay-btn secondary" id="btnCloseGames">Cancelar</button>
+  `, hideOverlay);
 
   /* playLevel va antes de start(): varios juegos leen la dificultad al armar
      su estado inicial (Snake, el chart del Tap rítmico). */
@@ -4241,9 +4241,13 @@ function finishCombatGame(){
 
 /* ===================== Overlay / setup ===================== */
 
-function showOverlay(html){
+/* onDismiss: si viene, tocar el fondo oscuro fuera de la hoja la cierra, como
+   en cualquier app. Solo los menús que ya tienen Cerrar/Cancelar lo pasan; la
+   pantalla de inicio y la de game over no, ahí no hay a dónde volver. */
+function showOverlay(html, onDismiss){
   const overlay = document.getElementById('overlay');
   document.getElementById('overlayCard').innerHTML = html;
+  overlay.onclick = onDismiss ? (e => { if (e.target === overlay) onDismiss(); }) : null;
   overlay.classList.remove('hidden');
 }
 
@@ -4494,8 +4498,12 @@ function wireButtons(){
     showOverlay(`
       <h3>¿Reiniciar?</h3>
       <p>Se perderá el progreso de ${escapeHtml(state.name)}.</p>
-      <button class="overlay-btn" id="btnConfirmReset">Sí, reiniciar</button>
-    `);
+      <div class="overlay-actions">
+        <button class="overlay-btn danger" id="btnConfirmReset">Sí, reiniciar</button>
+        <button class="overlay-btn secondary" id="btnCancelReset">Cancelar</button>
+      </div>
+    `, hideOverlay);
+    document.getElementById('btnCancelReset').addEventListener('click', hideOverlay);
     document.getElementById('btnConfirmReset').addEventListener('click', () => {
       localStorage.removeItem(SAVE_KEY);
       location.reload();

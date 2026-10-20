@@ -1,10 +1,15 @@
+/* ---------- tokens ----------
+   Dos mundos a propósito: la pantalla LCD (verde, pixel, retro) es donde vive
+   la mascota; todo lo que la rodea —botones, menús, panel de prueba— habla el
+   idioma de una app moderna de teléfono (superficies de vidrio oscuro, un solo
+   degradado de marca rosa→violeta, esquinas grandes, nada de bisel de plástico).
+   El pixel art queda como protagonista y la interfaz no compite con él. */
 :root{
-  --bg-1:#2b1055;
-  --bg-2:#7597de;
-  --shell:#ff6f9c;
-  --shell-hi:#ffa4c4;
-  --shell-lo:#d84f80;
-  --shell-dark:#7a1f42;
+  --bg-1:#1a0f3a;
+  --bg-2:#5b4bd6;
+  --shell-a:#ff8cc0;
+  --shell-b:#ff5d9e;
+  --shell-c:#b44dff;
   --screen:#0e1b12;
   --screen-lit:#c8f2c2;
   --lcd-line: rgba(0,0,0,.08);
@@ -14,11 +19,28 @@
   --good:#4ee08a;
   --mid:#ffce4b;
   --bad:#ff5d6c;
-  --btn:#fff2f7;
-  --btn-shadow:#c96f92;
+
+  /* interfaz */
+  --brand:linear-gradient(135deg, #ff6fae 0%, #c25bff 55%, #7b6bff 100%);
+  --brand-glow:rgba(214,92,255,.55);
+  --danger:linear-gradient(135deg, #ff6b7d, #e0365b);
+  --sheet:#1d1633;
+  --sheet-2:#261d42;
+  --surface:rgba(255,255,255,.06);
+  --surface-hi:rgba(255,255,255,.11);
+  --stroke:rgba(255,255,255,.09);
+  --text:#f7f2ff;
+  --text-soft:rgba(247,242,255,.62);
+  --tile:#ffffff;
+  --tile-ink:#2a1838;
+
   --radius:22px;
+  --r-sm:12px;
+  --r-md:16px;
+  --r-lg:20px;
+  --ease-spring:cubic-bezier(.2,.9,.25,1.15);
   --font-pixel:'Press Start 2P', monospace;
-  --font-ui:'Nunito', system-ui, sans-serif;
+  --font-ui:'Nunito', system-ui, -apple-system, sans-serif;
 }
 
 *{box-sizing:border-box;}
@@ -26,26 +48,50 @@
 html,body{
   margin:0;
   background:
-    radial-gradient(120% 100% at 50% -10%, var(--bg-2), transparent 60%),
-    linear-gradient(180deg, var(--bg-1), #120a2b 70%);
+    radial-gradient(90% 60% at 15% -5%, rgba(255,111,174,.35), transparent 60%),
+    radial-gradient(90% 70% at 100% 0%, var(--bg-2), transparent 60%),
+    linear-gradient(180deg, var(--bg-1), #0b0620 75%);
+  background-attachment:fixed;
   color:var(--ink);
   font-family:var(--font-ui);
   overflow-x:hidden;
+  /* Sin el rebote elástico de iOS ni el "tirar para recargar": en una app
+     instalada el fondo no se despega al arrastrar. */
+  overscroll-behavior:none;
+  -webkit-font-smoothing:antialiased;
 }
 
 html{height:100%;}
+
+/* Todo lo tocable: sin el recuadro gris que pinta el navegador del teléfono al
+   tocar, sin seleccionar texto con un toque largo y sin el retardo de doble
+   toque. Es lo que más delata "página web" dentro de una app. */
+button, .menu-item, .btn, .gbtn{
+  -webkit-tap-highlight-color:transparent;
+  -webkit-user-select:none;
+  user-select:none;
+  touch-action:manipulation;
+}
+button{font:inherit;}
+:focus-visible{outline:2px solid #ff8cc0; outline-offset:2px;}
 
 /* Ojo con centrar verticalmente acá. Con `align-items:center` y un contenido más
    alto que la pantalla, el sobrante se reparte arriba Y abajo, y la parte de
    arriba queda fuera del área que se puede scrollear: en el teléfono el aparato
    aparecía cortado por arriba y no había forma de llegar. El centrado va con
    `margin:auto` en el hijo, que centra cuando sobra espacio y se apoya arriba
-   cuando no. */
+   cuando no.
+   Los env(safe-area-inset-*) son para cuando corra como app a pantalla
+   completa: sin ellos el notch y la barra de inicio tapan el borde. */
 body{
   min-height:100%;
   display:flex;
   justify-content:center;
-  padding:18px 16px;
+  padding:
+    max(18px, env(safe-area-inset-top))
+    max(16px, env(safe-area-inset-right))
+    max(18px, env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
 }
 
 #stage{
@@ -71,11 +117,12 @@ body{
   width:260px;
   max-height:min(680px, 90vh);
   overflow-y:auto;
-  background:linear-gradient(160deg, #3a2748, #1a1024);
-  border-radius:20px;
-  padding:14px;
-  color:var(--screen-lit);
-  box-shadow:0 20px 50px -25px rgba(0,0,0,.6);
+  background:linear-gradient(180deg, var(--sheet-2), var(--sheet));
+  border:1px solid var(--stroke);
+  border-radius:24px;
+  padding:16px;
+  color:var(--text);
+  box-shadow:0 24px 60px -24px rgba(0,0,0,.7);
 }
 .debug-side.hidden{display:none;}
 
@@ -83,20 +130,24 @@ body{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  font-family:var(--font-pixel);
-  font-size:11px;
-  margin-bottom:10px;
+  font-family:var(--font-ui);
+  font-weight:900;
+  font-size:16px;
+  margin-bottom:12px;
 }
 
 .debug-close{
-  background:none;
+  width:32px; height:32px;
+  display:grid; place-items:center;
+  background:var(--surface-hi);
   border:none;
+  border-radius:50%;
   color:inherit;
-  font-size:15px;
+  font-size:13px;
   cursor:pointer;
-  padding:2px 6px;
+  transition:transform .12s ease;
 }
-.debug-close:active{transform:scale(.9);}
+.debug-close:active{transform:scale(.88);}
 
 @media (max-width: 760px){
   .debug-side{
@@ -105,8 +156,9 @@ body{
     width:auto;
     max-height:none;
     border-radius:0;
+    border:none;
     z-index:50;
-    padding:24px 20px;
+    padding:max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
     display:flex;
     flex-direction:column;
   }
@@ -120,16 +172,18 @@ body{
   /* Más ancho que antes (340), pero el 92vw deja siempre un margen lateral: a
      pantalla completa el aparato deja de leerse como aparato. */
   width:min(420px, 92vw);
-  background:linear-gradient(160deg, var(--shell-hi), var(--shell) 45%, var(--shell-lo) 100%);
+  background:
+    radial-gradient(120% 60% at 20% 0%, rgba(255,255,255,.35), transparent 55%),
+    linear-gradient(160deg, var(--shell-a), var(--shell-b) 45%, var(--shell-c) 100%);
   border-radius:calc(var(--radius) + 14px);
-  padding:20px 20px 26px;
+  padding:18px 18px 22px;
   box-shadow:
-    0 2px 0 var(--shell-hi) inset,
-    0 -10px 24px rgba(0,0,0,.18) inset,
-    0 30px 60px -20px rgba(0,0,0,.55),
-    0 8px 0 var(--shell-dark);
+    0 1px 0 rgba(255,255,255,.55) inset,
+    0 -12px 30px rgba(60,0,90,.25) inset,
+    0 40px 80px -30px rgba(120,40,200,.7),
+    0 18px 40px -20px rgba(0,0,0,.6);
   position:relative;
-  animation:deviceIn .5s cubic-bezier(.2,.9,.25,1.1);
+  animation:deviceIn .55s var(--ease-spring);
 }
 
 @keyframes deviceIn{
@@ -148,27 +202,31 @@ body{
   font-family:var(--font-pixel);
   font-size:11px;
   color:#fff;
-  text-shadow:1px 1px 0 var(--shell-dark);
+  text-shadow:0 2px 0 rgba(90,10,80,.35);
   letter-spacing:1px;
 }
 
 .device-top-right{
   display:flex;
   align-items:center;
-  gap:9px;
+  gap:10px;
 }
 
 .debug-toggle{
-  background:none;
+  width:28px; height:28px;
+  display:grid; place-items:center;
+  background:rgba(255,255,255,.22);
   border:none;
+  border-radius:50%;
   font-size:13px;
   line-height:1;
   padding:0;
   cursor:pointer;
-  filter:grayscale(.6) opacity(.6);
+  filter:grayscale(.5);
+  transition:transform .12s ease, background .2s ease;
 }
-.debug-toggle:active{transform:scale(.9);}
-.debug-toggle.active{filter:none; text-shadow:0 0 6px #fff;}
+.debug-toggle:active{transform:scale(.88);}
+.debug-toggle.active{filter:none; background:rgba(255,255,255,.5); box-shadow:0 0 12px rgba(255,255,255,.7);}
 
 .led{
   width:9px;height:9px;border-radius:50%;
@@ -182,10 +240,10 @@ body{
 @keyframes blink{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
 
 .screen-bezel{
-  background:linear-gradient(160deg, #3a2748, #1a1024);
+  background:linear-gradient(160deg, #2e2146, #150d22);
   border-radius:var(--radius);
-  padding:14px;
-  box-shadow:0 6px 0 rgba(0,0,0,.25) inset, 0 2px 0 rgba(255,255,255,.08);
+  padding:12px;
+  box-shadow:0 6px 14px rgba(0,0,0,.35) inset, 0 1px 0 rgba(255,255,255,.25);
 }
 
 .screen{
@@ -235,7 +293,13 @@ body{
 }
 
 .topbar-right{display:flex; align-items:center; gap:8px;}
-.pet-coins{color:var(--amber); text-shadow:0 0 6px rgba(255,206,75,.45);}
+.pet-coins{
+  color:var(--amber);
+  text-shadow:0 0 6px rgba(255,206,75,.45);
+  background:rgba(255,206,75,.1);
+  border-radius:999px;
+  padding:3px 7px 2px;
+}
 
 .creature-floor{
   position:relative;
@@ -377,91 +441,178 @@ body{
   transition:width .5s ease, background-color .5s ease;
 }
 
+/* ---------- menús: hoja que sube desde abajo ----------
+   El overlay cubre el aparato entero (no solo la pantalla LCD): metido en los
+   ~300px de la pantalla, una tienda mostraba dos filas y media. Como hoja
+   inferior —el patrón de cualquier app de teléfono— tiene todo el alto del
+   aparato y el pulgar llega a todo. */
 .overlay{
   position:absolute;
   inset:0;
-  background:rgba(6,10,7,.82);
+  border-radius:inherit;
+  overflow:hidden;
+  background:rgba(12,6,26,.55);
+  -webkit-backdrop-filter:blur(8px) saturate(1.2);
+  backdrop-filter:blur(8px) saturate(1.2);
   display:flex;
-  align-items:safe center;
-  justify-content:center;
-  padding:18px;
+  flex-direction:column;
+  justify-content:flex-end;
+  padding-top:28px;
   z-index:10;
-  overflow-y:auto;
+  animation:fadeIn .2s ease;
 }
 .overlay.hidden{display:none;}
 
+@keyframes fadeIn{ from{opacity:0;} to{opacity:1;} }
+@keyframes sheetIn{
+  from{transform:translateY(40px); opacity:.4;}
+  to{transform:translateY(0); opacity:1;}
+}
+
+/* La tarjeta es una columna: título, texto y botones no se encogen; la única
+   que cede alto es la lista (.menu-list), que se lleva el scroll. Así el botón
+   de abajo (Cerrar / Cancelar / Empezar) queda siempre a la vista, sin un tope
+   de alto en píxeles que haya que perseguir cada vez que crece una lista. */
 .overlay-card{
+  display:flex;
+  flex-direction:column;
+  max-height:100%;
+  min-height:0;
   text-align:center;
-  color:var(--screen-lit);
+  color:var(--text);
   font-family:var(--font-ui);
+  background:linear-gradient(180deg, var(--sheet-2), var(--sheet) 60%);
+  border-top:1px solid rgba(255,255,255,.12);
+  border-radius:28px 28px 0 0;
+  padding:10px 18px max(18px, env(safe-area-inset-bottom));
+  box-shadow:0 -20px 50px -10px rgba(0,0,0,.5);
+  animation:sheetIn .32s var(--ease-spring);
+}
+.overlay-card > *{flex-shrink:0;}
+
+/* Asa de la hoja: decorativa, avisa que es una capa encima y no otra pantalla. */
+.overlay-card::before{
+  content:'';
+  flex-shrink:0;
+  align-self:center;
+  width:38px; height:5px;
+  border-radius:3px;
+  background:rgba(255,255,255,.22);
+  margin-bottom:14px;
 }
 
 .overlay-card h3{
-  font-family:var(--font-pixel);
-  font-size:12px;
-  margin:0 0 10px;
-  line-height:1.6;
+  font-family:var(--font-ui);
+  font-weight:900;
+  font-size:20px;
+  letter-spacing:-.2px;
+  margin:0 0 6px;
+  line-height:1.25;
 }
 
 .overlay-card p{
-  font-size:13px;
+  font-size:13.5px;
+  font-weight:600;
+  line-height:1.45;
   margin:0 0 14px;
-  opacity:.85;
+  color:var(--text-soft);
 }
 
 .overlay-card input{
+  display:block;
+  width:100%;
+  height:50px;
   font-family:var(--font-ui);
   font-weight:800;
-  font-size:15px;
-  padding:8px 10px;
-  border-radius:8px;
-  border:none;
+  font-size:16px;   /* 16px o más: con menos, Safari del iPhone hace zoom al enfocar */
+  color:var(--text);
+  background:var(--surface);
+  border:1.5px solid var(--stroke);
+  border-radius:var(--r-md);
+  padding:0 14px;
   outline:none;
   text-align:center;
-  width:160px;
-  margin-bottom:12px;
+  margin:4px 0 12px;
+  transition:border-color .15s ease, box-shadow .15s ease;
 }
+.overlay-card input::placeholder{color:rgba(247,242,255,.38);}
+.overlay-card input:focus{border-color:#ff8cc0; box-shadow:0 0 0 4px rgba(255,111,174,.18);}
 
+/* Botón principal de las hojas: ancho completo y alto de pulgar (52px). */
 .overlay-btn{
-  font-family:var(--font-pixel);
-  font-size:10px;
-  background:var(--amber);
-  color:var(--ink);
+  display:block;
+  width:100%;
+  min-height:52px;
+  font-family:var(--font-ui);
+  font-weight:900;
+  font-size:16px;
+  letter-spacing:.2px;
+  color:#fff;
+  background:var(--brand);
   border:none;
-  border-radius:8px;
-  padding:10px 16px;
+  border-radius:var(--r-md);
+  padding:12px 16px;
   cursor:pointer;
-  box-shadow:0 3px 0 #b8850a;
+  box-shadow:0 10px 24px -10px var(--brand-glow), 0 1px 0 rgba(255,255,255,.35) inset;
+  transition:transform .12s ease, filter .12s ease;
 }
-.overlay-btn:active{transform:translateY(2px); box-shadow:0 1px 0 #b8850a;}
+.overlay-btn:active{transform:scale(.97); filter:brightness(.95);}
+/* Cerrar / Cancelar: no es la acción que uno vino a hacer, no lleva el degradado. */
+.overlay-btn.secondary{
+  color:var(--text);
+  background:var(--surface-hi);
+  box-shadow:none;
+}
+.overlay-btn.danger{
+  background:var(--danger);
+  box-shadow:0 10px 24px -10px rgba(255,80,110,.6), 0 1px 0 rgba(255,255,255,.3) inset;
+}
+.overlay-actions{display:flex; flex-direction:column; gap:8px;}
+.menu-list + .overlay-btn{margin-top:10px;}
 
-.shop-tabs{display:flex; gap:6px; margin-bottom:8px;}
+/* Control segmentado (Comida / Mejoras), como el de iOS. */
+.shop-tabs{
+  display:flex;
+  gap:4px;
+  padding:4px;
+  margin-bottom:12px;
+  background:rgba(0,0,0,.28);
+  border-radius:var(--r-md);
+}
 .shop-tab{
   flex:1;
-  font-family:var(--font-pixel);
-  font-size:9px;
-  background:rgba(255,255,255,.08);
-  color:var(--screen-lit);
-  border:2px solid transparent;
-  border-radius:8px;
-  padding:8px 4px;
+  font-family:var(--font-ui);
+  font-weight:800;
+  font-size:13px;
+  background:transparent;
+  color:var(--text-soft);
+  border:none;
+  border-radius:var(--r-sm);
+  padding:9px 4px;
   cursor:pointer;
+  transition:background .2s ease, color .2s ease;
 }
-.shop-tab.active{border-color:var(--amber); background:rgba(255,214,102,.14); color:var(--amber);}
+.shop-tab.active{
+  background:var(--surface-hi);
+  color:var(--text);
+  box-shadow:0 4px 12px -4px rgba(0,0,0,.5), 0 1px 0 rgba(255,255,255,.12) inset;
+}
 
 /* Tope de alto + scroll propio en la lista, no en el overlay entero: así el
-   botón de abajo (Cancelar / Cerrar / Empezar) siempre queda a la vista sin
+   botón de abajo (Cerrar / Cancelar / Empezar) siempre queda a la vista sin
    importar cuántas filas sumen los minijuegos, las comidas o las especies —
-   esto último va a seguir creciendo, así que no puede depender de que today
-   entren todas de una. Antes la lista de especies quedaba afuera de esta
-   regla (grid propio, sin scroll); ahora comparte el mismo tope: con más
-   especies de las que caben en dos filas, el grid se lleva el scroll interno
-   y el nombre + "Empezar" quedan siempre fijos debajo, visibles. */
-.menu-list{
-  max-height:min(52vh, 210px);
+   esto último va a seguir creciendo, así que no puede depender de que hoy
+   entren todas de una. El tope ya no es un número: es lo que le deje libre la
+   hoja (flex:1 + min-height:0 dentro de .overlay-card). La lista de especies
+   comparte la misma regla: con más especies de las que caben, el grid se lleva
+   el scroll interno y el nombre + "Empezar" quedan siempre fijos debajo. */
+.overlay-card > .menu-list{
+  flex:0 1 auto;
+  min-height:0;
   overflow-y:auto;
-  padding-right:2px;
-  margin-bottom:6px;
+  overscroll-behavior:contain;
+  margin:0 -4px;
+  padding:2px 4px 4px;
 }
 .menu-list:not(.species-list){
   display:flex;
@@ -472,34 +623,52 @@ body{
 .menu-item{
   display:flex;
   align-items:center;
-  gap:10px;
-  background:rgba(255,255,255,.08);
-  border:2px solid transparent;
-  border-radius:10px;
-  padding:8px 12px;
+  gap:12px;
+  background:var(--surface);
+  border:1.5px solid var(--stroke);
+  border-radius:var(--r-lg);
+  padding:10px 12px;
   cursor:pointer;
   font-family:var(--font-ui);
-  color:var(--screen-lit);
+  color:var(--text);
   text-align:left;
+  transition:transform .12s ease, background .15s ease, border-color .15s ease;
 }
-.menu-item .emoji{font-size:20px;}
-.menu-item .info{display:flex; flex-direction:column; min-width:0;}
+.menu-item:active:not(.locked){transform:scale(.98);}
+/* Ícono en un "squircle" propio, como los íconos de ajustes de un teléfono. */
+.menu-item .emoji{
+  flex-shrink:0;
+  width:42px; height:42px;
+  display:grid; place-items:center;
+  font-size:22px;
+  border-radius:13px;
+  background:linear-gradient(145deg, rgba(255,255,255,.16), rgba(255,255,255,.05));
+  box-shadow:0 1px 0 rgba(255,255,255,.12) inset;
+}
+.menu-item .info{display:flex; flex-direction:column; gap:1px; min-width:0;}
+.menu-item .info b{font-size:14.5px; font-weight:800;}
+.menu-item .info small{color:var(--text-soft); font-size:11.5px; font-weight:600;}
 .menu-record{
   margin-left:auto;
   flex-shrink:0;
-  font-family:var(--font-pixel);
-  font-size:8px;
+  font-family:var(--font-ui);
+  font-weight:900;
+  font-size:12px;
   color:var(--amber);
-  background:rgba(255,214,102,.12);
-  border-radius:6px;
-  padding:4px 6px;
+  background:rgba(255,206,75,.13);
+  border-radius:999px;
+  padding:5px 10px;
   white-space:nowrap;
 }
-.menu-item .info b{font-size:13px;}
-.menu-item .info small{opacity:.7; font-size:10px;}
-.menu-item.selected{border-color:var(--amber);}
-.menu-item.locked{opacity:.4; cursor:not-allowed;}
-.menu-item:not(.locked):hover{background:rgba(255,255,255,.15);}
+.menu-item.selected{
+  border-color:#ff8cc0;
+  background:linear-gradient(135deg, rgba(255,111,174,.16), rgba(140,100,255,.12));
+  box-shadow:0 0 0 3px rgba(255,111,174,.15);
+}
+.menu-item.locked{opacity:.42; cursor:not-allowed; filter:grayscale(.4);}
+@media (hover:hover){
+  .menu-item:not(.locked):hover{background:var(--surface-hi);}
+}
 /* Nivel, récord y botón del Megajuego apilados a la derecha: uno al lado del
    otro le quitaban ancho al nombre y la fila pasaba a tres líneas. */
 .game-badges{
@@ -512,31 +681,40 @@ body{
 }
 .game-badges .menu-record{margin-left:0;}
 .mega-btn{
-  font-family:var(--font-pixel);
-  font-size:8px;
-  color:var(--ink);
-  background:var(--shell);
+  font-family:var(--font-ui);
+  font-weight:900;
+  font-size:11px;
+  letter-spacing:.6px;
+  color:#fff;
+  background:var(--brand);
   border:none;
-  border-radius:6px;
-  padding:5px 6px;
+  border-radius:999px;
+  padding:5px 10px;
   cursor:pointer;
   white-space:nowrap;
+  box-shadow:0 4px 12px -4px var(--brand-glow);
+  animation:megaPulse 2s ease-in-out infinite;
+}
+@keyframes megaPulse{
+  0%,100%{box-shadow:0 4px 12px -4px var(--brand-glow);}
+  50%{box-shadow:0 4px 18px -2px var(--brand-glow);}
 }
 /* Nivel elegido / máximo desbloqueado: se toca para girar entre los
    desbloqueados. Va arriba en la misma columna que el récord y el MEGA, para
    no quitarle ancho al nombre. */
 .lvl-btn{
-  font-family:var(--font-pixel);
-  font-size:8px;
-  color:var(--screen-lit);
-  background:rgba(255,255,255,.12);
-  border:1px solid rgba(255,255,255,.3);
-  border-radius:6px;
-  padding:5px 6px;
+  font-family:var(--font-ui);
+  font-weight:800;
+  font-size:11px;
+  color:var(--text);
+  background:transparent;
+  border:1.5px solid rgba(255,255,255,.28);
+  border-radius:999px;
+  padding:3px 9px;
   cursor:pointer;
   white-space:nowrap;
 }
-.mega-btn:hover{background:var(--shell-hi);}
+.lvl-btn:active, .mega-btn:active{transform:scale(.92);}
 
 /* Rejilla de 3 columnas, no fila con scroll horizontal: ese scroll horizontal
    competía con el scroll vertical del overlay y las especies fuera del borde
@@ -555,22 +733,24 @@ body{
   flex-direction:column;
   justify-content:flex-start;
   align-items:center;
-  gap:5px;
-  padding:8px 4px;
+  gap:6px;
+  padding:12px 4px 10px;
   text-align:center;
 }
 .species-list .species-item .info{align-items:center; min-width:0;}
-.species-list .species-item .info b{font-size:11px; line-height:1.25;}
+.species-list .species-item .info b{font-size:12px; line-height:1.25;}
 .species-thumb{flex-shrink:0; background-repeat:no-repeat;}
 
 .debug-panel{width:100%;}
-.debug-section{margin-bottom:12px;}
+.debug-section{margin-bottom:14px;}
 .debug-section h4{
-  font-family:var(--font-pixel);
-  font-size:9px;
-  color:var(--screen-lit);
-  opacity:.7;
-  margin:0 0 6px;
+  font-family:var(--font-ui);
+  font-weight:800;
+  font-size:11px;
+  letter-spacing:.8px;
+  text-transform:uppercase;
+  color:var(--text-soft);
+  margin:0 0 8px;
   text-align:left;
 }
 .debug-grid{
@@ -581,16 +761,18 @@ body{
 .debug-btn{
   font-family:var(--font-ui);
   font-weight:800;
-  font-size:10.5px;
-  color:var(--screen-lit);
-  background:rgba(255,255,255,.08);
-  border:2px solid transparent;
-  border-radius:8px;
-  padding:7px 4px;
+  font-size:11px;
+  color:var(--text);
+  background:var(--surface);
+  border:1.5px solid var(--stroke);
+  border-radius:var(--r-sm);
+  padding:9px 4px;
   cursor:pointer;
+  transition:transform .1s ease, background .15s ease;
 }
-.debug-btn:hover{background:rgba(255,255,255,.16);}
-.debug-btn.active{border-color:var(--amber); background:rgba(255,206,75,.18);}
+.debug-btn:active{transform:scale(.95);}
+@media (hover:hover){ .debug-btn:hover{background:var(--surface-hi);} }
+.debug-btn.active{border-color:#ff8cc0; background:rgba(255,111,174,.18);}
 .debug-btn.wide{grid-column:1 / -1;}
 .debug-btn.danger{color:#ffb3ba;}
 
@@ -599,45 +781,73 @@ body{
 .controls{
   display:grid;
   grid-template-columns:repeat(3, 1fr);
-  gap:8px;
+  gap:10px;
   margin-top:16px;
 }
 
+/* Cada acción tiene su color (--tint, abajo por id): se aprenden por color y
+   posición, no leyendo la etiqueta — como el dock de una app. */
 .btn{
+  --tint:#ffe1ee;
+  --tint-ink:#e0457f;
   display:flex;
   flex-direction:column;
   align-items:center;
-  gap:3px;
+  gap:5px;
   font-family:var(--font-ui);
   font-weight:800;
-  font-size:11px;
-  color:var(--ink);
-  background:var(--btn);
+  font-size:12px;
+  color:var(--tile-ink);
+  background:rgba(255,255,255,.94);
   border:none;
-  border-radius:14px;
-  padding:11px 4px 10px;
+  border-radius:var(--r-lg);
+  padding:10px 4px 9px;
   cursor:pointer;
-  box-shadow:0 4px 0 var(--btn-shadow);
-  transition:transform .08s ease, box-shadow .08s ease;
+  box-shadow:
+    0 1px 0 #fff inset,
+    0 10px 20px -12px rgba(70,10,90,.55);
+  transition:transform .14s var(--ease-spring), box-shadow .14s ease;
 }
-.btn:hover{filter:brightness(1.03);}
-.btn:active{transform:translateY(3px); box-shadow:0 1px 0 var(--btn-shadow);}
-.btn:disabled{opacity:.4; cursor:not-allowed; box-shadow:0 4px 0 var(--btn-shadow);}
-.btn:disabled:active{transform:none; box-shadow:0 4px 0 var(--btn-shadow);}
+.btn:active{transform:scale(.93); box-shadow:0 1px 0 #fff inset, 0 4px 10px -8px rgba(70,10,90,.6);}
+.btn:disabled{opacity:.45; cursor:not-allowed;}
+.btn:disabled:active{transform:none;}
 
-.btn-icon{font-size:21px;}
+.btn-icon{
+  width:40px; height:40px;
+  display:grid; place-items:center;
+  font-size:21px;
+  border-radius:13px;
+  background:var(--tint);
+}
+
+#btnFeed    {--tint:#ffe3d3;}
+#btnPlay    {--tint:#e5ddff;}
+#btnClean   {--tint:#d8f4ff;}
+#btnFoodMenu{--tint:#fff1c9;}
+#btnMed     {--tint:#ffdbe6;}
+#btnShop    {--tint:#d9f7e4;}
 
 /* Con 7 botones la grilla de 3 columnas deja la última fila con uno solo y un
    hueco al lado. Reiniciar la ocupa entera: es el único que no es una acción
    de cuidado, así que separarlo en su propia franja también lo hace más difícil
-   de apretar sin querer. */
-.btn-wide{grid-column:1 / -1; flex-direction:row; gap:8px; padding:7px 4px;}
-
-.btn-ghost{
-  background:rgba(255,255,255,.55);
-  color:var(--ink-soft);
-  box-shadow:0 4px 0 rgba(122,31,66,.4);
+   de apretar sin querer. Va como acción discreta (sin fondo de tarjeta) para
+   que no compita con las de cuidado. */
+.btn-wide{
+  grid-column:1 / -1;
+  justify-self:center;
+  flex-direction:row;
+  gap:6px;
+  padding:6px 16px;
 }
+.btn-ghost{
+  background:rgba(255,255,255,.18);
+  color:rgba(255,255,255,.92);
+  font-size:11.5px;
+  border-radius:999px;
+  box-shadow:none;
+}
+.btn-ghost:active{box-shadow:none;}
+.btn-ghost .btn-icon{width:auto; height:auto; background:none; font-size:14px;}
 
 /* ---------- mandos de los minijuegos ---------- */
 
@@ -649,28 +859,28 @@ body{
   display:flex;
   flex-direction:column;
   justify-content:center;
-  gap:8px;
+  gap:10px;
 }
 .game-controls.hidden, .controls.hidden{display:none;}
 
 .gbtn{
   font-family:var(--font-ui);
-  font-weight:800;
-  font-size:14px;
-  color:var(--ink);
-  background:var(--btn);
+  font-weight:900;
+  font-size:15px;
+  color:var(--tile-ink);
+  background:rgba(255,255,255,.95);
   border:none;
-  border-radius:14px;
+  border-radius:var(--r-lg);
   padding:14px 8px;
   cursor:pointer;
-  box-shadow:0 4px 0 var(--btn-shadow);
-  transition:transform .06s ease, box-shadow .06s ease;
+  box-shadow:0 1px 0 #fff inset, 0 10px 20px -12px rgba(70,10,90,.6);
+  transition:transform .08s ease, box-shadow .08s ease, opacity .15s ease;
   /* Sin esto el navegador espera a ver si el toque es un doble tap y los mandos
      responden tarde, que en estos juegos se nota. */
   touch-action:manipulation;
   user-select:none;
 }
-.gbtn:active{transform:translateY(3px); box-shadow:0 1px 0 var(--btn-shadow);}
+.gbtn:active{transform:scale(.94); box-shadow:0 1px 0 #fff inset, 0 3px 8px -6px rgba(70,10,90,.6);}
 .gbtn-lg{font-size:16px; padding:20px 8px;}
 
 /* Para cuando varios botones de mando conviven pero solo uno sirve en el momento
@@ -678,7 +888,7 @@ body{
 .gbtn:disabled{
   opacity:.35;
   cursor:default;
-  box-shadow:0 4px 0 var(--btn-shadow);
+  transform:none;
 }
 .gbtn-row2{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
 .gbtn-row3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;}
@@ -708,27 +918,27 @@ body{
   margin:0;
 }
 .game-slider::-webkit-slider-runnable-track{
-  height:12px; border-radius:6px;
-  background:rgba(255,255,255,.45);
+  height:10px; border-radius:5px;
+  background:rgba(255,255,255,.35);
 }
 .game-slider::-webkit-slider-thumb{
   -webkit-appearance:none; appearance:none;
-  width:52px; height:34px; margin-top:-11px;
-  border-radius:11px;
-  background:var(--btn);
-  box-shadow:0 3px 0 var(--btn-shadow);
+  width:56px; height:34px; margin-top:-12px;
+  border-radius:17px;
+  background:#fff;
+  box-shadow:0 6px 14px -4px rgba(70,10,90,.6);
 }
-.game-slider::-moz-range-track{height:12px; border-radius:6px; background:rgba(255,255,255,.45);}
+.game-slider::-moz-range-track{height:10px; border-radius:5px; background:rgba(255,255,255,.35);}
 .game-slider::-moz-range-thumb{
-  width:52px; height:34px; border:none; border-radius:11px;
-  background:var(--btn); box-shadow:0 3px 0 var(--btn-shadow);
+  width:56px; height:34px; border:none; border-radius:17px;
+  background:#fff; box-shadow:0 6px 14px -4px rgba(70,10,90,.6);
 }
 
 .game-hint{
   font-family:var(--font-ui);
   font-weight:800;
-  font-size:11px;
-  color:rgba(255,255,255,.75);
+  font-size:12px;
+  color:rgba(255,255,255,.9);
   text-align:center;
 }
 
@@ -744,7 +954,7 @@ body{
 }
 
 .footnote{
-  color:rgba(255,255,255,.55);
+  color:rgba(255,255,255,.5);
   font-size:11.5px;
   text-align:center;
   max-width:320px;
@@ -769,17 +979,20 @@ body{
    todo el aire que no es contenido para que el aparato entre entero sin scroll.
    Lo que se achica es separación y relleno, nunca la mascota ni los botones. */
 @media (max-height: 760px){
-  body{padding:10px 12px;}
+  body{
+    padding:
+      max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+      max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
   #stage{gap:8px;}
   .footnote{display:none;}
   .device{padding:14px 16px 18px;}
   .device-top{padding:0 4px 10px;}
   .screen-bezel{padding:10px;}
-  .controls{margin-top:12px; gap:7px;}
+  .controls{margin-top:12px; gap:8px;}
   .speaker{margin-top:10px;}
 }
 
 @media (prefers-reduced-motion: reduce){
-  .device{animation:none;}
-  .led{animation:none;}
+  .device, .led, .overlay, .overlay-card, .mega-btn{animation:none;}
 }
