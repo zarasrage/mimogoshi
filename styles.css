@@ -1243,6 +1243,25 @@ body{
 .btn:disabled{opacity:.45; cursor:not-allowed;}
 .btn:disabled:active{transform:none;}
 
+/* Enferma: el menú de comidas (donde vive el botiquín) lleva un 💊 que late,
+   para que se note sin tener un botón de medicina aparte. */
+.btn{position:relative;}
+.btn.alert::after{
+  content:'💊';
+  position:absolute;
+  top:-6px; right:-4px;
+  font-size:15px;
+  width:26px; height:26px;
+  display:grid; place-items:center;
+  border-radius:50%;
+  background:#ff5d6c;
+  box-shadow:0 0 0 2px #fff, 0 4px 10px -2px rgba(255,93,108,.7);
+  animation:alertPulse 1s ease-in-out infinite;
+}
+@keyframes alertPulse{ 50%{transform:scale(1.15);} }
+.menu-item.urgent{border-color:#ff8a96; background:rgba(255,93,108,.14);}
+.overlay-card .style-empty{font-size:12px; color:var(--text-soft); margin:0 0 4px; text-align:left;}
+
 .btn-icon{
   width:40px; height:40px;
   display:grid; place-items:center;
@@ -1255,7 +1274,7 @@ body{
 #btnPlay    {--tint:#e5ddff;}
 #btnClean   {--tint:#d8f4ff;}
 #btnFoodMenu{--tint:#fff1c9;}
-#btnMed     {--tint:#ffdbe6;}
+#btnStyle   {--tint:#ffdbe6;}
 #btnShop    {--tint:#d9f7e4;}
 
 /* Con 7 botones la grilla de 3 columnas deja la última fila con uno solo y un

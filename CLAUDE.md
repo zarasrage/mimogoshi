@@ -375,6 +375,16 @@ en `FOODS` y si falta usa el bonus plano de siempre (`FOOD_ENERGY_DEFAULT = 4`).
 La Red Bull es la única que lo pisa — poca hambre (`restore: 2`), mucha energía
 (`energy: 20`) — al revés que el resto, que dan poca energía y mucha hambre.
 
+**Medicina:** ya no es un botón propio, gratis e infinito. Es una porción más
+de la despensa (`MEDICINE`, `state.pantry.medicina`): se compra en la tienda,
+pestaña Comida (`price: 15`), y se da desde el menú de comidas, sección
+**Botiquín** (`giveMedicine()`). Se arranca con `MED_START_STOCK = 2`, y los
+saves de antes también reciben esas 2, para que la primera enfermedad no pille
+sin monedas. El lugar del botón de Medicina lo tomó **Personalizar** (ver
+"Estilo"). Para que la enfermedad se siga notando sin ese botón, `render()`
+le pone la clase `.alert` al botón **Menú** mientras está enferma: un 💊 rojo
+que late.
+
 **Los avisos de la tienda van dentro de la tarjeta, no con `say()`**: la burbuja
 tiene `z-index:5` y el overlay `10`, así que un `say()` con un overlay abierto
 queda tapado. Lo mismo vale para cualquier menú nuevo.
@@ -393,7 +403,7 @@ esto va a seguir creciendo). Catálogo en `UPGRADES`, con dos formas:
   trivial la caca o la enfermedad en vez de ser una red de contención puntual
   para cuando no estás mirando. `autoClean` limpia sola la primera caca que
   aparezca (mismo `+35` de higiene que `btnClean`); `autoMed` cura sola una
-  enfermedad (mismo `+20` de salud que `btnMed`). Ninguna distingue si la app
+  enfermedad (mismo `MED_HEALTH`, +20 de salud, que darle una medicina). Ninguna distingue si la app
   está abierta o cerrada al disparar — nada más en el juego trata "estar
   mirando" como un estado aparte, así que tampoco esto. `state.upgrades[id]`
   guarda `{owned, armed, timesUsed}`; `timesUsed` se muestra en la tienda como
@@ -422,9 +432,14 @@ ninguna barra. Catálogo en `STYLE_ITEMS`, en cuatro secciones
 - **Decoración** (`kind:'deco'`): un adorno por lugar (`slot`: `pared`, `izq`,
   `der`), o ninguno.
 
-Comprar algo lo deja puesto de una; tocar uno ya comprado lo pone (o lo saca,
-si es accesorio o adorno). En esta pestaña el overlay va con `.clear` y la
-hoja no pasa del 66% de alto, así lo comprado se ve puesto atrás al tiro.
+**La tienda es solo para comprar; ponerse y sacarse las cosas es en
+Personalizar** (`openPersonalize()`, el botón 🎨 que reemplazó a Medicina).
+Comprar algo lo deja puesto de una (si es un mueble y ya hay tres, queda
+guardado), y en la tienda lo ya comprado sale como "Tuyo ✓": tocarlo solo
+avisa que se cambia en Personalizar. Personalizar muestra únicamente lo
+comprado, por sección (`styleRows('mine')`; la tienda usa `styleRows('shop')`),
+y ahí tocar algo lo pone o lo saca. En las dos el overlay va con `.clear` y la
+hoja no pasa del 66% de alto, así el cambio se ve puesto atrás al tiro.
 `state.style` = `{owned, shell, screen, hat, deco:{pared, izq, der}}`;
 `loadState()` lo rellena para saves viejos y saca lo que ya no exista en el
 catálogo o no esté comprado.
@@ -494,6 +509,15 @@ Dos tipos:
   mismo dos veces seguidas) y va. Se cortan si se duerme, se pone triste o
   enferma, si se la toca o si empieza un minijuego; si quedó arriba de un
   mueble, cae al piso.
+
+**Duración:** cada visita dura de 12 a 17 segundos, más o menos el triple que
+la primera versión (~5 s). No es la misma rutina estirada: los guiones suman
+más cosas que hacer (dos vueltas de tobogán, cuatro patadas a la pelota que la
+persigue corriendo, tandas de rebote de distinto alto, bailar a los dos lados
+del radiocasete...). Con visitas más largas, el ritmo de visitas
+(`FURNI_VISIT_CHANCE`/`FURNI_VISIT_GAP_MS`) queda igual. La pelota siempre
+patea un número par de veces, así termina donde estaba. Los tramos del columpio
+duran un múltiplo exacto de su período, así el asiento termina derecho.
 
 Efectos en las barras, chicos a propósito: dormir con cama puesta recupera
 energía `FURNI_BED_ENERGY_MULT` (x1.25) más rápido (se mira el save, así vale

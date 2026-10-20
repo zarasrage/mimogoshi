@@ -305,6 +305,15 @@ const FOODS = [
 
 const FOOD_START_STOCK = 5;
 
+/* La medicina ya no es un botón gratis e infinito: se compra en la tienda
+   (pestaña Comida) como cualquier porción y se da desde el menú de comidas,
+   en la sección Botiquín. Se guarda en la misma despensa (state.pantry), con
+   su propia clave. Se arranca con MED_START_STOCK para que la primera
+   enfermedad no pille sin monedas. */
+const MEDICINE = { id:'medicina', name:'Medicina', emoji:'💊', price: 15 };
+const MED_START_STOCK = 2;
+const MED_HEALTH = 20;
+
 function foodById(id){ return FOODS.find(f => f.id === id) || FOODS[0]; }
 
 const FOOD_ENERGY_DEFAULT = 4;
@@ -741,7 +750,7 @@ function freshState(name, species){
     stage: 'egg',
     selectedFood: 'simple',
     coins: 0,
-    pantry: { simple: FOOD_START_STOCK },  // porciones en la mochila por comida
+    pantry: { simple: FOOD_START_STOCK, [MEDICINE.id]: MED_START_STOCK },  // porciones en la mochila
     records: {},   // mejor puntaje por minijuego
     upgrades: freshUpgrades(),
     unlockedGames: [],   // los gratis (price 0) no hace falta anotarlos
@@ -769,6 +778,8 @@ function loadState(){
     if (!s.pantry || typeof s.pantry !== 'object') s.pantry = {};
     // saves de antes de que el bocadillo simple se gastara: sin esto quedarían en 0 de golpe
     if (s.pantry.simple === undefined) s.pantry.simple = FOOD_START_STOCK;
+    // saves de cuando la medicina era un botón gratis: arrancan con lo mismo que una partida nueva
+    if (s.pantry[MEDICINE.id] === undefined) s.pantry[MEDICINE.id] = MED_START_STOCK;
     delete s.unlockedFoods;  // el modelo viejo era desbloqueo permanente; ahora son porciones
     if (!s.species || !SPECIES[s.species]) s.species = DEFAULT_SPECIES; // saves de especies que ya no existen
     if (!s.records || typeof s.records !== 'object') s.records = {};    // saves anteriores a los récords
@@ -908,7 +919,7 @@ function applyDecay(hours){
     const seguro = upgradeState('autoMed');
     if (seguro.owned && seguro.armed){
       state.sick = false;
-      state.health = clamp(state.health + 20);   // mismo efecto que btnMed
+      state.health = clamp(state.health + MED_HEALTH);   // mismo efecto que darle medicina
       seguro.armed = false;
       seguro.timesUsed = (seguro.timesUsed || 0) + 1;
     }
@@ -1141,7 +1152,8 @@ function render(){
   updateHat(drawn);
   updateFurniture();
 
-  document.getElementById('btnMed').disabled = !state.sick;
+  /* Enferma: el botón del menú de comidas (donde está el botiquín) avisa. */
+  document.getElementById('btnFoodMenu').classList.toggle('alert', !!state.sick);
   document.getElementById('feedIcon').textContent = foodById(state.selectedFood).emoji;
 
   document.getElementById('poopFx').classList.toggle('hidden', !state.poop);
@@ -1378,7 +1390,8 @@ const FURNI_ART = {
     ],
     script: f => [
       { go: f.x(-12) },
-      { anim: 'eat', ms: 1800, dir: 1, fx: ['😋'], fxEvery: 900, start: rt => { rt.food = true; }, end: rt => { rt.food = false; } },
+      { anim: 'eat', ms: 3600, dir: 1, fx: ['😋'], fxEvery: 900, start: rt => { rt.food = true; }, end: rt => { rt.food = false; } },
+      { anim: 'happy', ms: 600, fx: ['💖'] },
     ] },
 
   banera: { w: 30, h: 16, routine: 'clean',
@@ -1397,7 +1410,9 @@ const FURNI_ART = {
     script: f => [
       { go: f.x(-19) },
       { hop: { x: f.x(0), y: f.y(3) }, ms: 500, h: 22 },
-      { anim: 'clean', ms: 2200, fx: ['🧼', '💦'], fxEvery: 350 },
+      { anim: 'clean', ms: 2500, fx: ['🧼', '💦'], fxEvery: 350 },
+      { anim: 'happy', ms: 700, flip: 350, fx: ['💦'], fxEvery: 250 },
+      { anim: 'clean', ms: 2000, fx: ['🧼', '💦'], fxEvery: 350 },
       { hop: { x: f.x(19), y: 0 }, ms: 500, h: 20 },
     ] },
 
@@ -1417,7 +1432,11 @@ const FURNI_ART = {
     script: f => [
       { go: f.x(16) },
       { anim: 'clean', ms: 2600, dir: -1, fx: ['✨', '💄', '✨'], fxEvery: 550 },
-      { anim: 'happy', ms: 800, dir: 1, fx: ['💖'], fxEvery: 700 },
+      { anim: 'happy', ms: 900, dir: 1, fx: ['💖'] },
+      { anim: 'clean', ms: 2200, dir: -1, fx: ['✨', '💄'], fxEvery: 550 },
+      { go: f.x(-16) },
+      { anim: 'clean', ms: 2000, dir: 1, fx: ['✨', '💄'], fxEvery: 550 },
+      { anim: 'happy', ms: 1600, flip: 400, fx: ['💖', '✨'], fxEvery: 400 },
     ] },
 
   trampolin: { w: 26, h: 8,
@@ -1430,7 +1449,14 @@ const FURNI_ART = {
       { go: f.x(-18) },
       { hop: { x: f.x(0), y: f.y(6) }, ms: 450, h: 16 },
       { bounce: 4, ms: 520, h: 40 },
+      { bounce: 3, ms: 680, h: 64 },
+      { anim: 'happy', ms: 500, fx: ['⭐'] },
+      { bounce: 5, ms: 430, h: 28 },
+      { bounce: 2, ms: 720, h: 72 },
+      { anim: 'happy', ms: 600, fx: ['⭐'] },
+      { bounce: 4, ms: 560, h: 46 },
       { hop: { x: f.x(19), y: 0 }, ms: 500, h: 26 },
+      { anim: 'happy', ms: 700, fx: ['⭐'] },
     ] },
 
   pelota: { w: 9, h: 9,
@@ -1439,17 +1465,24 @@ const FURNI_ART = {
       p.r(2, 2, 1, 1, FP.pinkL);
     } }],
     /* La pelota se mueve de verdad: la patea hacia el centro de la pieza, la
-       sigue y la devuelve a su lugar. */
+       sigue, la devuelve, y otra vuelta más. Siempre un número par de patadas,
+       así termina donde estaba. */
     script: f => {
       const bx = f.rt.x + f.rt.ballDx / f.fw;
       const side = bx < 0.5 ? 1 : -1;
-      const dist = f.fw * 0.27;
-      return [
-        { go: bx - side * f.dx(10) },
-        { kick: side * dist, ms: 900 },
-        { go: bx + side * (dist / f.fw) - side * f.dx(10) },
-        { kick: -side * dist, ms: 900 },
-      ];
+      const lejos = bx + side * 0.27;
+      const steps = [{ go: bx - side * f.dx(10) }];
+      for (let vuelta = 0; vuelta < 2; vuelta++){
+        steps.push(
+          { kick: side * f.fw * 0.27, ms: 900 },
+          { go: lejos + side * f.dx(10), speed: 0.17 },   // la persigue corriendo
+          { anim: 'happy', ms: 500 },
+          { kick: -side * f.fw * 0.27, ms: 900 },
+          { go: bx - side * f.dx(10), speed: 0.17 },
+          { anim: 'happy', ms: 500, fx: ['⭐'] },
+        );
+      }
+      return steps;
     } },
 
   columpio: { w: 28, h: 36,
@@ -1466,7 +1499,11 @@ const FURNI_ART = {
     script: f => [
       { go: f.x(0) },
       { hop: { x: f.x(0), y: f.y(9) }, ms: 400, h: 10 },
-      { anim: 'happy', ms: 4200, swing: { amp: 0.42, period: 1500, L: f.y(24) } },
+      /* Cada tramo dura un múltiplo exacto del período: así termina con el
+         asiento derecho y el siguiente arranca sin salto. */
+      { anim: 'happy', ms: 3000, swing: { amp: 0.25, period: 1500, L: f.y(24) } },
+      { anim: 'happy', ms: 7500, swing: { amp: 0.5, period: 1500, L: f.y(24) }, fx: ['🎵'], fxEvery: 1500 },
+      { anim: 'happy', ms: 3000, swing: { amp: 0.25, period: 1500, L: f.y(24) } },
       { hop: { x: f.x(17), y: 0 }, ms: 450, h: 16 },
     ] },
 
@@ -1482,15 +1519,19 @@ const FURNI_ART = {
       p.r(31, 20, 3, 2, FP.red); p.r(31, 22, 3, 1, FP.O);
       p.box(0, 1, 11, 3, FP.yel, FP.yelL);
     } }],
-    script: f => [
-      { go: f.x(-21) },
-      { slide: { x: f.x(-14), y: f.y(23) }, ms: 1300, anim: 'walk' },
-      { go: f.x(-9), speed: 0.07 },
-      { anim: 'happy', ms: 400, dir: 1 },
-      { slide: { x: f.x(15), y: f.y(4) }, ms: 650, anim: 'happy', fx: ['💨'] },
-      { hop: { x: f.x(21), y: 0 }, ms: 350, h: 8 },
-      { anim: 'happy', ms: 700, fx: ['💨', '⭐'], fxEvery: 350 },
-    ] },
+    /* Dos vueltas: sube, se tira, vuelve corriendo a la escalera y otra vez. */
+    script: f => {
+      const vuelta = () => [
+        { go: f.x(-21) },
+        { slide: { x: f.x(-14), y: f.y(23) }, ms: 1300, anim: 'walk' },
+        { go: f.x(-9), speed: 0.07 },
+        { anim: 'happy', ms: 600, dir: 1 },
+        { slide: { x: f.x(15), y: f.y(4) }, ms: 650, anim: 'happy', fx: ['💨'] },
+        { hop: { x: f.x(21), y: 0 }, ms: 350, h: 8 },
+        { anim: 'happy', ms: 800, fx: ['💨', '⭐'], fxEvery: 350 },
+      ];
+      return [...vuelta(), ...vuelta()];
+    } },
 
   radiocasete: { w: 16, h: 12,
     parts: [
@@ -1503,9 +1544,13 @@ const FURNI_ART = {
       { id: 'light', show: 'on', draw: p => { p.r(7, 9, 2, 1, '#5cff8a'); } },
     ],
     script: f => [
-      { go: f.x(14) },
-      { anim: 'happy', ms: 3800, flip: 420, fx: ['🎵', '🎶'], fxEvery: 450,
-        start: rt => { rt.on = true; }, end: rt => { rt.on = false; } },
+      { go: f.x(14), start: rt => { rt.on = true; } },
+      { anim: 'happy', ms: 3200, flip: 420, fx: ['🎵', '🎶'], fxEvery: 450 },
+      { bounce: 4, ms: 380, h: 14 },
+      { go: f.x(-14) },
+      { anim: 'happy', ms: 3000, flip: 300, fx: ['🎵', '🎶'], fxEvery: 400 },
+      { bounce: 3, ms: 380, h: 18 },
+      { anim: 'happy', ms: 1500, flip: 250, fx: ['🎶'], fxEvery: 300, end: rt => { rt.on = false; } },
     ] },
 
   tele: { w: 20, h: 20,
@@ -1523,9 +1568,12 @@ const FURNI_ART = {
       } },
     ],
     script: f => [
-      { go: f.x(16) },
-      { anim: 'idle', ms: 5000, dir: -1, fx: ['😆'], fxEvery: 2200,
-        start: rt => { rt.on = true; }, end: rt => { rt.on = false; } },
+      { go: f.x(16), start: rt => { rt.on = true; } },
+      { anim: 'idle', ms: 5000, dir: -1 },
+      { anim: 'happy', ms: 1200, dir: -1, fx: ['😆'], fxEvery: 600 },
+      { bounce: 2, ms: 420, h: 12 },
+      { anim: 'idle', ms: 5500, dir: -1, fx: ['😆'], fxEvery: 2600 },
+      { anim: 'happy', ms: 1500, flip: 500, fx: ['😆'], fxEvery: 700, end: rt => { rt.on = false; } },
     ] },
 
   piano: { w: 26, h: 20,
@@ -1539,6 +1587,10 @@ const FURNI_ART = {
     script: f => [
       { go: f.x(18) },
       { anim: 'happy', ms: 3600, dir: -1, fx: ['🎵', '🎹', '🎶'], fxEvery: 380 },
+      { go: f.x(-18) },
+      { anim: 'happy', ms: 3200, dir: 1, fx: ['🎵', '🎹', '🎶'], fxEvery: 380 },
+      { bounce: 2, ms: 450, h: 16 },
+      { anim: 'happy', ms: 1500, flip: 500, fx: ['🎶'], fxEvery: 500 },
     ] },
 
   tarima: { w: 28, h: 7,
@@ -1551,6 +1603,11 @@ const FURNI_ART = {
       { hop: { x: f.x(-9), y: f.y(7) }, ms: 420, h: 14 },
       { go: f.x(9), speed: 0.07 },
       { anim: 'happy', ms: 900 },
+      { go: f.x(-9), speed: 0.07 },
+      { anim: 'idle', ms: 800 },
+      { go: f.x(9), speed: 0.05 },
+      { bounce: 2, ms: 450, h: 18 },
+      { anim: 'happy', ms: 800, fx: ['⭐'] },
       { hop: { x: f.x(21), y: 0 }, ms: 420, h: 12 },
     ] },
 
@@ -1566,6 +1623,13 @@ const FURNI_ART = {
       { go: f.x(-20) },
       { hop: { x: f.x(-2), y: f.y(22) }, ms: 600, h: 24 },
       { anim: 'idle', ms: 2600, fx: ['⭐'], fxEvery: 1200 },
+      { anim: 'idle', ms: 1000, dir: 1 },
+      { anim: 'idle', ms: 1000, dir: -1 },
+      { anim: 'happy', ms: 1500, fx: ['⭐'], fxEvery: 700 },
+      { bounce: 2, ms: 480, h: 18 },
+      { anim: 'idle', ms: 1800, fx: ['💤'] },
+      { anim: 'idle', ms: 1000, dir: 1 },
+      { anim: 'happy', ms: 1200, flip: 400, fx: ['⭐'], fxEvery: 600 },
       { hop: { x: f.x(20), y: 0 }, ms: 600, h: 14 },
     ] },
 
@@ -1578,9 +1642,20 @@ const FURNI_ART = {
     script: f => [
       { go: f.x(-20) },
       { hop: { x: f.x(-6), y: f.y(10) }, ms: 420, h: 14 },
-      { anim: 'idle', ms: 350 },
+      { anim: 'idle', ms: 500 },
       { hop: { x: f.x(6), y: f.y(20) }, ms: 420, h: 14 },
       { anim: 'happy', ms: 1600, fx: ['🎉', '⭐'], fxEvery: 500 },
+      { hop: { x: f.x(-6), y: f.y(10) }, ms: 420, h: 10 },
+      { anim: 'idle', ms: 700 },
+      { hop: { x: f.x(6), y: f.y(20) }, ms: 420, h: 14 },
+      { anim: 'happy', ms: 2200, flip: 500, fx: ['🎉', '⭐'], fxEvery: 450 },
+      { bounce: 3, ms: 420, h: 16 },
+      { hop: { x: f.x(20), y: 0 }, ms: 550, h: 12 },
+      { anim: 'idle', ms: 600 },
+      { go: f.x(-20) },
+      { hop: { x: f.x(-6), y: f.y(10) }, ms: 420, h: 14 },
+      { hop: { x: f.x(6), y: f.y(20) }, ms: 420, h: 14 },
+      { anim: 'happy', ms: 1500, fx: ['🎉'], fxEvery: 500 },
       { hop: { x: f.x(20), y: 0 }, ms: 550, h: 12 },
     ] },
 };
@@ -1950,16 +2025,21 @@ const collectGift = () => {
   saveState(); render();
 };
 
-const btnMed = () => {
-  if (!state.sick) return;
+/* Dar una medicina de la despensa. Devuelve el aviso si no se pudo (no está
+   enferma, no quedan), para que el menú lo muestre dentro de la hoja. */
+function giveMedicine(){
   catchUp();
+  if (!state.sick) return 'No está enferma: guárdala para cuando la necesite';
+  if (foodStock(MEDICINE.id) <= 0) return 'No te quedan medicinas: cómpralas en la tienda';
+  state.pantry[MEDICINE.id] -= 1;
   state.sick = false;
-  state.health = clamp(state.health + 20);
+  state.health = clamp(state.health + MED_HEALTH);
   floatFx('💊');
   say('Se siente mejor');
   triggerPetAction('medicine');
   saveState(); render();
-};
+  return null;
+}
 
 const btnPet = () => {
   if (state.stage === 'egg') { say('Todavía es un huevo…'); return; }
@@ -1974,7 +2054,7 @@ const btnPet = () => {
 
 /* ===================== Menú de comida ===================== */
 
-function openFoodMenu(){
+function openFoodMenu(aviso){
   const rows = FOODS.map(f => {
     const stock = foodStock(f.id);
     const hay = stock > 0;
@@ -1989,11 +2069,31 @@ function openFoodMenu(){
       </div>`;
   }).join('');
 
+  const meds = foodStock(MEDICINE.id);
+  const medRow = `
+      <div class="section-label">Botiquín</div>
+      <div class="menu-item ${meds > 0 ? '' : 'locked'} ${state.sick ? 'urgent' : ''}" data-med>
+        <span class="emoji">${MEDICINE.emoji}</span>
+        <div class="info">
+          <b>${MEDICINE.name}</b>
+          <small>${state.sick ? '¡Está enferma! Tócala para dársela' : `Cura la enfermedad · +${MED_HEALTH} de salud`} · ${meds > 0 ? `te quedan ${meds}` : 'sin medicinas'}</small>
+        </div>
+      </div>`;
+
   showOverlay(`
     <h3>🍽️ Elegir comida</h3>
-    <div class="menu-list">${rows}</div>
+    ${aviso ? `<p class="sheet-note warn">${escapeHtml(aviso)}</p>` : ''}
+    <div class="menu-list">${rows}${medRow}</div>
     <button class="overlay-btn secondary" id="btnCloseMenu">Cerrar</button>
   `, hideOverlay);
+
+  /* La medicina se da al tocarla (no se "elige" como la comida). Si no se
+     pudo, el aviso va dentro de la hoja: un say() quedaría tapado. */
+  document.querySelector('[data-med]').addEventListener('click', () => {
+    const problema = giveMedicine();
+    if (problema) openFoodMenu(problema);
+    else hideOverlay();
+  });
 
   /* A las que no tienen porciones no se les engancha nada: ya salen en gris y
      con cursor de "no". Un say() acá tampoco se vería, queda bajo el overlay. */
@@ -2050,9 +2150,11 @@ function upgradeRow(u){
 
 /* Una casilla de la pestaña Estilo. La muestra es el color mismo (carcasa y
    pantalla) o el emoji (accesorio y adorno); abajo, el precio o el estado. */
-function styleTile(it){
+/* mode 'shop': la tienda (precio o "Tuyo"). mode 'mine': Personalizar, solo
+   lo comprado, con "En uso" / "Usar". */
+function styleTile(it, mode){
   const owned = state.style.owned[it.id];
-  const puesto = owned && isStyleEquipped(it);
+  const puesto = owned && isStyleEquipped(it) && mode === 'mine';
   let swatch;
   if (it.kind === 'shell'){
     swatch = `<span class="swatch shell" style="background:linear-gradient(150deg, ${it.colors.join(', ')})"></span>`;
@@ -2067,7 +2169,7 @@ function styleTile(it){
   } else {
     swatch = `<span class="swatch emoji">${it.emoji}</span>`;
   }
-  const estado = puesto ? 'En uso' : owned ? 'Usar' : it.price === 0 ? 'Gratis' : coinsLabel(it.price);
+  const estado = puesto ? 'En uso' : mode === 'mine' ? 'Usar' : owned ? 'Tuyo ✓' : coinsLabel(it.price);
   const alcanza = owned || state.coins >= it.price;
   const enSlot = it.kind === 'furni' && Object.keys(state.style.furniture).find(s => state.style.furniture[s] === it.id);
   const lugar = it.kind === 'deco' ? `<small class="tile-slot">${DECO_SLOT_NAMES[it.slot]}</small>`
@@ -2080,11 +2182,14 @@ function styleTile(it){
     </button>`;
 }
 
-function styleRows(){
-  return STYLE_SECTIONS.map(sec => `
-    <div class="section-label">${sec.title}</div>
-    <div class="style-grid">${STYLE_ITEMS.filter(it => it.kind === sec.kind).map(styleTile).join('')}</div>
-  `).join('');
+function styleRows(mode){
+  return STYLE_SECTIONS.map(sec => {
+    const items = STYLE_ITEMS.filter(it => it.kind === sec.kind && (mode === 'shop' || state.style.owned[it.id]));
+    const grid = items.length
+      ? `<div class="style-grid">${items.map(it => styleTile(it, mode)).join('')}</div>`
+      : `<p class="style-empty">Nada todavía: se compra en la tienda, pestaña Estilo.</p>`;
+    return `<div class="section-label">${sec.title}</div>${grid}`;
+  }).join('');
 }
 
 /* El aviso va dentro de la tarjeta y no con say(): la burbuja tiene z-index 5 y
@@ -2102,6 +2207,16 @@ function openShop(aviso){
         <span class="menu-record">${f.price === 0 ? 'Gratis' : coinsLabel(f.price)}</span>
       </div>`;
   }).join('');
+  const medAlcanza = state.coins >= MEDICINE.price;
+  const medShopRow = `
+      <div class="menu-item ${medAlcanza ? '' : 'locked'}" data-buy-med>
+        <span class="emoji">${MEDICINE.emoji}</span>
+        <div class="info">
+          <b>${MEDICINE.name}</b>
+          <small>Cura la enfermedad · tienes ${foodStock(MEDICINE.id)}</small>
+        </div>
+        <span class="menu-record">${coinsLabel(MEDICINE.price)}</span>
+      </div>`;
   const upgradeRows = UPGRADES.map(upgradeRow).join('');
 
   showOverlay(`
@@ -2113,7 +2228,7 @@ function openShop(aviso){
       <button class="shop-tab ${shopTab === 'style' ? 'active' : ''}" id="shopTabStyle">Estilo</button>
     </div>
     <div class="menu-list ${shopTab === 'style' ? 'style-list' : ''}">${
-      shopTab === 'food' ? foodRows : shopTab === 'upgrades' ? upgradeRows : styleRows()}</div>
+      shopTab === 'food' ? foodRows + medShopRow : shopTab === 'upgrades' ? upgradeRows : styleRows('shop')}</div>
     <button class="overlay-btn secondary" id="btnCloseShop">Cerrar</button>
   `, hideOverlay);
 
@@ -2145,17 +2260,26 @@ function openShop(aviso){
         state.style.owned[it.id] = true;
         const puesto = isStyleEquipped(it) || toggleStyleItem(it);   // se estrena apenas se compra
         saveState(); applyStyle(); render();
-        reopen(puesto ? `¡${it.name} comprado! Te quedan ${coinsLabel(state.coins)}`
-          : `¡${it.name} comprado! Ya hay 3 muebles puestos: saca uno para ponerlo`);
+        reopen(puesto ? `¡${it.name} comprado y puesto! Cámbialo cuando quieras en Personalizar`
+          : `¡${it.name} comprado! Ya hay 3 muebles puestos: ponlo desde Personalizar`);
         return;
       }
-      if (!toggleStyleItem(it)){
-        reopen('Ya hay 3 muebles puestos: toca uno de los puestos para sacarlo');
-        return;
-      }
-      saveState(); applyStyle(); render();
-      reopen();
+      /* Lo ya comprado se pone y se saca en Personalizar, no acá: la tienda
+         es solo para comprar. */
+      reopen(`${it.name} ya es tuyo: póntelo o sácatelo en Personalizar`);
     });
+  });
+
+  const buyMed = document.querySelector('[data-buy-med]');
+  if (buyMed) buyMed.addEventListener('click', () => {
+    if (state.coins < MEDICINE.price){
+      openShop(`Te faltan ${coinsLabel(MEDICINE.price - state.coins)} para ${MEDICINE.name}`);
+      return;
+    }
+    state.coins -= MEDICINE.price;
+    state.pantry[MEDICINE.id] = foodStock(MEDICINE.id) + 1;
+    saveState(); render();
+    openShop(`¡${MEDICINE.name} comprada! Te quedan ${coinsLabel(state.coins)}`);
   });
 
   document.querySelectorAll('[data-buy]').forEach(el => {
@@ -2199,6 +2323,38 @@ function openShop(aviso){
   });
 
   document.getElementById('btnCloseShop').addEventListener('click', hideOverlay);
+}
+
+/* ===================== Personalizar =====================
+   Todo lo comprado en la pestaña Estilo, en un solo lugar para ponérselo y
+   sacárselo. La tienda queda solo para comprar. Como en la pestaña Estilo, el
+   fondo va sin desenfoque (.clear) para ver el cambio al tiro. */
+function openPersonalize(aviso){
+  showOverlay(`
+    <h3>🎨 Personalizar</h3>
+    <p class="${aviso ? 'sheet-note warn' : ''}">${aviso ? escapeHtml(aviso) : 'Toca algo para ponérselo o sacárselo.'}</p>
+    <div class="menu-list style-list">${styleRows('mine')}</div>
+    <button class="overlay-btn secondary" id="btnClosePersonalize">Cerrar</button>
+  `, hideOverlay);
+  document.getElementById('overlay').classList.add('clear');
+
+  const reopen = (msg) => {
+    const scroll = document.querySelector('.overlay-card .menu-list').scrollTop;
+    openPersonalize(msg);
+    document.querySelector('.overlay-card .menu-list').scrollTop = scroll;
+  };
+  document.querySelectorAll('[data-style]').forEach(el => {
+    el.addEventListener('click', () => {
+      const it = styleItemById(el.dataset.style);
+      if (!toggleStyleItem(it)){
+        reopen('Ya hay 3 muebles puestos: toca uno de los puestos para sacarlo');
+        return;
+      }
+      saveState(); applyStyle(); render();
+      reopen();
+    });
+  });
+  document.getElementById('btnClosePersonalize').addEventListener('click', hideOverlay);
 }
 
 /* ===================== Menú de minijuegos =====================
@@ -5615,9 +5771,9 @@ function wireButtons(){
   document.getElementById('btnFeed').addEventListener('click', requireAlive(btnFeed));
   document.getElementById('btnPlay').addEventListener('click', requireAlive(() => openGamesMenu()));
   document.getElementById('btnClean').addEventListener('click', requireAlive(btnClean));
-  document.getElementById('btnFoodMenu').addEventListener('click', requireAlive(openFoodMenu));
+  document.getElementById('btnFoodMenu').addEventListener('click', requireAlive(() => openFoodMenu()));
   document.getElementById('btnShop').addEventListener('click', requireAlive(() => openShop()));
-  document.getElementById('btnMed').addEventListener('click', requireAlive(btnMed));
+  document.getElementById('btnStyle').addEventListener('click', requireAlive(() => openPersonalize()));
   document.getElementById('btnDebug').addEventListener('click', requireAlive(toggleDebugPanel));
   document.getElementById('btnCloseDebugSide').addEventListener('click', closeDebugPanel);
   document.getElementById('petCanvas').addEventListener('click', requireAlive(() => {
