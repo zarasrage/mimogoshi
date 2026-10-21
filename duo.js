@@ -141,8 +141,9 @@ function renderBuddy(){
   syncBuddy();
   fitPetCanvas(c);
   const ctx = c.getContext('2d');
-  drawSprite(ctx, buddy.stage, buddyMood(performance.now()), buddy.frame, false,
+  const drawn = drawSprite(ctx, buddy.stage, buddyMood(performance.now()), buddy.frame, false,
     stageDeviceScale(buddy.stage), { w: c.width, h: c.height }, buddy);
+  buddy.drawn = buddy.hidden ? null : drawn;
   c.style.left = (buddy.x * 100) + '%';
   c.style.bottom = (4 + buddy.y) + 'px';
   c.style.transform = `translateX(-50%) scaleX(${buddy.dir})`;

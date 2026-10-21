@@ -1168,7 +1168,8 @@ function render(){
   canvas.style.bottom = (4 + walker.y) + 'px';
   canvas.style.transform = `translateX(-50%) scaleX(${walker.dir})`;
   canvas.style.opacity = walker.hidden ? '0' : '';
-  updateHat(walker.hidden ? null : drawn);
+  walker.drawn = walker.hidden ? null : drawn;   // para saber si un toque cae sobre ella (muebles.js)
+  updateHat(walker.drawn);
   if (typeof renderBuddy === 'function') renderBuddy();
   updateFurniture();
 

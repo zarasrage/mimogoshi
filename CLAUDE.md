@@ -599,6 +599,23 @@ también en `catchUp()`), y cada visita espontánea da `FURNI_JOY` (+1) de
 felicidad con tope `FURNI_JOY_PER_HOUR` (6) por hora real (`state.furniJoy`):
 dejarla sola con muebles no puede reemplazar cuidarla.
 
+**Tocar un mueble** (fuera de los menús y del modo acomodar) manda a la
+mascota a usarlo en el momento (`commandFurniVisit()`): una visita con los
+mismos guiones de siempre, cortando lo que estuviera haciendo. Si el
+acompañante ya estaba jugando en ese mueble (o está libre, la mitad de las
+veces) lo usan de a dos. Si está dormida, triste o enferma no va y lo dice
+(`furniCommandBlocked()`). Las capas de muebles siguen con
+`pointer-events:none` (si no taparían a la mascota y la caca): el toque se
+mira a mano en un listener **de captura** sobre `#creatureFloor`, que corre
+antes que el de la mascota. Un toque sobre el cuerpo de un personaje
+(`spriteHit()`, con la caja del frame que guarda `render()` en `walker.drawn` /
+`renderBuddy()` en `buddy.drawn`) sigue siendo un mimo; solo si cae en un
+píxel pintado de un mueble (`partHit()`, leyendo el canvas de la pieza, con
+`FURNI_TAP_SLOP` px de tolerancia para que el pie de la bola disco o la cuerda
+de la piñata se puedan tocar con el dedo) se lo come el mueble. El destello
+(`.furni-part.poked`) va en `filter` y no en `transform`, que lo escribe
+`updateFurniture()` cada cuadro.
+
 **Probado** corriendo en Chromium cada guion de cada mueble por índice (visitas
 con la mascota y con el acompañante, duos y rutinas: 104 en total): 0 errores,
 0 que se queden trabados esperando en un `sync`, y todos terminan con los dos

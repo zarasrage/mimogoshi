@@ -409,6 +409,148 @@ function findFurniSpotFrom(rt, x){
   return spot;
 }
 
+/* ---------- tocar un mueble: ir a usarlo ----------
+   Fuera de los menús y del modo acomodar, tocar un mueble manda a la mascota
+   a usarlo en el momento (una visita, con los mismos guiones de siempre). Si
+   el acompañante ya estaba ahí, lo usan de a dos.
+
+   Los muebles no reciben toques (sus capas van con pointer-events:none, si
+   no taparían a la mascota y la caca), así que se miran a mano en un listener
+   de captura sobre #creatureFloor, que corre antes que el de la mascota: un
+   toque sobre el cuerpo de un personaje sigue siendo un mimo, y solo si cae
+   en un mueble (en un píxel pintado, con FURNI_TAP_SLOP de tolerancia para
+   que las piezas finas —el pie de la bola disco, la cuerda de la piñata— se
+   puedan tocar con el dedo) se lo come el mueble. */
+
+const FURNI_TAP_SLOP = 8;   // px CSS de tolerancia alrededor de lo pintado
+
+/* ¿El punto (clientX/Y) cae sobre el cuerpo de un personaje? Se usa la caja
+   del frame dibujado (lo que devuelve drawSprite), un poco achicada por los
+   costados porque la celda de 32 trae aire a los lados. */
+function spriteHit(canvas, drawn, x, y){
+  if (!drawn || !drawn.frame) return false;
+  const r = canvas.getBoundingClientRect();
+  const k = r.width / drawn.box.w;
+  const w = drawn.frame.w * drawn.scale * k, h = drawn.frame.h * drawn.scale * k;
+  const left = r.left + drawn.dx * k + w * 0.15, right = left + w * 0.7;
+  const top = r.top + drawn.dy * k + h * 0.1, bottom = r.top + (drawn.dy * k) + h;
+  return x >= left && x <= right && y >= top && y <= bottom;
+}
+
+/* ¿Hay algo pintado de esta pieza cerca del punto? Lee los píxeles del canvas
+   de la pieza (arte dibujado con código: nunca está "contaminado", también
+   anda con file://). Si el navegador no deja leer, cuenta la caja entera. */
+function partHit(el, x, y){
+  const r = el.getBoundingClientRect();
+  if (x < r.left - FURNI_TAP_SLOP || x > r.right + FURNI_TAP_SLOP ||
+      y < r.top - FURNI_TAP_SLOP || y > r.bottom + FURNI_TAP_SLOP) return false;
+  try {
+    const sx = el.width / r.width, sy = el.height / r.height;
+    const cx = Math.round((x - r.left) * sx), cy = Math.round((y - r.top) * sy);
+    const rx = Math.ceil(FURNI_TAP_SLOP * sx), ry = Math.ceil(FURNI_TAP_SLOP * sy);
+    const x0 = Math.max(0, cx - rx), y0 = Math.max(0, cy - ry);
+    const x1 = Math.min(el.width, cx + rx + 1), y1 = Math.min(el.height, cy + ry + 1);
+    if (x1 <= x0 || y1 <= y0) return false;
+    const data = el.getContext('2d').getImageData(x0, y0, x1 - x0, y1 - y0).data;
+    for (let i = 3; i < data.length; i += 4) if (data[i] > 0) return true;
+    return false;
+  } catch (e) { return true; }
+}
+
+/* El mueble bajo el punto, o null. Si hay dos encimados gana el de adelante
+   (borde de la bañera, después los libres, después el resto). */
+function furniAtPoint(x, y){
+  const layerRank = { furniFront: 0, furniMid: 1, furniBack: 2 };
+  let best = null, bestRank = 9;
+  for (const rt of furniRt){
+    if (rt.removed) continue;
+    for (const { el } of Object.values(rt.els)){
+      if (el._v === false || el.classList.contains('hidden')) continue;
+      const rank = layerRank[el.parentElement && el.parentElement.id] ?? 3;
+      if (rank < bestRank && partHit(el, x, y)){ best = rt; bestRank = rank; }
+    }
+  }
+  return best;
+}
+
+/* Por qué no puede ir ahora, o null si puede. */
+function furniCommandBlocked(){
+  const mood = displayMood();
+  if (state.sleeping || mood === 'sleepy') return 'Shh… está durmiendo 💤';
+  if (mood === 'sick') return 'Se siente mal: primero, una medicina 💊';
+  if (mood === 'sad') return 'Está triste, no tiene ganas de jugar…';
+  return null;
+}
+
+function commandFurniVisit(rt){
+  const art = FURNI_ART[rt.id];
+  /* Destello en el mueble: se ve que el toque entró, vaya o no. */
+  for (const { el } of Object.values(rt.els)){
+    el.classList.remove('poked'); void el.offsetWidth; el.classList.add('poked');
+    el.addEventListener('animationend', () => el.classList.remove('poked'), { once: true });
+  }
+  const no = furniCommandBlocked();
+  if (no){ say(no); return; }
+  if (!art.visits || !art.visits.length) return;
+  petAction = null;
+  if (walker.activity && walker.activity.rt === rt && walker.activity.kind !== 'eat' && walker.activity.kind !== 'clean'){
+    petFx('❗', walker);   // ya está en eso
+    return;
+  }
+  if (walker.activity) endFurniActivity(walker);
+  const now = performance.now();
+  /* Si el acompañante está libre o ya jugando ahí solo, lo usan de a dos. */
+  const b = typeof buddyActive === 'function' && buddyActive() ? buddy : null;
+  const buddyHere = b && b.activity && b.activity.rt === rt && b.activity.kind === 'visit';
+  const buddyFree = b && !b.activity && !b.action && b.y === 0;
+  if (art.duos && art.duos.length && (buddyHere || (buddyFree && Math.random() < 0.5))){
+    if (b.activity) endFurniActivity(b, false);
+    startFurniDuo(rt, walker, b);
+  } else {
+    /* Lo que hubiera en el mueble se corre: lo pidió quien juega. */
+    for (const act of allActors()) if (act !== walker && act.activity && act.activity.rt === rt) endFurniActivity(act);
+    startFurniActivity(rt, 'visit', walker);
+  }
+  /* Si estaba arriba de otro mueble, primero se baja: si no, el primer
+     paso (caminar) lo lleva por el aire. */
+  for (const act of allActors()){
+    if (act.activity && act.activity.rt === rt && act.y > 1) act.activity.steps.unshift({ hop: { x: act.x, y: 0 }, ms: 300, h: 6 });
+  }
+  walker.lastVisit = rt.id;
+  petFx('❗', walker);
+  if (typeof socialNextAt !== 'undefined') socialNextAt = Math.max(socialNextAt, now + 4000);
+}
+
+function furniTapTarget(e){
+  if (!state || gameOver || arranging || activeMinigame || displayStage() === 'egg') return null;
+  if (e.target.closest && e.target.closest('.poop-fx, .gift-fx')) return null;
+  const x = e.clientX, y = e.clientY;
+  /* Tocar el cuerpo de un personaje sigue siendo tocarlo a él. */
+  if (spriteHit(document.getElementById('petCanvas'), walker.drawn, x, y)) return null;
+  if (typeof buddy !== 'undefined' && buddyActive() &&
+      spriteHit(document.getElementById('buddyCanvas'), buddy.drawn, x, y)) return null;
+  return furniAtPoint(x, y);
+}
+
+if (typeof window !== 'undefined'){
+  window.addEventListener('DOMContentLoaded', () => {
+    const floor = document.getElementById('creatureFloor');
+    floor.addEventListener('click', e => {
+      const rt = furniTapTarget(e);
+      if (!rt) return;
+      e.stopPropagation();   // ni mimo ni limpiar la caca de pasada
+      commandFurniVisit(rt);
+    }, true);
+    /* Con mouse, la manito avisa que el mueble se puede tocar. */
+    if (window.matchMedia && window.matchMedia('(hover: hover)').matches){
+      floor.addEventListener('mousemove', e => {
+        const on = !!furniTapTarget(e);
+        if (floor._hand !== on){ floor._hand = on; floor.classList.toggle('furni-hover', on); }
+      });
+    }
+  });
+}
+
 /* ===================== Actores =====================
    Un "actor" es un personaje en la pieza: la mascota (`walker`, app.js) o
    el acompañante (`buddy`, duo.js). Los dos tienen la misma forma (x, y,
