@@ -175,8 +175,9 @@ body{
 /* ---------- device shell ---------- */
 
 .device{
-  /* Más ancho que antes (340), pero el 92vw deja siempre un margen lateral: a
-     pantalla completa el aparato deja de leerse como aparato. */
+  /* En escritorio, un aparato de 420px centrado. En el teléfono va de borde a
+     borde (ver el @media del final): ahí lo que importa es el ancho de la
+     pieza, no que se lea como aparato con margen alrededor. */
   width:min(420px, 92vw);
   background:
     radial-gradient(120% 60% at 20% 0%, rgba(255,255,255,.35), transparent 55%),
@@ -1647,6 +1648,30 @@ body{
   .controls{margin-top:12px; gap:8px;}
   .dock{gap:7px;}
   .speaker{margin-top:10px;}
+}
+
+/* Teléfono: el aparato llega a los bordes laterales, sin margen, y se le
+   recorta relleno al marco y al bisel. Con 390px de ancho la pantalla pasa
+   de ~299 a ~350px (la pieza, los muebles y los minijuegos se adaptan solos:
+   floorWidth() y fitGameCanvas() leen el tamaño real). En las pantallas
+   altas también gana alto. Va después del @media de pantallas bajas para
+   ganarle al relleno lateral de ahí. Los env(safe-area-inset-*) quedan: con
+   el teléfono de lado, el notch no tapa el borde. */
+@media (max-width: 500px){
+  body{
+    padding-left:env(safe-area-inset-left);
+    padding-right:env(safe-area-inset-right);
+  }
+  #stage{width:100%;}
+  .layout-row{width:100%;}
+  .device{
+    width:100%;
+    padding-left:10px;
+    padding-right:10px;
+    border-radius:30px;
+  }
+  .screen-bezel{padding:8px;}
+  .screen{min-height:clamp(290px, 46vh, 460px);}
 }
 
 @media (prefers-reduced-motion: reduce){

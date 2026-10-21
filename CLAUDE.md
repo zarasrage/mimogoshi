@@ -292,6 +292,14 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   usa 16px (con menos, Safari de iPhone hace zoom al enfocar).
 - Preparado para app a pantalla completa: `viewport-fit=cover`, `theme-color`
   y padding con `env(safe-area-inset-*)` en `body` y en la hoja.
+- **En el teléfono (≤ 500px de ancho) el aparato va de borde a borde**, sin
+  margen lateral (`@media (max-width: 500px)` al final de `styles.css`), con
+  menos relleno en el marco y el bisel y un poco más de alto de pantalla
+  (`clamp(290px, 46vh, 460px)`). En 390px la LCD pasó de 299x354 a 354x388 y el
+  canvas de los minijuegos de 279 a 334 de ancho. Nada más hay que tocar: la
+  pieza, los muebles y los minijuegos leen el tamaño real (`floorWidth()`,
+  `fitGameCanvas()`). Medido en 360x640, 375x667, 390x844 y 414x896: sin
+  scroll en ninguno. En escritorio sigue el aparato de 420px centrado.
 
 ## Estado del juego
 
