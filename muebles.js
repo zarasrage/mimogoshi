@@ -39,7 +39,7 @@ const FURNI_VISIT_CHANCE = 0.45;      // al terminar cada paseo, chance de ir a 
 const FURNI_VISIT_GAP_MS = 14000;     // pausa mínima (aprox.) entre una visita y otra
 const FURNI_JOY = 1;
 const FURNI_JOY_PER_HOUR = 6;
-const FURNI_BED_ENERGY_MULT = 1.25;
+const FURNI_BED_ENERGY_MULT = 1.5;
 /* Si una visita (sola o de a dos) terminó antes de esto, encadena otro guion
    del mismo mueble (distinto si hay): así ninguna queda corta y además se
    mezclan los patrones. Los guiones duran de 5 a 15 s, así que con 9 s las
