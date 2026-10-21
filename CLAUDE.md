@@ -664,8 +664,12 @@ dibujo y tamaño pero los **mismos guiones**: `BALL_VISITS` (16 formas de jugar
 solo: patadas largas con botes, dribleo, equilibrio encima, cabecitas,
 lanzarla y atraparla, golazo, contra la pared, se le escapa, sentada
 rebotando, pataditas, cabezazo, empujarla con la nariz, bolos, siesta
-abrazada, bailar con ella y llevarla en la cabeza) y `BALL_DUOS` (pases,
-cabezazos de a dos y penales con arquero). Cada pelota es `ballArt(w, draw)`.
+abrazada, bailar con ella y llevarla en la cabeza) y `BALL_DUOS` (9 de a
+dos: pases, cabezazos, penales con arquero, lanzársela con las manos, quítasela
+—uno se la lleva y el otro lo persigue—, rodarla despacito, saltar la pelota
+—uno la tira contra la pared y el otro la salta a la ida y a la vuelta, con el
+salto calculado por distancia—, partidito y circo —uno hace equilibrio encima
+y el otro la empuja—). Cada pelota es `ballArt(w, draw)`.
 Los guiones se escriben con `ballKit(f)`, que mide la pelota (diámetro en px
 CSS) y al personaje (cabeza, manos), así valen para cualquier tamaño de
 pelota y de personaje. La pelota se mueve de verdad (física en `muebles.js`,
@@ -712,7 +716,7 @@ de la piñata se puedan tocar con el dedo) se lo come el mueble. El destello
 
 **Probado** corriendo en Chromium cada guion de cada mueble por índice (visitas
 con la mascota y con el acompañante, duos y rutinas; con las pelotas son
-157): 0 errores,
+175): 0 errores,
 0 que se queden trabados esperando en un `sync`, todos terminan con los dos
 en el piso y la pelota siempre queda quieta, en el piso y dentro de la pieza. Al sumar o cambiar un guion, conviene repetir eso.
 

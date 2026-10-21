@@ -1033,7 +1033,7 @@ const S = {
 /* ---------- las pelotas ----------
    Tres pelotas (pelota, balón, pelota de playa) con distinto dibujo y tamaño
    pero los MISMOS guiones: BALL_VISITS (16 formas de jugar solo) y
-   BALL_DUOS (3 de a dos). Los guiones se escriben con ballKit(f), que mide
+   BALL_DUOS (9 de a dos). Los guiones se escriben con ballKit(f), que mide
    la pelota del mueble (diámetro en px CSS) y al personaje, así sirven para
    cualquier tamaño de pelota y cualquier etapa. La pelota no vuelve a su
    lugar: queda donde terminó el juego, como una pelota de verdad. */
@@ -1335,6 +1335,138 @@ const BALL_DUOS = [
     }
     a.push(S.sync('end', { dir: 'partner' }), S.happy(900, { dir: 'partner', fx: ['👏'] }));
     b.push(S.sync('end', { dir: 'partner' }), S.dance(900, 300));
+    return { a, b };
+  },
+  /* Lanzarse la pelota con las manos, en arcos de distinto alto. La última
+     sale muy alta, le pasa por encima al otro y se le cae atrás. */
+  f => {
+    const B = ballKit(f), sd = B.side, P = { dir: 'partner' };
+    const xa = clampX(B.bx() - sd * B.reach), xb = clampX(xa + sd * 0.3);
+    const handsAt = act => { const h = B.hands(act); return { x: clampX(act.x + act.dir * B.px(h[0])), y: h[1] }; };
+    const a = [{ go: xa }, S.sync('in', P), ...B.pickup(), S.sync('go', P)];
+    const b = [{ go: xb }, S.sync('in', P), S.sync('go', P)];
+    const alto = [30, 55, 22, 70, 40];
+    alto.forEach((h, i) => {
+      const [snd, rcv] = i % 2 ? [b, a] : [a, b];
+      snd.push(S.sync('t' + i, P),
+        { ball: st => { const t = handsAt(st.partner); return { x: t.x, y: t.y, h, ms: 650 + h * 6 }; }, anim: 'happy', dir: 'partner', until: B.idle },
+        S.sync('c' + i, P));
+      rcv.push(S.sync('t' + i, P), S.sync('c' + i, P), { follow: (st, act) => B.hands(act), anim: 'happy', ms: 350, fx: i === 3 ? ['⭐'] : undefined });
+    });
+    /* La quinta la atrapó `b`: tira la última, que se le pasa a `a`. */
+    b.push(S.sync('last', P), { ball: st => ({ x: clampX(st.partner.x - sd * 0.16), h: 80, bounces: 2, ms: 1500 }), anim: 'happy', dir: 'partner', until: B.idle },
+      S.sync('end', P), S.happy(1100, { ...P, fx: ['😂'], fxEvery: 550 }));
+    a.push(S.sync('last', P), S.wait(500, 'idle', P), S.wait(700, 'sick', { dir: 'ball', fx: ['😮'] }),
+      S.sync('end', P), S.happy(1100, { ...P, fx: ['😆'] }));
+    return { a, b };
+  },
+  /* Quítasela: uno se la lleva empujándola y el otro lo persigue hasta
+     alcanzarlo; ahí se la quita y se invierten los papeles. */
+  f => {
+    const B = ballKit(f), sd = B.side, P = { dir: 'partner' };
+    const nose = (st, act) => [B.R + actorCssH(act) * 0.3, 0];
+    const bx0 = B.bx(), lejos = clampX(bx0 + sd * 0.3), vuelta = clampX(bx0 - sd * 0.05);
+    const pega = B.px(f.h * 0.9);
+    const a = [{ go: B.behind(sd) }, S.sync('in', P),
+      { follow: nose, anim: 'happy', ms: 250, dir: sd }, { go: lejos, speed: 0.1 }, S.sync('pillada', P),
+      { release: true, anim: 'sad', ms: 600, fx: ['😮'] },
+      { chase: 4000, speed: 0.15, catchDist: pega }, S.sync('pillada2', P), S.happy(1200, { ...P, fx: ['😆'], fxEvery: 600 })];
+    const b = [{ go: () => clampX(B.bx() - sd * (B.reach + 0.14)) }, S.sync('in', P),
+      S.wait(600, 'idle', { ...P, fx: ['❗'] }),
+      { chase: 4500, speed: 0.15, catchDist: pega }, S.sync('pillada', P),
+      { go: () => clampX(B.bx() + sd * B.reach), speed: 0.16 },
+      { follow: nose, anim: 'happy', ms: 250, dir: -sd, fx: ['😝'] }, { go: vuelta, speed: 0.1 },
+      S.sync('pillada2', P), { release: true, anim: 'happy', ms: 1200, dir: 'partner', fx: ['😂'] }];
+    return { a, b };
+  },
+  /* Rodarla despacito: cerca, frente a frente, se la devuelven sin apuro. */
+  f => {
+    const B = ballKit(f), sd = B.side, P = { dir: 'partner' }, dist = 0.2;
+    const a = [{ go: B.behind(sd) }, S.sync('in', P)];
+    const b = [{ go: () => clampX(B.bx() + sd * (dist + B.reach)) }, S.sync('in', P)];
+    for (let i = 0; i < 3; i++){
+      a.push({ kick: sd * f.fw * dist, ms: 1600, dir: 'partner', anim: 'pet' }, S.sync('k' + 2 * i, P),
+        S.wait(1600, 'idle', { dir: 'ball' }), S.sync('k' + (2 * i + 1), P), { anim: 'pet', ms: 500, dir: 'partner', fx: ['💗'] });
+      b.push(S.wait(1600, 'idle', { dir: 'ball' }), S.sync('k' + 2 * i, P), { anim: 'pet', ms: 500, dir: 'partner', fx: ['💕'] },
+        { kick: -sd * f.fw * dist, ms: 1600, dir: 'partner', anim: 'pet' }, S.sync('k' + (2 * i + 1), P));
+    }
+    a.push(S.happy(900, P)); b.push(S.happy(900, P));
+    return { a, b };
+  },
+  /* Saltar la pelota: `a` la tira rodando fuerte, `b` la salta, rebota en
+     la pared y la vuelve a saltar de vuelta. Cada ronda más rápido. */
+  f => {
+    const B = ballKit(f), sd = B.side, P = { dir: 'partner' };
+    const bx0 = B.bx(), xa = clampX(bx0 - sd * B.reach), xb = clampX(bx0 + sd * 0.26);
+    const wall = sd > 0 ? 0.96 : 0.04, home = clampX(xa + sd * B.reach);
+    const HOP = 420;
+    const a = [{ go: xa }, S.sync('in', P)];
+    const b = [{ go: xb }, S.sync('in', P)];
+    [1150, 950, 780].forEach((ms, i) => {
+      const ida = Math.abs(xb - home) / Math.abs(wall - home) * ms;            // cuándo pasa por `b` a la ida
+      const back = ms * 0.9, vuelta = Math.abs(wall - xb) / Math.abs(wall - home) * back;
+      a.push(S.sync('r' + i, P),
+        { ball: { x: wall, ms }, bounce: 1, ms: 300, h: 5, dir: sd },
+        { anim: 'idle', dir: 'ball', until: B.idle },
+        { ball: { x: home, ms: back }, anim: 'idle', dir: 'ball', until: B.idle },
+        S.sync('v' + i, P));
+      b.push(S.sync('r' + i, P),
+        S.wait(Math.max(0, ida - HOP / 2), 'idle', P), { bounce: 1, ms: HOP, h: 26, anim: 'happy', dir: 'partner' },
+        S.wait(Math.max(0, ms - ida - HOP / 2 + vuelta - HOP / 2), 'idle', { dir: 'ball' }),
+        { bounce: 1, ms: HOP, h: 26, anim: 'happy', dir: 'ball', fx: ['😆'] },
+        S.sync('v' + i, P));
+    });
+    a.push(S.happy(1000, { ...P, fx: ['👏'] }));
+    b.push({ anim: 'celebrate', ms: 1000, dir: 'partner', fx: ['⭐'] });
+    return { a, b };
+  },
+  /* Partidito: la pelota salta al medio, los dos corren y el que llega
+     primero mete el gol en la pared del otro. Una sola ronda: con dos
+     duraba más de 30 s. */
+  f => {
+    const B = ballKit(f), sd = B.side, P = { dir: 'partner' };
+    const mid = clampX(B.bx() + sd * 0.12);
+    const xa = clampX(mid - sd * 0.16), xb = clampX(mid + sd * 0.16);
+    const a = [{ go: B.behind(sd) }, { kick: sd * f.fw * 0.12, ms: 700, dir: sd }, { go: xa }, S.sync('in', P)];
+    const b = [{ go: xb }, S.sync('in', P)];
+    for (let i = 0; i < 1; i++){
+      const ganaA = Math.random() < 0.5;
+      /* El que patea hacia la pared del otro: `a` ataca hacia sd, `b` hacia -sd. */
+      const [win, lose, dirW] = ganaA ? [a, b, sd] : [b, a, -sd];
+      a.push(S.sync('s' + i, P));
+      b.push(S.sync('s' + i, P));
+      a.push({ ball: { dx: 0, h: 36, ms: 900 }, anim: 'idle', dir: 'ball', until: B.idle });
+      b.push({ anim: 'idle', dir: 'ball', ms: 900 });
+      a.push(S.sync('go' + i)); b.push(S.sync('go' + i));
+      win.push({ go: B.behind(dirW), speed: 0.2 },
+        { kick: dirW * f.fw * 0.42, ms: 1300, h: 16, bounces: 3, dir: dirW },
+        { anim: 'celebrate', ms: 1200, fx: ['⚽', '🎉'], fxEvery: 450 }, S.sync('gol' + i, P));
+      lose.push({ go: mid, speed: 0.12 }, S.wait(500, 'sad', { dir: 'ball', fx: ['😮'] }), S.sync('gol' + i, P));
+      /* El que metió el gol la trae de vuelta al medio. */
+      win.push({ go: B.behind(-dirW), speed: 0.17 }, { ball: () => ({ x: mid, ms: 1100, ease: 'out' }), anim: 'happy', until: B.idle },
+        { go: ganaA ? xa : xb, speed: 0.15 }, S.sync('back' + i, P));
+      lose.push({ go: ganaA ? xb : xa, speed: 0.15 }, S.sync('back' + i, P));
+    }
+    a.push(S.happy(900, P)); b.push(S.happy(900, P));
+    return { a, b };
+  },
+  /* Circo de a dos: `a` se sube a la pelota y hace equilibrio mientras `b`
+     la empuja despacito por la pieza. */
+  f => {
+    const B = ballKit(f), sd = B.side, P = { dir: 'partner' }, top = B.D - 1;
+    const nose = (st, act) => [B.R + actorCssH(act) * 0.3, 0];
+    const bx0 = B.bx(), dest = clampX(bx0 - sd * 0.26);
+    const a = [{ go: B.behind(sd) }, { hop: () => ({ x: B.bx(), y: top }), ms: 500, h: 18 }, S.sync('on', P),
+      { anim: 'happy', flip: 1000, fx: ['🎪', '⭐'], fxEvery: 900, until: st => st.duo.data.done,
+        track: (rt, el) => ({ x: ballAbsX(rt), y: top + Math.abs(Math.sin(el / 300)) * 2 }) },
+      { hop: () => ({ x: clampX(B.bx() - sd * B.reach * 1.3), y: 0 }), ms: 500, h: 16 },
+      S.sync('end', P), { anim: 'celebrate', ms: 1100, dir: 'partner', fx: ['🎉'] }];
+    const b = [{ go: () => clampX(B.bx() + sd * B.reach) }, S.sync('on', P),
+      { follow: nose, anim: 'happy', ms: 300, dir: -sd },
+      { go: dest, speed: 0.05 },
+      { release: true, anim: 'happy', ms: 400 },
+      S.call((r, act, st) => { st.duo.data.done = true; }),
+      S.sync('end', P), S.happy(1100, { ...P, fx: ['👏'], fxEvery: 550 })];
     return { a, b };
   },
 ];
@@ -1640,7 +1772,7 @@ const FURNI_ART = {
       }),
     ] },
 
-  /* Tres pelotas, mismos 16 juegos solos y 3 de a dos (BALL_VISITS / BALL_DUOS). */
+  /* Tres pelotas, mismos 16 juegos solos y 9 de a dos (BALL_VISITS / BALL_DUOS). */
   pelota: ballArt(9, p => {
     p.disc(4.5, 4.5, 4.5, (x, y) => y < 4 ? FP.red : y === 4 ? FP.O : FP.white);
     p.r(2, 2, 1, 1, FP.pinkL);
