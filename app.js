@@ -170,18 +170,21 @@ function triggerPetAction(name){
   petAction = { name, startedAt: performance.now() };
 }
 
-function pickAnimation(species, mood, walkFrame, now){
-  if (petAction && species.animations[petAction.name]){
-    const elapsed = now - petAction.startedAt;
-    if (elapsed < animTotalMs(species, petAction.name)) return { name: petAction.name, startedAt: petAction.startedAt };
-    petAction = null;
+/* `act` es el personaje que se dibuja: la mascota (walker, con su petAction)
+   o el acompañante (buddy, con su act.action). Ver "Actores" en muebles.js. */
+function pickAnimation(species, mood, walkFrame, now, act = walker){
+  const action = act.isMain ? petAction : act.action;
+  if (action && species.animations[action.name]){
+    const elapsed = now - action.startedAt;
+    if (elapsed < animTotalMs(species, action.name)) return { name: action.name, startedAt: action.startedAt };
+    if (act.isMain) petAction = null; else act.action = null;
   }
   /* Rutina con un mueble (ver "Muebles"): manda sobre el ánimo mientras dure,
      y se repite en loop aunque sea una acción de una sola vez (limpiarse
      frente al tocador dura más que la animación). */
-  if (walker.anim && species.animations[walker.anim]){
-    const total = animTotalMs(species, walker.anim);
-    return { name: walker.anim, startedAt: now - ((now - walker.animT0) % total) };
+  if (act.anim && species.animations[act.anim]){
+    const total = animTotalMs(species, act.anim);
+    return { name: act.anim, startedAt: now - ((now - act.animT0) % total) };
   }
   if (mood === 'dead')    return { name:'dead',  startedAt:0 };
   if (mood === 'sleepy')  return { name:'sleep', startedAt:0 };
@@ -266,7 +269,7 @@ function currentSpeciesId(){
    `box` es el tamaño del canvas en sus propios píxeles: por defecto el de
    siempre (CANVAS_W/H), y para la mascota principal el canvas en píxeles
    físicos (ver STAGE_CSS_PX). */
-function drawSprite(ctx, stage, mood, walkFrame, noClear, scaleOverride, box = { w: CANVAS_W, h: CANVAS_H }){
+function drawSprite(ctx, stage, mood, walkFrame, noClear, scaleOverride, box = { w: CANVAS_W, h: CANVAS_H }, act = walker){
   if (!noClear) ctx.clearRect(0, 0, box.w, box.h);
   ctx.imageSmoothingEnabled = false;
 
@@ -275,11 +278,11 @@ function drawSprite(ctx, stage, mood, walkFrame, noClear, scaleOverride, box = {
     return;
   }
 
-  const species = speciesById(currentSpeciesId());
+  const species = speciesById(act.isMain ? currentSpeciesId() : act.species);
   if (!species.ready) return; // la imagen carga async; el próximo frame ya la tiene
 
   const now = performance.now();
-  const { name, startedAt } = pickAnimation(species, mood, walkFrame, now);
+  const { name, startedAt } = pickAnimation(species, mood, walkFrame, now, act);
   const frame = frameAtElapsed(species, name, now - startedAt);
 
   const scale = scaleOverride || pixelScale(frame, box);
@@ -399,23 +402,6 @@ const STYLE_ITEMS = [
   { id:'radio',    kind:'deco', slot:'der',   name:'Radio',     emoji:'📻', price: 20 },
   { id:'peluche',  kind:'deco', slot:'der',   name:'Peluche',   emoji:'🧸', price: 25 },
   { id:'trofeo',   kind:'deco', slot:'der',   name:'Trofeo',    emoji:'🏆', price: 40 },
-
-  /* furni: muebles que la mascota usa (arte y guion en FURNI_ART). `use` es la
-     línea chica de la tienda. */
-  { id:'cama',      kind:'furni', name:'Cama',      use:'duerme ahí',  price: 60 },
-  { id:'plato',     kind:'furni', name:'Plato',     use:'come ahí',    price: 30 },
-  { id:'banera',    kind:'furni', name:'Bañera',    use:'se baña',     price: 70 },
-  { id:'tocador',   kind:'furni', name:'Tocador',   use:'se arregla',  price: 60 },
-  { id:'trampolin', kind:'furni', name:'Trampolín', use:'rebota',      price: 50 },
-  { id:'pelota',    kind:'furni', name:'Pelota',    use:'la patea',    price: 25 },
-  { id:'columpio',  kind:'furni', name:'Columpio',  use:'se columpia', price: 70 },
-  { id:'tobogan',   kind:'furni', name:'Tobogán',   use:'se tira',     price: 90 },
-  { id:'radiocasete', kind:'furni', name:'Radiocasete', use:'baila', price: 40 },
-  { id:'tele',      kind:'furni', name:'Tele',      use:'ve tele',     price: 60 },
-  { id:'piano',     kind:'furni', name:'Piano',     use:'toca',        price: 80 },
-  { id:'tarima',    kind:'furni', name:'Tarima',    use:'se sube',     price: 35 },
-  { id:'librero',   kind:'furni', name:'Librero',   use:'trepa',       price: 45 },
-  { id:'cajas',     kind:'furni', name:'Cajas',     use:'escala',      price: 30 },
 ];
 
 const STYLE_SECTIONS = [
@@ -738,7 +724,8 @@ function displayMood(){ return debugForcedMood || currentMood(); }
 
 /* y: altura en px CSS sobre el piso (subido a un mueble). activity/anim: la
    rutina con un mueble en curso (ver "Muebles"). */
-const walker = { x: 0.5, targetX: 0.5, dir: 1, pauseUntil: 0, frame: 0, lastFrameSwitch: 0,
+const walker = { isMain: true, key: 'main', hidden: false,
+  x: 0.5, targetX: 0.5, dir: 1, pauseUntil: 0, frame: 0, lastFrameSwitch: 0,
   y: 0, activity: null, anim: null, animT0: 0, nextVisitAt: 0 };
 
 function freshState(name, species){
@@ -770,6 +757,7 @@ function freshState(name, species){
     gameXp: {},          // experiencia acumulada por juego
     gameLevelPick: {},   // nivel elegido en el menú por juego
     style: freshStyle(), // carcasa, pantalla, accesorio y adornos (pestaña Estilo)
+    companion: null,     // segundo personaje en pantalla (hijo o visita), ver duo.js
   };
 }
 
@@ -833,6 +821,12 @@ function loadState(){
     s.style.furniture = muebles.filter(f => f && vale(f.id, 'furni') && FURNI_ART[f.id] && !vistos.has(f.id) && vistos.add(f.id))
       .slice(0, FURNI_MAX)
       .map(f => ({ id: f.id, x: (typeof f.x === 'number' && isFinite(f.x)) ? Math.min(0.95, Math.max(0.05, f.x)) : 0.5 }));
+    // acompañante: de antes no existía; uno con especie o etapa que ya no existen se descarta
+    if (!s.companion || typeof s.companion !== 'object' || !SPECIES[s.companion.species]) s.companion = null;
+    else {
+      if (!['child', 'teen', 'adult'].includes(s.companion.stage)) s.companion.stage = 'child';
+      if (typeof s.companion.name !== 'string' || !s.companion.name) s.companion.name = SPECIES_RAW[s.companion.species].name;
+    }
     // saves con 'grown' (antes de la escalera de tamaños) o con una etapa fantasma
     if (!ALL_STAGES.includes(s.stage)) s.stage = 'adult';
     return s;
@@ -1012,7 +1006,12 @@ function triggerGameOver(){
 }
 
 /* Cierra cualquier minijuego en curso a la fuerza (ej. si la mascota muere a mitad de partida) */
+/* Los minijuegos de otros archivos (duo.js) registran acá su limpieza, así
+   forceCloseMinigames() los cubre sin saber de ellos. */
+const extraMinigameDisposers = [];
+
 function forceCloseMinigames(){
+  for (const dispose of extraMinigameDisposers) dispose();
   sgDispose();
   rxDispose();
   trDispose();
@@ -1093,46 +1092,37 @@ function updateLed(){
 
 /* ===================== Movimiento pasivo ===================== */
 
+/* ¿Está la mascota en un estado en que no se mueve sola? (durmiendo,
+   triste, enferma, haciendo una acción...). Lo usa también el acompañante
+   para saber si puede invitarla a jugar. */
+function mainFrozen(mood = displayMood()){
+  return gameOver || displayStage() === 'egg' || state.sleeping || !!petAction ||
+    mood === 'sleepy' || mood === 'dead' || mood === 'sad' || mood === 'sick';
+}
+
 function updateWalker(dt){
   if (activeMinigame || arranging) return;
   const mood = displayMood();
   const now = performance.now();
   if (walker.activity){
-    if (furniActivityBroken(mood)) endFurniActivity();
-    else { runFurniActivity(dt, now); return; }
+    if (furniActivityBroken(mood, walker)) endFurniActivity(walker);
+    else { runFurniActivity(dt, now, walker); return; }
   }
   walker.anim = null;
+  walker.hidden = false;
   /* Si una rutina se cortó con la mascota arriba de un mueble, cae al piso. */
   if (walker.y > 0) walker.y = Math.max(0, walker.y - dt * 260);
-  const frozen = gameOver || displayStage() === 'egg' || state.sleeping || petAction ||
-    mood === 'sleepy' || mood === 'dead' || mood === 'sad' || mood === 'sick';
-  if (frozen){
+  if (mainFrozen(mood)){
     walker.frame = 0;
     /* Dormida y con cama puesta: va a acostarse ahí. */
     if (state.sleeping && !gameOver && mood !== 'dead' && displayStage() !== 'egg' && walker.y === 0){
-      startFurniRoutine('sleep');
+      startFurniRoutine('sleep', walker);
     }
     return;
   }
-  if (now < walker.pauseUntil){
-    walker.frame = 0;
-    return;
-  }
-  const dist = walker.targetX - walker.x;
-  if (Math.abs(dist) < 0.01){
-    if (maybeStartFurniVisit(now)) return;
-    walker.pauseUntil = now + 1200 + Math.random()*2200;
-    walker.targetX = 0.12 + Math.random()*0.76;
-    walker.dir = walker.targetX > walker.x ? 1 : -1;
-    return;
-  }
-  walker.dir = dist > 0 ? 1 : -1;
-  walker.x += walker.dir * dt * 0.09;
-
-  if (now - walker.lastFrameSwitch > 220){
-    walker.lastFrameSwitch = now;
-    walker.frame = walker.frame === 1 ? 2 : 1;
-  }
+  wanderActor(walker, dt, now, () =>
+    (typeof maybeStartSocial === 'function' && maybeStartSocial(walker, now)) ||
+    maybeStartFurniVisit(now, walker));
 }
 
 function render(){
@@ -1177,7 +1167,9 @@ function render(){
   canvas.style.left = (walker.x*100) + '%';
   canvas.style.bottom = (4 + walker.y) + 'px';
   canvas.style.transform = `translateX(-50%) scaleX(${walker.dir})`;
-  updateHat(drawn);
+  canvas.style.opacity = walker.hidden ? '0' : '';
+  updateHat(walker.hidden ? null : drawn);
+  if (typeof renderBuddy === 'function') renderBuddy();
   updateFurniture();
 
   /* Enferma: el botón del menú de comidas (donde está el botiquín) avisa. */
@@ -1202,6 +1194,7 @@ function loopRender(t){
   const dt = Math.min(0.05, (t - (lastFrameT || t)) / 1000);
   lastFrameT = t;
   updateWalker(dt);
+  if (typeof updateBuddy === 'function') updateBuddy(dt);
   render();
   animFrame = requestAnimationFrame(loopRender);
 }
@@ -1305,781 +1298,6 @@ function updateHat(drawn){
   el.style.bottom = (4 + walker.y + CANVAS_H - headY - size * HAT_SINK) + 'px';
   el.style.transform = `translateX(-50%) scaleX(${walker.dir}) translateX(${offX}px)`;
   el.classList.remove('hidden');
-}
-
-/* ===================== Muebles =====================
-   Se compran en la pestaña Estilo y se ponen hasta FURNI_MAX a la vez, en
-   cualquier lugar del piso: en Personalizar, "Acomodar muebles" deja
-   arrastrarlos (ver enterArrange). Son pixel art dibujado acá mismo, no
-   emojis: no hay emoji de tocador ni de tobogán que funcione en teléfonos
-   viejos, y al lado del sprite un emoji se ve de otro mundo.
-
-   Lo importante es que la mascota los USA, y sin arte nuevo: cada mueble
-   trae un guion (pasos: caminar, saltar, deslizarse, quedarse haciendo algo)
-   que combina las animaciones que ya tiene toda especie (feliz, limpiarse,
-   comer, dormir...) con movimiento y partículas. Hay dos tipos:
-   - De rutina (cama, plato, bañera): reemplazan una acción que ya existía.
-     Al dormirse va a la cama; al darle de comer va al plato; al limpiarla se
-     mete a la bañera.
-   - Espontáneos (el resto): cada tanto, si está tranquila, elige uno y va.
-
-   Todo lo que hace con un mueble es visual. Los únicos efectos en las barras
-   son chicos a propósito: dormir con cama puesta recupera energía
-   FURNI_BED_ENERGY_MULT veces más rápido, y cada visita espontánea da
-   FURNI_JOY de felicidad, con tope de FURNI_JOY_PER_HOUR por hora real para
-   que dejarla sola con muebles no sea una forma de no cuidarla. */
-
-const FURNI_MAX = 3;
-/* Los tres lugares fijos de antes; solo sirven para migrar saves viejos. */
-const LEGACY_FURNI_SLOTS = { izq: 0.21, centro: 0.5, der: 0.79 };
-/* Separación mínima entre dos muebles, en px CSS. */
-const FURNI_GAP_PX = 4;
-
-const FURNI_VISIT_CHANCE = 0.45;      // al terminar cada paseo, chance de ir a un mueble
-const FURNI_VISIT_GAP_MS = 14000;     // pausa mínima (aprox.) entre una visita y otra
-const FURNI_JOY = 1;
-const FURNI_JOY_PER_HOUR = 6;
-const FURNI_BED_ENERGY_MULT = 1.25;
-
-/* Un píxel del arte de los muebles mide lo mismo que uno de la mascota
-   adulta: así todo en la pieza se ve del mismo "grano". */
-function furniDeviceScale(){ return stageDeviceScale('adult'); }
-function furniK(){ return furniDeviceScale() / DPR; }   // px CSS por píxel del arte
-
-const FP = {
-  O: '#2b1b2e',
-  wood: '#b9774a', woodL: '#d99a66', woodD: '#8a5233',
-  white: '#f4efe9', whiteL: '#ffffff', gray: '#cfc8d6', grayD: '#8d86a0',
-  red: '#e8475a', redL: '#ff7b8a', redD: '#b02a3f', pink: '#ff9ec4', pinkL: '#ffc6dc',
-  blue: '#5aa7ff', blueL: '#8cc4ff', blueD: '#3a6fd0',
-  yel: '#ffd25a', yelL: '#ffe79a', green: '#5ccf7a', greenD: '#3a9e58',
-  metal: '#9aa3b5', metalD: '#5f6678', glass: '#bfe6ff', water: '#8fd3ff',
-  box: '#d39a5c', boxL: '#e8b57d', tape: '#efcf9a', dark: '#2a2433', rope: '#d8cbb0',
-};
-
-/* Pincel de pixel art: todo en píxeles del arte, sobre un canvas a 1:1. */
-function pxPainter(ctx){
-  const r = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
-  /* Rectángulo con contorno y, si se pasa, una fila de brillo arriba. */
-  const box = (x, y, w, h, fill, hi) => {
-    r(x, y, w, h, FP.O); r(x + 1, y + 1, w - 2, h - 2, fill);
-    if (hi) r(x + 1, y + 1, w - 2, 1, hi);
-  };
-  const disc = (cx, cy, rad, fill) => {
-    for (let y = Math.floor(cy - rad); y <= Math.ceil(cy + rad); y++){
-      for (let x = Math.floor(cx - rad); x <= Math.ceil(cx + rad); x++){
-        const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
-        if (d <= rad) r(x, y, 1, 1, d > rad - 1 ? FP.O : (typeof fill === 'function' ? fill(x, y) : fill));
-      }
-    }
-  };
-  const line = (x0, y0, x1, y1, c, t = 1) => {
-    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
-    for (let i = 0; i <= n; i++){
-      r(Math.round(x0 + (x1 - x0) * i / n), Math.round(y0 + (y1 - y0) * i / n), t, t, c);
-    }
-  };
-  return { r, box, disc, line };
-}
-
-/* Arte y guion de cada mueble. Las coordenadas del dibujo van de arriba a la
-   izquierda (como un canvas); las del guion, en píxeles del arte respecto del
-   centro del mueble (f.x) y de alto sobre el piso (f.y).
-   parts: piezas que se dibujan por separado. z 'front' va delante de la
-   mascota (el borde de la bañera); show: solo visible con esa bandera de su
-   estado (comida en el plato, tele prendida); 'seat' y 'ball' se mueven. */
-const FURNI_ART = {
-  cama: { w: 32, h: 14, routine: 'sleep',
-    parts: [{ id: 'base', draw: p => {
-      p.box(0, 0, 5, 14, FP.wood, FP.woodL);
-      p.r(28, 12, 3, 2, FP.O);
-      p.box(4, 9, 28, 4, FP.wood);
-      p.box(4, 6, 28, 4, FP.white);
-      p.box(5, 3, 8, 4, FP.white, FP.whiteL);
-      p.box(13, 5, 19, 5, FP.blue, FP.blueL);
-      p.r(15, 7, 15, 1, FP.blueD);
-    } }],
-    script: f => [
-      { go: f.x(-3) },
-      { hop: { x: f.x(5), y: f.y(7) }, ms: 450, h: 14 },
-      { anim: 'sleep', until: () => !state.sleeping, fx: ['💤'], fxEvery: 1800 },
-      { hop: { x: f.x(21), y: 0 }, ms: 450, h: 12 },
-    ] },
-
-  plato: { w: 12, h: 7, routine: 'eat', free: true,
-    parts: [
-      { id: 'base', draw: p => {
-        p.r(0, 2, 12, 1, FP.O);
-        p.r(0, 3, 1, 2, FP.O); p.r(11, 3, 1, 2, FP.O);
-        p.r(1, 3, 10, 1, FP.redL); p.r(1, 4, 10, 1, FP.red);
-        p.r(1, 5, 1, 1, FP.O); p.r(10, 5, 1, 1, FP.O); p.r(2, 5, 8, 1, FP.redD);
-        p.r(2, 6, 8, 1, FP.O);
-      } },
-      { id: 'food', show: 'food', draw: p => {
-        p.r(2, 1, 8, 2, '#a8683a'); p.r(3, 0, 2, 1, '#c98b4f'); p.r(7, 0, 2, 1, '#c98b4f'); p.r(5, 1, 1, 1, '#c98b4f');
-      } },
-    ],
-    script: f => [
-      { go: f.x(-12) },
-      { anim: 'eat', ms: 3600, dir: 1, fx: ['😋'], fxEvery: 900, start: rt => { rt.food = true; }, end: rt => { rt.food = false; } },
-      { anim: 'happy', ms: 600, fx: ['💖'] },
-    ] },
-
-  banera: { w: 30, h: 16, routine: 'clean',
-    parts: [
-      { id: 'base', draw: p => {
-        p.r(1, 0, 6, 2, FP.metalD); p.r(1, 0, 2, 6, FP.metalD); p.r(5, 2, 2, 2, FP.metal);
-        p.box(0, 5, 30, 9, FP.white);
-        p.r(1, 6, 28, 2, FP.water);
-        p.r(3, 14, 3, 2, FP.O); p.r(24, 14, 3, 2, FP.O);
-      } },
-      { id: 'front', z: 'front', draw: p => {
-        p.r(0, 8, 30, 6, FP.O); p.r(1, 9, 28, 4, FP.white);
-        p.r(1, 9, 28, 1, FP.whiteL); p.r(1, 11, 28, 1, '#e7e0f0');
-      } },
-    ],
-    script: f => [
-      { go: f.x(-19) },
-      { hop: { x: f.x(0), y: f.y(3) }, ms: 500, h: 22 },
-      { anim: 'clean', ms: 2500, fx: ['🧼', '💦'], fxEvery: 350 },
-      { anim: 'happy', ms: 700, flip: 350, fx: ['💦'], fxEvery: 250 },
-      { anim: 'clean', ms: 2000, fx: ['🧼', '💦'], fxEvery: 350 },
-      { hop: { x: f.x(19), y: 0 }, ms: 500, h: 20 },
-    ] },
-
-  tocador: { w: 20, h: 30,
-    parts: [{ id: 'base', draw: p => {
-      p.box(4, 0, 12, 13, FP.pink, FP.pinkL);
-      p.r(6, 2, 8, 9, FP.glass); p.r(7, 3, 2, 4, FP.whiteL); p.r(11, 8, 1, 2, '#e6f6ff');
-      p.r(9, 13, 2, 3, FP.woodD);
-      p.r(3, 12, 2, 4, FP.red); p.r(3, 15, 2, 1, FP.O);
-      p.r(15, 12, 3, 4, FP.pink); p.r(16, 11, 1, 1, FP.pink);
-      p.box(0, 16, 20, 3, FP.wood, FP.woodL);
-      p.box(1, 18, 18, 8, FP.woodL);
-      p.r(2, 22, 16, 1, FP.wood);
-      p.r(9, 20, 2, 1, FP.yel); p.r(9, 24, 2, 1, FP.yel);
-      p.r(2, 26, 2, 4, FP.O); p.r(16, 26, 2, 4, FP.O);
-    } }],
-    script: f => [
-      { go: f.x(16) },
-      { anim: 'clean', ms: 2600, dir: -1, fx: ['✨', '💄', '✨'], fxEvery: 550 },
-      { anim: 'happy', ms: 900, dir: 1, fx: ['💖'] },
-      { anim: 'clean', ms: 2200, dir: -1, fx: ['✨', '💄'], fxEvery: 550 },
-      { go: f.x(-16) },
-      { anim: 'clean', ms: 2000, dir: 1, fx: ['✨', '💄'], fxEvery: 550 },
-      { anim: 'happy', ms: 1600, flip: 400, fx: ['💖', '✨'], fxEvery: 400 },
-    ] },
-
-  trampolin: { w: 26, h: 8,
-    parts: [{ id: 'base', draw: p => {
-      p.r(2, 4, 2, 4, FP.metalD); p.r(22, 4, 2, 4, FP.metalD); p.r(12, 4, 2, 4, FP.metalD);
-      p.box(0, 1, 26, 4, FP.blue, FP.blueL);
-      p.r(2, 2, 22, 1, FP.dark);
-    } }],
-    script: f => [
-      { go: f.x(-18) },
-      { hop: { x: f.x(0), y: f.y(6) }, ms: 450, h: 16 },
-      { bounce: 4, ms: 520, h: 40 },
-      { bounce: 3, ms: 680, h: 64 },
-      { anim: 'happy', ms: 500, fx: ['⭐'] },
-      { bounce: 5, ms: 430, h: 28 },
-      { bounce: 2, ms: 720, h: 72 },
-      { anim: 'happy', ms: 600, fx: ['⭐'] },
-      { bounce: 4, ms: 560, h: 46 },
-      { hop: { x: f.x(19), y: 0 }, ms: 500, h: 26 },
-      { anim: 'happy', ms: 700, fx: ['⭐'] },
-    ] },
-
-  pelota: { w: 9, h: 9, free: true,
-    parts: [{ id: 'ball', draw: p => {
-      p.disc(4.5, 4.5, 4.5, (x, y) => y < 4 ? FP.red : y === 4 ? FP.O : FP.white);
-      p.r(2, 2, 1, 1, FP.pinkL);
-    } }],
-    /* La pelota se mueve de verdad: la patea hacia el centro de la pieza, la
-       sigue, la devuelve, y otra vuelta más. Siempre un número par de patadas,
-       así termina donde estaba. */
-    script: f => {
-      const bx = f.rt.x + f.rt.ballDx / f.fw;
-      const side = bx < 0.5 ? 1 : -1;
-      const lejos = bx + side * 0.27;
-      const steps = [{ go: bx - side * f.dx(10) }];
-      for (let vuelta = 0; vuelta < 2; vuelta++){
-        steps.push(
-          { kick: side * f.fw * 0.27, ms: 900 },
-          { go: lejos + side * f.dx(10), speed: 0.17 },   // la persigue corriendo
-          { anim: 'happy', ms: 500 },
-          { kick: -side * f.fw * 0.27, ms: 900 },
-          { go: bx - side * f.dx(10), speed: 0.17 },
-          { anim: 'happy', ms: 500, fx: ['⭐'] },
-        );
-      }
-      return steps;
-    } },
-
-  columpio: { w: 28, h: 36,
-    parts: [
-      { id: 'base', draw: p => {
-        p.line(3, 35, 7, 1, FP.woodD, 2); p.line(24, 35, 20, 1, FP.woodD, 2);
-        p.box(4, 0, 20, 3, FP.wood, FP.woodL);
-      } },
-      { id: 'seat', pivot: [14, 2], draw: p => {
-        p.r(9, 3, 1, 23, FP.rope); p.r(18, 3, 1, 23, FP.rope);
-        p.box(7, 26, 14, 3, FP.red, FP.redL);
-      } },
-    ],
-    script: f => [
-      { go: f.x(0) },
-      { hop: { x: f.x(0), y: f.y(9) }, ms: 400, h: 10 },
-      /* Cada tramo dura un múltiplo exacto del período: así termina con el
-         asiento derecho y el siguiente arranca sin salto. */
-      { anim: 'happy', ms: 3000, swing: { amp: 0.25, period: 1500, L: f.y(24) } },
-      { anim: 'happy', ms: 7500, swing: { amp: 0.5, period: 1500, L: f.y(24) }, fx: ['🎵'], fxEvery: 1500 },
-      { anim: 'happy', ms: 3000, swing: { amp: 0.25, period: 1500, L: f.y(24) } },
-      { hop: { x: f.x(17), y: 0 }, ms: 450, h: 16 },
-    ] },
-
-  tobogan: { w: 34, h: 24,
-    parts: [{ id: 'base', draw: p => {
-      p.r(0, 2, 1, 22, FP.metalD); p.r(5, 2, 1, 22, FP.metalD);
-      for (let y = 5; y < 24; y += 4) p.r(1, y, 4, 1, FP.metal);
-      p.r(20, 13, 2, 11, FP.metalD);
-      for (let i = 0; i <= 22; i++){
-        const x = 10 + i, y = 2 + Math.round(i * 0.82);
-        p.r(x, y - 1, 1, 1, FP.O); p.r(x, y, 1, 3, FP.red); p.r(x, y + 3, 1, 1, FP.O);
-      }
-      p.r(31, 20, 3, 2, FP.red); p.r(31, 22, 3, 1, FP.O);
-      p.box(0, 1, 11, 3, FP.yel, FP.yelL);
-    } }],
-    /* Dos vueltas: sube, se tira, vuelve corriendo a la escalera y otra vez. */
-    script: f => {
-      const vuelta = () => [
-        { go: f.x(-21) },
-        { slide: { x: f.x(-14), y: f.y(23) }, ms: 1300, anim: 'walk' },
-        { go: f.x(-9), speed: 0.07 },
-        { anim: 'happy', ms: 600, dir: 1 },
-        { slide: { x: f.x(15), y: f.y(4) }, ms: 650, anim: 'happy', fx: ['💨'] },
-        { hop: { x: f.x(21), y: 0 }, ms: 350, h: 8 },
-        { anim: 'happy', ms: 800, fx: ['💨', '⭐'], fxEvery: 350 },
-      ];
-      return [...vuelta(), ...vuelta()];
-    } },
-
-  radiocasete: { w: 16, h: 12,
-    parts: [
-      { id: 'base', draw: p => {
-        p.r(4, 0, 8, 1, FP.O); p.r(4, 0, 1, 3, FP.O); p.r(11, 0, 1, 3, FP.O);
-        p.box(0, 2, 16, 10, FP.metalD, '#7c849a');
-        p.disc(4, 7.5, 2.6, FP.dark); p.disc(12, 7.5, 2.6, FP.dark);
-        p.r(6, 4, 4, 2, FP.gray);
-      } },
-      { id: 'light', show: 'on', draw: p => { p.r(7, 9, 2, 1, '#5cff8a'); } },
-    ],
-    script: f => [
-      { go: f.x(14), start: rt => { rt.on = true; } },
-      { anim: 'happy', ms: 3200, flip: 420, fx: ['🎵', '🎶'], fxEvery: 450 },
-      { bounce: 4, ms: 380, h: 14 },
-      { go: f.x(-14) },
-      { anim: 'happy', ms: 3000, flip: 300, fx: ['🎵', '🎶'], fxEvery: 400 },
-      { bounce: 3, ms: 380, h: 18 },
-      { anim: 'happy', ms: 1500, flip: 250, fx: ['🎶'], fxEvery: 300, end: rt => { rt.on = false; } },
-    ] },
-
-  tele: { w: 20, h: 20,
-    parts: [
-      { id: 'base', draw: p => {
-        p.line(10, 4, 6, 0, FP.O); p.line(10, 4, 14, 0, FP.O);
-        p.box(1, 4, 18, 12, '#4a3a6a', '#5e4b85');
-        p.r(3, 6, 12, 8, '#16202b');
-        p.r(16, 7, 1, 1, FP.yel); p.r(16, 10, 1, 1, FP.yel);
-        p.r(4, 16, 2, 4, FP.O); p.r(14, 16, 2, 4, FP.O);
-      } },
-      { id: 'screen', show: 'on', flicker: true, draw: p => {
-        p.r(3, 6, 12, 8, '#7cc6ff'); p.r(11, 7, 2, 2, FP.yel);
-        p.r(3, 11, 12, 3, FP.green); p.r(6, 10, 5, 1, FP.green);
-      } },
-    ],
-    script: f => [
-      { go: f.x(16), start: rt => { rt.on = true; } },
-      { anim: 'idle', ms: 5000, dir: -1 },
-      { anim: 'happy', ms: 1200, dir: -1, fx: ['😆'], fxEvery: 600 },
-      { bounce: 2, ms: 420, h: 12 },
-      { anim: 'idle', ms: 5500, dir: -1, fx: ['😆'], fxEvery: 2600 },
-      { anim: 'happy', ms: 1500, flip: 500, fx: ['😆'], fxEvery: 700, end: rt => { rt.on = false; } },
-    ] },
-
-  piano: { w: 26, h: 20,
-    parts: [{ id: 'base', draw: p => {
-      p.box(0, 0, 26, 14, '#3b2433', '#53324a');
-      p.r(9, 3, 8, 5, FP.white); p.r(10, 5, 6, 1, FP.grayD);
-      p.box(0, 11, 26, 5, FP.white);
-      for (let i = 0; i < 8; i++) p.r(2 + i * 3, 12, 1, 2, '#1d1424');
-      p.r(2, 16, 2, 4, FP.O); p.r(22, 16, 2, 4, FP.O);
-    } }],
-    script: f => [
-      { go: f.x(18) },
-      { anim: 'happy', ms: 3600, dir: -1, fx: ['🎵', '🎹', '🎶'], fxEvery: 380 },
-      { go: f.x(-18) },
-      { anim: 'happy', ms: 3200, dir: 1, fx: ['🎵', '🎹', '🎶'], fxEvery: 380 },
-      { bounce: 2, ms: 450, h: 16 },
-      { anim: 'happy', ms: 1500, flip: 500, fx: ['🎶'], fxEvery: 500 },
-    ] },
-
-  tarima: { w: 28, h: 7,
-    parts: [{ id: 'base', draw: p => {
-      p.box(0, 0, 28, 7, FP.woodL, '#f0b98a');
-      p.r(1, 2, 26, 1, FP.pink); p.r(1, 4, 26, 1, FP.wood);
-    } }],
-    script: f => [
-      { go: f.x(-21) },
-      { hop: { x: f.x(-9), y: f.y(7) }, ms: 420, h: 14 },
-      { go: f.x(9), speed: 0.07 },
-      { anim: 'happy', ms: 900 },
-      { go: f.x(-9), speed: 0.07 },
-      { anim: 'idle', ms: 800 },
-      { go: f.x(9), speed: 0.05 },
-      { bounce: 2, ms: 450, h: 18 },
-      { anim: 'happy', ms: 800, fx: ['⭐'] },
-      { hop: { x: f.x(21), y: 0 }, ms: 420, h: 12 },
-    ] },
-
-  librero: { w: 22, h: 22,
-    parts: [{ id: 'base', draw: p => {
-      p.box(0, 0, 22, 22, FP.wood, FP.woodL);
-      p.r(2, 2, 18, 8, FP.woodD); p.r(2, 12, 18, 8, FP.woodD);
-      p.r(3, 4, 2, 6, FP.red); p.r(5, 3, 2, 7, FP.blue); p.r(7, 5, 2, 5, FP.green);
-      p.r(10, 4, 2, 6, FP.yel); p.r(12, 3, 2, 7, FP.pink);
-      p.r(3, 14, 2, 6, FP.blue); p.r(5, 15, 3, 5, FP.red); p.r(14, 13, 2, 7, FP.green); p.r(16, 15, 2, 5, FP.yel);
-    } }],
-    script: f => [
-      { go: f.x(-20) },
-      { hop: { x: f.x(-2), y: f.y(22) }, ms: 600, h: 24 },
-      { anim: 'idle', ms: 2600, fx: ['⭐'], fxEvery: 1200 },
-      { anim: 'idle', ms: 1000, dir: 1 },
-      { anim: 'idle', ms: 1000, dir: -1 },
-      { anim: 'happy', ms: 1500, fx: ['⭐'], fxEvery: 700 },
-      { bounce: 2, ms: 480, h: 18 },
-      { anim: 'idle', ms: 1800, fx: ['💤'] },
-      { anim: 'idle', ms: 1000, dir: 1 },
-      { anim: 'happy', ms: 1200, flip: 400, fx: ['⭐'], fxEvery: 600 },
-      { hop: { x: f.x(20), y: 0 }, ms: 600, h: 14 },
-    ] },
-
-  cajas: { w: 26, h: 22,
-    parts: [{ id: 'base', draw: p => {
-      p.box(0, 12, 13, 10, FP.box, FP.boxL); p.r(5, 13, 3, 8, FP.tape);
-      p.box(13, 12, 13, 10, FP.box, FP.boxL); p.r(18, 13, 3, 8, FP.tape);
-      p.box(13, 2, 13, 11, FP.box, FP.boxL); p.r(18, 3, 3, 9, FP.tape);
-    } }],
-    script: f => [
-      { go: f.x(-20) },
-      { hop: { x: f.x(-6), y: f.y(10) }, ms: 420, h: 14 },
-      { anim: 'idle', ms: 500 },
-      { hop: { x: f.x(6), y: f.y(20) }, ms: 420, h: 14 },
-      { anim: 'happy', ms: 1600, fx: ['🎉', '⭐'], fxEvery: 500 },
-      { hop: { x: f.x(-6), y: f.y(10) }, ms: 420, h: 10 },
-      { anim: 'idle', ms: 700 },
-      { hop: { x: f.x(6), y: f.y(20) }, ms: 420, h: 14 },
-      { anim: 'happy', ms: 2200, flip: 500, fx: ['🎉', '⭐'], fxEvery: 450 },
-      { bounce: 3, ms: 420, h: 16 },
-      { hop: { x: f.x(20), y: 0 }, ms: 550, h: 12 },
-      { anim: 'idle', ms: 600 },
-      { go: f.x(-20) },
-      { hop: { x: f.x(-6), y: f.y(10) }, ms: 420, h: 14 },
-      { hop: { x: f.x(6), y: f.y(20) }, ms: 420, h: 14 },
-      { anim: 'happy', ms: 1500, fx: ['🎉'], fxEvery: 500 },
-      { hop: { x: f.x(20), y: 0 }, ms: 550, h: 12 },
-    ] },
-};
-
-/* Dibuja una pieza a 1:1 en un canvas chico; se cachea por mueble y pieza. */
-const furniArtCache = new Map();
-function furniPartArt(id, part){
-  const key = id + ':' + part.id;
-  let c = furniArtCache.get(key);
-  if (c) return c;
-  const art = FURNI_ART[id];
-  c = document.createElement('canvas');
-  c.width = art.w; c.height = art.h;
-  part.draw(pxPainter(c.getContext('2d')));
-  furniArtCache.set(key, c);
-  return c;
-}
-
-/* Miniatura para la tienda (las piezas fijas, sin comida ni tele prendida). */
-const furniThumbCache = new Map();
-function furniThumb(id){
-  if (furniThumbCache.has(id)) return furniThumbCache.get(id);
-  const art = FURNI_ART[id];
-  const c = document.createElement('canvas');
-  c.width = art.w; c.height = art.h;
-  const ctx = c.getContext('2d');
-  for (const part of art.parts) if (!part.show) ctx.drawImage(furniPartArt(id, part), 0, 0);
-  const url = c.toDataURL();
-  furniThumbCache.set(id, url);
-  return url;
-}
-
-/* Estado en vivo de cada mueble puesto: dónde está y qué está haciendo
-   (pelota corrida, columpio balanceándose, tele prendida...). Se rearma en
-   cada renderFurniture(). */
-let furniRt = [];
-
-function renderFurniture(){
-  for (const rt of furniRt) rt.removed = true;
-  furniRt = [];
-  const back = document.getElementById('furniBack');
-  const mid = document.getElementById('furniMid');
-  const front = document.getElementById('furniFront');
-  back.innerHTML = ''; mid.innerHTML = ''; front.innerHTML = '';
-  const s = furniDeviceScale(), k = s / DPR;
-  for (const entry of state.style.furniture){
-    const id = entry.id;
-    const art = FURNI_ART[id];
-    if (!art) continue;
-    const rt = { id, entry, x: entry.x, els: {}, ballDx: 0, ballRot: 0, swing: 0, on: false, food: false };
-    for (const part of art.parts){
-      /* Backing store en píxeles físicos y escala entera, igual que la
-         mascota: cada píxel del arte ocupa exactamente s píxeles de pantalla. */
-      const c = document.createElement('canvas');
-      c.width = art.w * s; c.height = art.h * s;
-      const ctx = c.getContext('2d');
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(furniPartArt(id, part), 0, 0, c.width, c.height);
-      c.className = 'furni-part' + (part.flicker ? ' flicker' : '');
-      c.style.width = (art.w * k) + 'px';
-      c.style.height = (art.h * k) + 'px';
-      c.style.left = (rt.x * 100) + '%';
-      if (part.pivot) c.style.transformOrigin = `${part.pivot[0] * k}px ${part.pivot[1] * k}px`;
-      /* Los "libres" (pelota, plato) van en una capa propia, delante de los
-         otros muebles y detrás de la mascota: se pueden encimar. */
-      (part.z === 'front' ? front : art.free ? mid : back).appendChild(c);
-      c.addEventListener('pointerdown', e => startFurniDrag(rt, e));
-      rt.els[part.id] = { el: c, part };
-    }
-    furniRt.push(rt);
-  }
-  updateFurniture();
-}
-
-/* Lo que cambia cuadro a cuadro: solo transform y visibilidad, nada que
-   obligue a recalcular el layout. */
-function updateFurniture(){
-  const k = furniK();
-  for (const rt of furniRt){
-    const art = FURNI_ART[rt.id];
-    for (const { el, part } of Object.values(rt.els)){
-      let t = `translateX(-50%)`;
-      if (part.id === 'ball') t += ` translateX(${rt.ballDx}px) rotate(${rt.ballRot}rad)`;
-      if (part.pivot) t = `translateX(${-art.w * k / 2}px) rotate(${rt.swing}rad)`;
-      if (el._t !== t){ el.style.transform = t; el._t = t; }
-      const visible = !part.show || rt[part.show];
-      if (el._v !== visible){ el.classList.toggle('hidden', !visible); el._v = visible; }
-    }
-  }
-}
-
-function furniPlaced(id){ return furniRt.find(rt => rt.id === id && !rt.removed); }
-
-/* ---------- ubicación libre y modo acomodar ---------- */
-
-/* ¿Choca el mueble `id` puesto en `x` con alguno de los otros? Los "libres"
-   (pelota, plato) no chocan con nada: se pueden encimar. Con `strict` sí
-   chocan: al PONER un mueble se le busca un lugar despejado igual, si no la
-   pelota y el plato aparecían uno encima del otro en el centro; encimarlos
-   queda para cuando uno los arrastra a propósito. Todo en fracción del
-   piso, usando el ancho real del dibujo. */
-function furniOverlaps(id, x, fw, strict){
-  if (FURNI_ART[id].free && !strict) return false;
-  const k = furniK();
-  const half = FURNI_ART[id].w * k / 2;
-  return state.style.furniture.some(f => {
-    if (f.id === id || (FURNI_ART[f.id].free && !strict)) return false;
-    const otherHalf = FURNI_ART[f.id].w * k / 2;
-    return Math.abs(f.x - x) * fw < half + otherHalf + FURNI_GAP_PX;
-  });
-}
-
-/* Límites para que el mueble entero quede dentro del piso. */
-function furniBounds(id, fw){
-  const half = FURNI_ART[id].w * furniK() / 2 + 2;
-  return [Math.min(0.5, half / fw), Math.max(0.5, 1 - half / fw)];
-}
-
-/* El lugar libre más cercano a `x0`, buscando hacia los dos lados; null si
-   no cabe en ninguna parte. */
-function findFurniSpot(id, x0, strict){
-  const fw = floorWidth();
-  const [lo, hi] = furniBounds(id, fw);
-  const start = Math.min(hi, Math.max(lo, x0));
-  for (let d = 0; d <= 1; d += 0.005){
-    for (const x of [start - d, start + d]){
-      if (x >= lo && x <= hi && !furniOverlaps(id, x, fw, strict)) return x;
-    }
-  }
-  return null;
-}
-
-/* Modo acomodar: se entra desde Personalizar. La hoja se cierra para ver el
-   piso entero (la hoja tapaba justo el piso), la mascota queda quieta y
-   transparente para no estorbar, y los mandos de abajo se cambian por
-   "Listo" (los mismos showGameControls de los minijuegos), así no se puede
-   abrir otra cosa a medio acomodar. */
-let arranging = false;
-
-function enterArrange(){
-  hideOverlay();
-  if (walker.activity) endFurniActivity();
-  walker.y = 0;
-  arranging = true;
-  document.getElementById('creatureFloor').classList.add('arranging');
-  showGameControls(`
-    <div class="game-hint">Arrastra los muebles por el piso</div>
-    <button class="gbtn gbtn-lg" id="btnArrangeDone">Listo</button>
-  `);
-  document.getElementById('btnArrangeDone').addEventListener('click', () => { exitArrange(); openPersonalize(); });
-  renderFurniture();
-}
-
-function exitArrange(){
-  if (!arranging) return;
-  arranging = false;
-  document.getElementById('creatureFloor').classList.remove('arranging');
-  hideGameControls();
-  saveState();
-  renderFurniture();
-}
-
-/* Arrastre de un mueble, solo en modo acomodar. Mientras se arrastra se
-   marca en rojo si choca con otro; al soltarlo, si choca, se corre al lugar
-   libre más cercano (y si no hay ninguno, vuelve a donde estaba). */
-function startFurniDrag(rt, e){
-  if (!arranging || rt.removed) return;
-  e.preventDefault();
-  const rect = document.getElementById('creatureFloor').getBoundingClientRect();
-  const fw = rect.width;
-  const [lo, hi] = furniBounds(rt.id, fw);
-  const x0 = rt.x, px0 = e.clientX;
-  const parts = Object.values(rt.els).map(p => p.el);
-  const place = x => {
-    rt.x = x;
-    for (const el of parts) el.style.left = (x * 100) + '%';
-  };
-  parts.forEach(el => el.classList.add('dragging'));
-  const move = ev => {
-    place(Math.min(hi, Math.max(lo, x0 + (ev.clientX - px0) / fw)));
-    const choca = furniOverlapsAt(rt, fw);
-    parts.forEach(el => el.classList.toggle('blocked', choca));
-  };
-  const up = () => {
-    window.removeEventListener('pointermove', move);
-    window.removeEventListener('pointerup', up);
-    window.removeEventListener('pointercancel', up);
-    let x = rt.x;
-    if (furniOverlapsAt(rt, fw)) x = findFurniSpotFrom(rt, x) ?? x0;
-    place(x);
-    rt.entry.x = x;
-    parts.forEach(el => el.classList.remove('dragging', 'blocked'));
-    saveState();
-  };
-  window.addEventListener('pointermove', move);
-  window.addEventListener('pointerup', up);
-  window.addEventListener('pointercancel', up);
-}
-
-/* Mientras se arrastra, la posición en vivo está en rt.x y no en el save:
-   se prueba con esa. */
-function furniOverlapsAt(rt, fw){
-  const guardado = rt.entry.x;
-  rt.entry.x = rt.x;
-  const choca = furniOverlaps(rt.id, rt.x, fw);
-  rt.entry.x = guardado;
-  return choca;
-}
-function findFurniSpotFrom(rt, x){
-  const guardado = rt.entry.x;
-  rt.entry.x = x;
-  const spot = findFurniSpot(rt.id, x);
-  rt.entry.x = guardado;
-  return spot;
-}
-
-/* ---------- motor de rutinas ---------- */
-
-let furniFloorW = 0;
-function floorWidth(){
-  const w = document.getElementById('creatureFloor').clientWidth;
-  if (w > 0) furniFloorW = w;
-  return furniFloorW || 300;
-}
-
-const clampX = x => Math.min(0.96, Math.max(0.04, x));
-
-/* Arma los pasos del guion de un mueble, con ayudantes para pasar de píxeles
-   del arte a posición en la pieza. */
-function furniSteps(rt){
-  const k = furniK(), fw = floorWidth();
-  const f = { rt, fw, k,
-    x: dx => clampX(rt.x + dx * k / fw),   // píxeles del arte desde el centro del mueble → fracción del piso
-    dx: d => d * k / fw,
-    y: dy => dy * k,                       // alto en píxeles del arte → px CSS
-  };
-  return { steps: FURNI_ART[rt.id].script(f), fw };
-}
-
-function startFurniActivity(rt, kind){
-  const { steps, fw } = furniSteps(rt);
-  walker.activity = { rt, kind, steps, i: 0, st: 0, fw };
-  walker.pauseUntil = 0;
-}
-
-function endFurniActivity(){
-  const a = walker.activity;
-  if (!a) return;
-  if (a.st){ const s = a.steps[a.i]; if (s && s.end) s.end(a.rt); }
-  a.rt.on = false; a.rt.food = false; a.rt.swing = 0;
-  walker.activity = null;
-  walker.anim = null;
-  walker.frame = 0;
-  const now = performance.now();
-  walker.targetX = walker.x;
-  walker.pauseUntil = now + 900;
-  walker.nextVisitAt = now + FURNI_VISIT_GAP_MS * (0.6 + Math.random() * 0.8);
-}
-
-/* Felicidad por visita espontánea, con tope por hora real (Date.now(), igual
-   que el Megajuego: es un ritmo de quien juega). */
-function furniJoy(){
-  const now = Date.now();
-  const j = state.furniJoy && typeof state.furniJoy === 'object' ? state.furniJoy : { since: now, n: 0 };
-  if (now - j.since >= 3600000 || now < j.since){ j.since = now; j.n = 0; }
-  if (j.n < FURNI_JOY_PER_HOUR){
-    j.n++;
-    state.happiness = clamp(state.happiness + FURNI_JOY);
-  }
-  state.furniJoy = j;
-}
-
-function setWalkerAnim(name, now){
-  if (walker.anim !== name){ walker.anim = name; walker.animT0 = now; }
-}
-
-/* Partícula sobre la cabeza de la mascota, donde sea que esté parada. */
-function petFx(emoji){
-  const floor = document.getElementById('creatureFloor');
-  const el = document.createElement('div');
-  el.className = 'fx';
-  el.textContent = emoji;
-  el.style.left = `calc(${walker.x * 100}% + ${Math.round(Math.random() * 24 - 12)}px)`;
-  el.style.bottom = (4 + walker.y + (STAGE_CSS_PX[displayStage()] || 64) * 0.7) + 'px';
-  floor.appendChild(el);
-  setTimeout(() => el.remove(), 1000);
-}
-
-const lerp = (a, b, t) => a + (b - a) * t;
-
-function runFurniActivity(dt, now){
-  const a = walker.activity;
-  const s = a.steps[a.i];
-  if (!s){
-    if (a.kind === 'visit') furniJoy();
-    endFurniActivity();
-    return;
-  }
-  if (!a.st){
-    a.st = now; a.x0 = walker.x; a.y0 = walker.y; a.b0 = a.rt.ballDx; a.fxAt = now; a.flipAt = now;
-    if (s.start) s.start(a.rt);
-    if (s.fx && !s.fxEvery) petFx(s.fx[0]);
-  }
-  const el = now - a.st;
-  const next = () => { if (s.end) s.end(a.rt); a.i++; a.st = 0; };
-  const faceTo = x => { if (Math.abs(x - walker.x) > 0.002) walker.dir = x > walker.x ? 1 : -1; };
-
-  if (s.go !== undefined){
-    const tx = clampX(s.go);
-    const d = tx - walker.x;
-    const step = dt * (s.speed || (a.kind === 'visit' ? 0.11 : 0.2));   // a una rutina va más apurada
-    if (Math.abs(d) <= step){ walker.x = tx; walker.frame = 0; next(); return; }
-    walker.dir = d > 0 ? 1 : -1;
-    walker.x += walker.dir * step;
-    setWalkerAnim('walk', now);
-  } else if (s.hop || s.slide){
-    const to = s.hop || s.slide;
-    const t = Math.min(1, el / s.ms);
-    if (t === 0 || el < 20) faceTo(to.x);
-    walker.x = lerp(a.x0, to.x, t);
-    walker.y = lerp(a.y0, to.y, t) + (s.hop ? 4 * t * (1 - t) * (s.h ?? 16) : 0);
-    setWalkerAnim(s.slide ? (s.anim || 'happy') : 'happy', now);
-    if (t >= 1){ walker.y = to.y; next(); }
-  } else if (s.bounce){
-    const n = Math.floor(el / s.ms);
-    if (n >= s.bounce){ walker.y = a.y0; next(); return; }
-    const u = (el % s.ms) / s.ms;
-    walker.y = a.y0 + 4 * u * (1 - u) * s.h;
-    setWalkerAnim(u < 0.1 || u > 0.9 ? 'idle' : 'happy', now);
-  } else if (s.kick !== undefined){
-    const t = Math.min(1, el / s.ms);
-    const e = 1 - (1 - t) * (1 - t);   // sale rápido y frena
-    const prev = a.rt.ballDx;
-    a.rt.ballDx = a.b0 + s.kick * e;
-    a.rt.ballRot += (a.rt.ballDx - prev) / (4.5 * furniK());
-    setWalkerAnim(el < 300 ? 'happy' : 'idle', now);
-    if (t >= 1) next();
-  } else {
-    if (s.dir) walker.dir = s.dir;
-    setWalkerAnim(s.anim || 'idle', now);
-    if (s.fx && s.fxEvery && now - a.fxAt >= s.fxEvery){
-      a.fxAt = now;
-      petFx(s.fx[Math.floor(Math.random() * s.fx.length)]);
-    }
-    if (s.flip && now - a.flipAt >= s.flip){ a.flipAt = now; walker.dir *= -1; }
-    if (s.swing){
-      const th = s.swing.amp * Math.sin(2 * Math.PI * el / s.swing.period);
-      a.rt.swing = th;
-      /* rotate() positivo en CSS es horario: con el pivote arriba, el
-         asiento se va a la IZQUIERDA. La mascota lo sigue. */
-      walker.x = a.x0 - s.swing.L * Math.sin(th) / a.fw;
-      walker.y = a.y0 + s.swing.L * (1 - Math.cos(th));
-    }
-    const done = s.until ? s.until() : el >= s.ms;
-    if (done){
-      if (s.swing){ a.rt.swing = 0; walker.x = a.x0; walker.y = a.y0; }
-      next();
-    }
-  }
-}
-
-/* Cuándo se corta una rutina a la mitad. Las de rutina (comer, limpiarse) no
-   se cortan por estar triste o enferma: es justo cuando más se la alimenta.
-   La cama no se corta por dormir (es para eso) y termina sola al despertar. */
-function furniActivityBroken(mood){
-  const a = walker.activity;
-  if (a.rt.removed || gameOver || displayStage() === 'egg' || mood === 'dead') return true;
-  if (petAction) return true;
-  if (a.kind === 'sleep') return false;
-  if (state.sleeping) return true;
-  if (a.kind === 'visit') return mood === 'sleepy' || mood === 'sad' || mood === 'sick';
-  return false;
-}
-
-/* Si hay un mueble para esta acción, la mascota va hasta él en vez de hacerla
-   donde está parada. Devuelve false si no hay (y la acción sigue como
-   siempre). Las barras ya se movieron en el botón: esto es solo lo que se ve. */
-function startFurniRoutine(action){
-  if (activeMinigame || gameOver || displayStage() === 'egg') return false;
-  const rt = furniRt.find(r => !r.removed && FURNI_ART[r.id].routine === action);
-  if (!rt) return false;
-  startFurniActivity(rt, action);
-  return true;
-}
-
-function maybeStartFurniVisit(now){
-  if (now < walker.nextVisitAt || Math.random() >= FURNI_VISIT_CHANCE) return false;
-  const opciones = furniRt.filter(rt => !rt.removed && !FURNI_ART[rt.id].routine && rt.id !== walker.lastVisit);
-  if (!opciones.length) return false;
-  const rt = opciones[Math.floor(Math.random() * opciones.length)];
-  walker.lastVisit = rt.id;
-  startFurniActivity(rt, 'visit');
-  return true;
 }
 
 /* ===================== FX helpers ===================== */
@@ -2579,7 +1797,7 @@ function openGamesMenu(aviso){
   if (state.stage === 'egg'){ say('Todavía es un huevo…'); return; }
   if (!tryWake()) return;
 
-  const cards = GAMES.map(g => {
+  const card = g => {
     if (!isGameUnlocked(g.id)){
       const alcanza = state.coins >= g.price;
       return `
@@ -2599,12 +1817,20 @@ function openGamesMenu(aviso){
         <b class="gc-name">${escapeHtml(g.name)}</b>
         <span class="gc-meta">${levelDots(g.id)}${best > 0 ? `<span class="gc-best">★ ${best}</span>` : ''}</span>
       </button>`;
-  }).join('');
+  };
+  /* Los de a dos (duo-juegos.js) van en su propia sección, debajo. */
+  const solos = GAMES.filter(g => !g.duo).map(card).join('');
+  const duos = GAMES.filter(g => g.duo).map(card).join('');
+  const conQuien = state.companion ? `con ${escapeHtml(state.companion.name)}` : 'viene una visita a jugar';
 
   showOverlay(`
     <h3>Juegos</h3>
     ${aviso ? `<p class="sheet-note">${escapeHtml(aviso)}</p>` : megaBanner()}
-    <div class="menu-list game-grid">${cards}</div>
+    <div class="menu-list">
+      <div class="game-grid">${solos}</div>
+      ${duos ? `<div class="game-grid-head"><span class="ggh-icon">👯</span><span>De a dos<br><small>${conQuien}</small></span></div>
+      <div class="game-grid">${duos}</div>` : ''}
+    </div>
     <button class="overlay-btn secondary" id="btnCloseGames">Cerrar</button>
   `, hideOverlay);
 
@@ -2948,8 +2174,9 @@ function wireGameButton(el, fn){
 function enterMinigame(id){
   /* Una rutina con un mueble no sigue detrás del minijuego: se corta y la
      mascota queda en el piso para cuando vuelva. */
-  if (walker.activity) endFurniActivity();
+  if (walker.activity) endFurniActivity(walker);
   walker.y = 0;
+  if (typeof buddy !== 'undefined'){ if (buddy.activity) endFurniActivity(buddy); buddy.y = 0; }
   catchUp();
   activeMinigame = id;
   document.getElementById('creatureFloor').classList.add('hidden');
@@ -5808,6 +5035,7 @@ function renderDebugPanel(){
     <button class="debug-btn ${debugForcedSpecies===id ? 'active':''}" data-species="${id}">${SPECIES_RAW[id].name}</button>
   `).join('');
 
+  const extraDebug = typeof duoDebugHtml === 'function' ? duoDebugHtml() : '';
   document.getElementById('debugPanelBody').innerHTML = `
     <div class="debug-panel">
       <div class="debug-section">
@@ -5818,6 +5046,7 @@ function renderDebugPanel(){
         <button class="debug-btn wide" id="dbgNight" style="margin-top:6px">${
           debugForcedNight === null ? '🕐 Día/noche: hora real' : debugForcedNight ? '🌙 Día/noche: noche forzada' : '☀️ Día/noche: día forzado'}</button>
       </div>
+      ${extraDebug}
       <div class="debug-section">
         <h4>Etapa del monito</h4>
         <div class="debug-grid">
@@ -5920,6 +5149,7 @@ function renderDebugPanel(){
     debugForcedNight = debugForcedNight === null ? true : debugForcedNight ? false : null;
     render(); renderDebugPanel();
   });
+  if (typeof wireDuoDebug === 'function') wireDuoDebug();
   document.getElementById('dbgPoop').addEventListener('click', () => {
     state.poop = true; saveState(); render(); renderDebugPanel();
   });

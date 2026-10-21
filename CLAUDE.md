@@ -4,11 +4,21 @@ Mascota virtual pixel-art en HTML/CSS/JS puro. **Sin build, sin frameworks, sin
 backend**: se edita directo y se abre `index.html` en el navegador. Todo el
 progreso vive en `localStorage`.
 
-**Archivos:** `index.html` (esqueleto), `styles.css` (todo el CSS), `app.js`
-(toda la lógica) y, dentro de `sprites/`, un par `<especie>_spritesheet.png` +
-`.json` por cada especie (más los PNG de personajes todavía sin integrar).
-`index.html` carga `styles.css` y `app.js`; los spritesheets se cargan como
-`new Image()` desde `app.js` por ruta relativa (`sprites/<archivo>.png`).
+**Archivos:** `index.html` (esqueleto), `styles.css` (todo el CSS) y la lógica
+en cuatro scripts clásicos que comparten el ámbito global:
+- `app.js`: el núcleo (estado, simulación, render, menús, los minijuegos de uno).
+- `muebles.js`: los muebles (catálogo, arte, guiones) y el **motor de actores**
+  que también usa el acompañante.
+- `duo.js`: el acompañante (`buddy`) y lo que hacen los dos juntos.
+- `duo-juegos.js`: los seis juegos de a dos.
+
+Se cargan en ese orden (`index.html`). Lo de un archivo que usa otro se usa
+recién en tiempo de juego (después de `DOMContentLoaded`), nunca al cargar —
+salvo los `push` a arreglos de `app.js` (`STYLE_ITEMS`, `GAMES`,
+`extraMinigameDisposers`), que por eso van después de él. Dentro de
+`sprites/`, un par `<especie>_spritesheet.png` + `.json` por cada especie (más
+los PNG de personajes todavía sin integrar); se cargan como `new Image()` desde
+`app.js` por ruta relativa (`sprites/<archivo>.png`).
 
 Se trabaja **siempre directo sobre `main`**, sin ramas ni PRs — proyecto de una
 sola persona.
@@ -18,7 +28,7 @@ sola persona.
 Chequeo de sintaxis (lo mínimo antes de cualquier commit):
 
 ```bash
-node -e "const fs=require('fs'); new Function(fs.readFileSync('app.js','utf8')); console.log('syntax OK');"
+node -e "const fs=require('fs'); for (const f of ['app.js','muebles.js','duo.js','duo-juegos.js']) { new Function(fs.readFileSync(f,'utf8')); console.log(f, 'syntax OK'); }"
 ```
 
 Prueba funcional/visual con Playwright (Chromium ya está instalado en
@@ -487,8 +497,15 @@ más alto, pero no rompe.
 #### Muebles
 
 Cuarta clase de cosas en Estilo (`kind:'furni'`, sección "Muebles", la primera):
-14 muebles que la mascota **usa**. Catálogo de precios en `STYLE_ITEMS`; arte y
-guion en `FURNI_ART`. Se ponen hasta `FURNI_MAX` (3) a la vez, **en cualquier
+34 muebles que los personajes **usan**. Todo vive en `muebles.js`: el catálogo
+(`FURNI_ITEMS`, que se suma a `STYLE_ITEMS` con `kind:'furni'`), el arte y los
+guiones (`FURNI_ART`) y el motor que los corre. Los 14 primeros: cama, plato,
+bañera, tocador, trampolín, pelota, columpio, tobogán, radiocasete, tele,
+piano, tarima, librero y cajas; los 20 que se sumaron después: pecera, maceta,
+rueda (de hámster), balancín, cohete, arenero, piscina, hamaca, telescopio,
+reloj cucú, caballito, batería, caballete, cocinita, cofre, muro de escalada,
+ventilador, bola disco (prendida llena la pieza de luces: `.creature-floor.party`),
+puf y piñata. Se ponen hasta `FURNI_MAX` (3) a la vez, **en cualquier
 parte del piso**: `state.style.furniture = [{id, x}]`, con `x` = centro del
 mueble como fracción del ancho del piso. (Antes eran tres lugares fijos,
 izq./centro/der.; `loadState()` convierte esos saves con `LEGACY_FURNI_SLOTS`
@@ -524,19 +541,29 @@ del columpio) y la pieza `ball` se traslada. Un píxel del arte mide lo mismo qu
 uno de la mascota adulta (`furniDeviceScale()`), así que también va a escala
 entera en píxeles físicos.
 
-**Guion:** `script(f)` devuelve pasos que corre `runFurniActivity()`, en
+**Guion:** cada mueble tiene **varios** guiones por clase (`visits`, `duos`,
+`routines`, ver abajo) y en cada visita se sortea uno: no hace siempre lo mismo
+(la cama sirve para saltar encima o dormir siesta; la pelota se patea, se
+dribla o se persigue...). Cada guion `f => [pasos]` recibe `furniHelpers()` y
+devuelve pasos que corre `runFurniActivity()`, en
 píxeles del arte respecto del centro del mueble (`f.x`) y alto sobre el piso
 (`f.y`): `go` (caminar), `hop` (salto en parábola), `slide` (lineal: subir la
 escalera, tirarse por el tobogán), `bounce` (trampolín), `kick` (patear la
 pelota) y, si no es ninguno, quedarse haciendo algo (`anim`, `ms` o `until`,
-`fx` con partículas, `flip` para bailar, `swing` para el columpio). **No hay
+`fx` con partículas, `flip` para bailar, `swing` para el columpio), más los
+de a dos: `chase`/`flee` (perseguir/escaparse del otro), `ride` (ir montado
+encima del otro), `sync` (esperar a que el otro llegue al mismo nombre) y
+`call` (ejecutar algo y seguir); en cualquiera, `hide` (desaparecer, por
+ejemplo adentro del cohete), `start`/`end`. Un valor puede ser una función que
+se evalúa al empezar el paso (`(st, act) => ...`, para apuntar a donde está el
+otro en ese momento). **No hay
 arte nuevo**: todo combina las animaciones que ya tiene cada especie
 (`walker.anim` manda sobre el ánimo en `pickAnimation()` y se repite en loop)
 con movimiento (`walker.y` es la altura sobre el piso) y partículas
 (`petFx()`). Si algún día llega arte propio (maquillarse, trepar), basta con
 nombrar esa animación en el guion.
 
-Dos tipos:
+Tres tipos:
 - **De rutina** (`routine`): cama (`sleep`), plato (`eat`), bañera (`clean`).
   Reemplazan dónde pasa algo que ya existía: `triggerPetAction()` desvía comer y
   limpiarse a `startFurniRoutine()`, y `updateWalker()` manda a la cama apenas
@@ -548,9 +575,17 @@ Dos tipos:
   mismo dos veces seguidas) y va. Se cortan si se duerme, se pone triste o
   enferma, si se la toca o si empieza un minijuego; si quedó arriba de un
   mueble, cae al piso.
+- **De a dos** (`duos`): los dos personajes juntos en el mismo mueble (ver
+  "Acompañante"). Cada uno devuelve `{a: [...], b: [...]}` y los dos guiones
+  se coordinan con `sync`; `startFurniDuo()` les agrega un `sync` final para
+  que terminen juntos.
 
-**Duración:** cada visita dura de 12 a 17 segundos, más o menos el triple que
-la primera versión (~5 s). No es la misma rutina estirada: los guiones suman
+**Duración:** cada visita dura de ~9 a ~18 segundos. Los guiones duran entre 5
+y 15 s, y si una visita (sola o de a dos) terminó antes de `FURNI_VISIT_MIN_MS`
+(9 s), `finishFurniActivity()` **encadena** otro guion del mismo mueble
+(distinto si hay, `pickOtherIndex()`): así ninguna queda corta y se mezclan los
+patrones. Con 12 s de umbral, uno de 11.9 encadenaba otro entero y llegaba a 25.
+Los 14 primeros ya duraban más que la primera versión (~5 s). No es la misma rutina estirada: los guiones suman
 más cosas que hacer (dos vueltas de tobogán, cuatro patadas a la pelota que la
 persigue corriendo, tandas de rebote de distinto alto, bailar a los dos lados
 del radiocasete...). Con visitas más largas, el ritmo de visitas
@@ -563,6 +598,11 @@ energía `FURNI_BED_ENERGY_MULT` (x1.25) más rápido (se mira el save, así val
 también en `catchUp()`), y cada visita espontánea da `FURNI_JOY` (+1) de
 felicidad con tope `FURNI_JOY_PER_HOUR` (6) por hora real (`state.furniJoy`):
 dejarla sola con muebles no puede reemplazar cuidarla.
+
+**Probado** corriendo en Chromium cada guion de cada mueble por índice (visitas
+con la mascota y con el acompañante, duos y rutinas: 104 en total): 0 errores,
+0 que se queden trabados esperando en un `sync`, y todos terminan con los dos
+en el piso. Al sumar o cambiar un guion, conviene repetir eso.
 
 **Ids únicos en todo `STYLE_ITEMS`**: el mueble radiocasete se llamaba `radio` y
 chocaba con el adorno 📻 `radio`; `styleItemById()` devolvía el adorno y tocar el
@@ -586,6 +626,108 @@ seno vuelve solo a 0 al final de la ráfaga, sin saltos. Sin estado propio —
 loop. El eje del giro es la **base** del huevo (donde apoya en el piso, en
 `drawEgg()`), no su centro: girar sobre el centro corre también la punta de
 abajo y en vez de tambalearse parece flotar.
+
+
+## Acompañante (de a dos)
+
+Un segundo personaje en la pieza: un hijo o una visita (`duo.js`). Todavía no
+hay forma de *tener* uno jugando —hijos y visitas de amigos vienen después—: se
+agrega desde el panel de prueba (Hijo: misma especie, etapa niño, "<nombre>
+Jr."; Visita: otra especie al azar, adulto; y se le puede cambiar la etapa). Va
+en el save: `state.companion = null | {species, stage, name, kind}`
+(`loadState()` lo valida: especie que exista, etapa child/teen/adult).
+
+**No tiene barras.** No come, no se ensucia, no se enferma ni se muere: uno se
+preocupa solo de la principal. Todo lo que hace es visual, salvo dos cosas
+chicas que pasan por `furniJoy()` (con su tope por hora): jugar juntos y
+consolarla le suben un poco la felicidad a la principal.
+
+**Actores.** La mascota (`walker`, `app.js`) y el acompañante (`buddy`,
+`duo.js`) tienen la misma forma (`x`, `y`, `dir`, `activity`, `anim`, `frame`,
+`hidden`...) y todo el motor de `muebles.js` recibe el actor: un paseo
+(`wanderActor()`), un mueble o un juego entre los dos se programa una sola vez.
+`pickAnimation()`/`drawSprite()` también reciben el actor (la acción de una
+sola vez de la mascota es `petAction`; la del otro, `buddy.action`). El
+acompañante se dibuja en `#buddyCanvas`, igual que `#petCanvas` (96 px CSS,
+backing store en píxeles físicos, escala entera por su etapa) y con
+`renderBuddy()`; el que va más alto (montado, saltando encima del otro) se pasa
+adelante reordenando el DOM, no con `z-index`, así el borde de la bañera sigue
+delante de los dos. Se esconde mientras la mascota es huevo.
+
+Qué hace (`updateBuddy()`, llamado desde `loopRender()`):
+- Pasea y visita muebles solo, igual que la mascota.
+- **Se duerme con ella**: en la cama si hay una (la rutina de la cama ya tiene
+  lugar para dos: el acompañante del lado de la almohada), si no a su lado.
+- **La consuela** si está triste o enferma (cada `COMFORT_GAP_MS`): va, le hace
+  cariño y le da un `furniJoy()`.
+- Celebra cuando ella celebra (al ganar un juego).
+- Tocarlo le hace un mimo (sin barras que mover).
+
+**Jugar entre ellos.** Cuando los dos están libres (`actorFree()`) y uno termina
+un paseo, con `SOCIAL_CHANCE` empiezan algo juntos, con al menos
+`SOCIAL_GAP_MS` entre una cosa y otra: un mueble de a dos
+(`SOCIAL_FURNI_SHARE` de las veces, si hay uno libre) o uno de los 13 juegos de
+`SOCIALS`: abrazo, choca esos cinco (saludo secreto), saltarse (uno se agacha y
+el otro le pasa por encima, por turnos, avanzando), la pinta (persecución con
+cambio de roles), carrera (el ganador sale del sorteo de velocidades),
+escondidas (detrás de un mueble que no sea "libre"), caballito (el más grande
+lleva al otro; necesita que el de arriba no sea más grande), cosquillas,
+saltos (al unísono o en ola), baile, empujoncitos, mirar el cielo (estrellas de
+noche, siesta de día), paseo e imitar (copia tres movimientos y en el cuarto se
+equivoca). Qué personaje es `a` y cuál `b` se sortea, así el que persigue o el
+que se esconde no es siempre el mismo. Cada uno dura 8-15 s (el paseo, hasta 20). Probados los 13
+con las dos combinaciones de tamaño: 0 errores, 0 trabados.
+
+### Juegos de a dos (ver también "Minijuegos")
+
+Seis más en `duo-juegos.js` (`DUO_GAMES`, que se suman a `GAMES` con `duo:
+true`): en el menú de Jugar van en su propia sección, "De a dos", debajo de los
+otros (`.game-grid-head`). Mismo sistema que el resto: precio, niveles,
+récords, Megajuego, mérito. Los dos personajes los maneja **la misma persona**:
+la gracia de cada uno es coordinar a los dos. Si no hay acompañante, viene una
+visita de otra especie solo para esa partida (`duoGuest()`).
+
+- **Espejo** (`espejo`): pantalla partida, cada mitad con lo suyo; un solo
+  deslizador mueve a los dos en espejo, así que hay que elegir una posición que
+  le sirva a las dos mitades. Los corazones caen de a pares en espejo (siempre
+  se pueden atrapar los dos, y son lo único que corta el combo si se cae).
+- **Voleibol** (`voley`): cooperativo, se pasan la pelota sobre la red; un
+  botón por personaje, se aprieta cuando el anillo se cierra sobre su cabeza.
+  A veces uno "coloca" (le vuelve a él mismo) y lo siguiente es un remate
+  rápido: no alcanza con alternar a ciegas. 45 s, 3 vidas.
+- **Copia el baile** (`baile`): la visita baila una secuencia (cuatro pasos con
+  su nota) y hay que repetirla; crece de a uno por ronda. Desde la ronda 4,
+  algunas son "¡al revés!" y valen doble. 2 corazones.
+- **Escondidas** (`escondidas`): se mete en una caja, se revuelven, y se toca
+  dónde quedó. Al cruzarse dos cajas, una pasa por delante (más grande, arco
+  bajo) y otra por detrás: se puede seguir con la vista. 3 corazones.
+- **Sube y baja** (`subebaja`): un balancín; cada uno lanza al otro al caer.
+  Con ▲/▼ se elige la altura del PRÓXIMO salto (que es del otro lado), para
+  reventar globos sin tocar las bombas. La altura 1 nunca tiene bomba.
+- **Carrera en dupla** (`dupla`): corren en fila, cada uno con su botón de
+  salto; todo le llega primero al de adelante y después al de atrás. Los
+  pájaros se esquivan *sin* saltar. El salto mide una **distancia** fija
+  (`DP_JUMP_DIST`) y no un tiempo: con duración fija, a la velocidad del nivel
+  5 había pares de obstáculos imposibles (muy juntos para dos saltos, muy
+  separados para uno). Las cuentas están en el comentario de arriba del juego.
+
+Comparten una sola variable de partida, `dg` (nunca hay dos minijuegos a la
+vez), con `dgDispose()` registrado en `extraMinigameDisposers` (lo que corre
+`forceCloseMinigames()`). Cada juego separa la lógica (`dg.stepFn(dt)`) del
+dibujo: así un bot juega cientos de partidas sin canvas. **Ojo con los nombres
+en `dg`**: `stepFn`/`drawFn`/`endFn` son del loop; Sube y baja guardaba su
+alto por nivel en `dg.step` y el loop lo pisaba con una función (el personaje
+salía volando a la esquina).
+
+El mérito de cada uno está **calibrado con bots** que juegan contra las
+funciones reales (un bot "bueno" con errores humanos y uno "experto"; las
+medianas están en el comentario de cada `xxMerit()`): un bot bueno queda en
+~35-45 de mérito y uno experto en ~55-80. Si se cambia la dificultad de uno,
+repetir esa simulación en vez de mover el factor a ojo.
+
+Los personajes dentro de estos juegos se dibujan con `drawActorAt(ctx, actor,
+x, suelo, flip)` (escala 2 entera, igual que `drawPetAt()`) sobre un "actor de
+juego" (`gameActor()`) que no toca `petAction` ni el paseo de la pieza.
 
 ## Minijuegos
 
@@ -891,7 +1033,7 @@ Lo compartido está justo debajo de `fitGameCanvas()` y conviene reusarlo:
   frame.
 
 Cada juego guarda su estado en una variable global (`sg`, `bb`, `rx`, `tr`, `sn`,
-`mm`) y expone un `xxDispose()` que saca listeners y cancela el
+`mm`; los de a dos comparten `dg`, ver "Juegos de a dos") y expone un `xxDispose()` que saca listeners y cancela el
 `requestAnimationFrame`.
 **Al agregar uno nuevo hay que sumarlo a `forceCloseMinigames()`**, que es lo que
 corre si la mascota se muere a mitad de partida.
@@ -990,7 +1132,10 @@ loop de 16 pulsos.
 
 El botón ✏️ (`#btnDebug`) abre `#debugPanel`: fuerza etapa, ánimo y **especie**
 (para previsualizar sin perder la mascota guardada), dispara las 5 acciones,
-lanza los 4 minijuegos, ensucia y mata. En pantallas anchas queda fijo al lado del
+lanza los minijuegos, ensucia y mata. La sección "Acompañante" (`duoDebugHtml()`
+/`wireDuoDebug()` en `duo.js`) agrega o saca al hijo o la visita, le cambia la
+etapa, dispara cualquiera de los juegos entre ellos ("Juntos ahora") o un
+mueble de a dos, y lanza los juegos de a dos. En pantallas anchas queda fijo al lado del
 dispositivo (`.layout-row`); en celular la misma CSS lo vuelve un modal a
 pantalla completa.
 
