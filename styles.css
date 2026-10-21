@@ -1318,95 +1318,181 @@ body{
 
 /* ---------- controls ---------- */
 
+/* Abajo van dos niveles: el dock con los cuatro cuidados de todos los días
+   (Comer, Jugar, Limpiar, Dormir), grandes, y una fila de píldoras con lo de
+   vez en cuando (Tienda, Personalizar, Reiniciar). Reiniciar va como ícono
+   chico al final: es destructivo y no tiene por qué estar a mano. */
 .controls{
-  display:grid;
-  grid-template-columns:repeat(3, 1fr);
+  position:relative;   /* la bandeja de comidas se apoya acá */
+  display:flex;
+  flex-direction:column;
   gap:10px;
   margin-top:16px;
+}
+.dock{
+  display:grid;
+  grid-template-columns:repeat(4, 1fr);
+  gap:9px;
 }
 
 /* Cada acción tiene su color (--tint, abajo por id): se aprenden por color y
    posición, no leyendo la etiqueta — como el dock de una app. */
 .btn{
   --tint:#ffe1ee;
-  --tint-ink:#e0457f;
+  --ring:#ff8cc0;
+  position:relative;
   display:flex;
   flex-direction:column;
   align-items:center;
-  gap:5px;
+  gap:6px;
   font-family:var(--font-ui);
-  font-weight:800;
+  font-weight:900;
   font-size:12px;
   color:var(--tile-ink);
-  background:rgba(255,255,255,.94);
+  background:rgba(255,255,255,.95);
   border:none;
-  border-radius:var(--r-lg);
-  padding:10px 4px 9px;
+  border-radius:22px;
+  padding:12px 2px 10px;
   cursor:pointer;
   box-shadow:
     0 1px 0 #fff inset,
-    0 10px 20px -12px rgba(70,10,90,.55);
+    0 12px 22px -12px rgba(70,10,90,.6);
   transition:transform .14s var(--ease-spring), box-shadow .14s ease;
 }
 .btn:active{transform:scale(.93); box-shadow:0 1px 0 #fff inset, 0 4px 10px -8px rgba(70,10,90,.6);}
 .btn:disabled{opacity:.45; cursor:not-allowed;}
 .btn:disabled:active{transform:none;}
 
-/* Enferma: el menú de comidas (donde vive el botiquín) lleva un 💊 que late,
-   para que se note sin tener un botón de medicina aparte. */
-.btn{position:relative;}
-.btn.alert::after{
-  content:'💊';
-  position:absolute;
-  top:-6px; right:-4px;
-  font-size:15px;
-  width:26px; height:26px;
+.btn-icon{
+  width:46px; height:46px;
   display:grid; place-items:center;
-  border-radius:50%;
+  font-size:24px;
+  border-radius:15px;
+  background:var(--tint);
+  transition:background .25s ease, box-shadow .25s ease;
+}
+.btn-label{white-space:nowrap;}
+
+#btnFeed {--tint:#ffe3d3; --ring:#ff9a6b;}
+#btnPlay {--tint:#e5ddff; --ring:#9f8bff;}
+#btnClean{--tint:#d8f4ff; --ring:#5fc8ff;}
+#btnSleep{--tint:#2e2a5c; --ring:#8f7bff;}
+#btnSleep.asleep{--tint:#fff1c9; --ring:#ffc94d;}
+
+/* Los botones avisan cuando hacen falta (render()): un anillo de su color
+   alrededor del ícono (.need) y, si hay algo concreto, un globito arriba
+   (data-badge: 💩 caca, zZ sueño, 💊 enferma). Así no hay que leer las barras
+   para saber qué apretar. */
+.btn.need .btn-icon{box-shadow:0 0 0 3px var(--ring);}
+.btn[data-badge]::after{
+  content:attr(data-badge);
+  position:absolute;
+  top:-7px; right:-3px;
+  min-width:24px; height:24px;
+  padding:0 5px;
+  display:grid; place-items:center;
+  font-size:13px;
+  font-weight:900;
+  color:#fff;
+  border-radius:999px;
   background:#ff5d6c;
   box-shadow:0 0 0 2px #fff, 0 4px 10px -2px rgba(255,93,108,.7);
   animation:alertPulse 1s ease-in-out infinite;
+}
+.btn.badge-soft[data-badge]::after{
+  background:#7b6cff;
+  box-shadow:0 0 0 2px #fff, 0 4px 10px -2px rgba(123,108,255,.7);
+  animation:none;
 }
 @keyframes alertPulse{ 50%{transform:scale(1.15);} }
 .menu-item.urgent{border-color:#ff8a96; background:rgba(255,93,108,.14);}
 .overlay-card .style-empty{font-size:12px; color:var(--text-soft); margin:0 0 4px; text-align:left;}
 
-.btn-icon{
-  width:40px; height:40px;
-  display:grid; place-items:center;
-  font-size:21px;
-  border-radius:13px;
-  background:var(--tint);
+.dock-sec{
+  display:flex;
+  justify-content:center;
+  gap:8px;
 }
-
-#btnFeed    {--tint:#ffe3d3;}
-#btnPlay    {--tint:#e5ddff;}
-#btnClean   {--tint:#d8f4ff;}
-#btnFoodMenu{--tint:#fff1c9;}
-#btnStyle   {--tint:#ffdbe6;}
-#btnShop    {--tint:#d9f7e4;}
-
-/* Con 7 botones la grilla de 3 columnas deja la última fila con uno solo y un
-   hueco al lado. Reiniciar la ocupa entera: es el único que no es una acción
-   de cuidado, así que separarlo en su propia franja también lo hace más difícil
-   de apretar sin querer. Va como acción discreta (sin fondo de tarjeta) para
-   que no compita con las de cuidado. */
-.btn-wide{
-  grid-column:1 / -1;
-  justify-self:center;
-  flex-direction:row;
+.pill{
+  display:flex;
+  align-items:center;
   gap:6px;
-  padding:6px 16px;
-}
-.btn-ghost{
-  background:rgba(255,255,255,.18);
-  color:rgba(255,255,255,.92);
-  font-size:11.5px;
+  padding:9px 15px;
+  border:none;
   border-radius:999px;
-  box-shadow:none;
+  font-family:var(--font-ui);
+  font-weight:800;
+  font-size:12.5px;
+  color:#fff;
+  background:rgba(255,255,255,.22);
+  cursor:pointer;
+  transition:transform .14s var(--ease-spring), background .15s ease;
 }
-.btn-ghost:active{box-shadow:none;}
-.btn-ghost .btn-icon{width:auto; height:auto; background:none; font-size:14px;}
+.pill:active{transform:scale(.94); background:rgba(255,255,255,.32);}
+.pill-icon{padding:9px 13px; font-size:14px;}
+
+/* Bandeja de comidas: se abre con Comer y flota encima del dock y las
+   píldoras, del mismo tamaño que ellos (posición absoluta): el aparato no
+   cambia de alto al abrirla. Tocar una comida se la da en el acto. */
+.food-tray{
+  position:absolute;
+  inset:-10px 0 0;     /* 10px más arriba: tapa también los globitos de aviso */
+  z-index:2;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap:8px;
+  padding:10px;
+  border-radius:24px;
+  background:#fff;
+  box-shadow:0 14px 30px -14px rgba(70,10,90,.7);
+  font-family:var(--font-ui);
+  color:var(--tile-ink);
+  animation:trayIn .22s var(--ease-spring);
+}
+.food-tray.hidden{display:none;}
+.controls.tray-open .btn[data-badge]::after{display:none;}
+@keyframes trayIn{ from{opacity:0; transform:translateY(10px) scale(.98);} }
+.tray-head{display:flex; justify-content:space-between; align-items:center; gap:8px; padding:0 4px;}
+.tray-head b{font-size:13px; font-weight:900;}
+.tray-head small{display:block; font-size:11px; font-weight:700; color:#8a7a99;}
+.tray-head small.warn{color:#e0455a;}
+.tray-close{
+  flex-shrink:0;
+  border:none;
+  border-radius:999px;
+  padding:6px 12px;
+  font-family:var(--font-ui);
+  font-weight:900;
+  font-size:11.5px;
+  color:#5a4a68;
+  background:#f1eaf6;
+  cursor:pointer;
+}
+.tray-foods{display:grid; grid-template-columns:repeat(5, 1fr); gap:6px;}
+.tray-food{
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:2px;
+  padding:9px 0 7px;
+  border:none;
+  border-radius:15px;
+  background:#fff4ec;
+  font-family:var(--font-ui);
+  color:var(--tile-ink);
+  cursor:pointer;
+  transition:transform .12s var(--ease-spring);
+}
+.tray-food:active{transform:scale(.92);}
+.tray-food .emo{font-size:23px; line-height:1;}
+.tray-food b{font-size:10.5px; font-weight:900; white-space:nowrap;}
+.tray-food .n{position:absolute; top:3px; right:5px; font-size:10px; font-weight:900; color:#8a5a3a;}
+.tray-food.last{box-shadow:0 0 0 2.5px #ff8a5c;}
+.tray-food.out{opacity:.38; filter:grayscale(.7);}
+.tray-food.med{background:#ffe4e7;}
+.tray-food.med.urgent{box-shadow:0 0 0 2.5px #ff5d6c; animation:alertPulse 1s ease-in-out infinite;}
 
 /* ---------- mandos de los minijuegos ---------- */
 
@@ -1559,6 +1645,7 @@ body{
   .device-top{padding:0 4px 10px;}
   .screen-bezel{padding:10px;}
   .controls{margin-top:12px; gap:8px;}
+  .dock{gap:7px;}
   .speaker{margin-top:10px;}
 }
 

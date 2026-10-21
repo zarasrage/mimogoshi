@@ -228,7 +228,7 @@ La pantalla de inicio **no** enfoca el campo del nombre al abrirse: en el teléf
 el teclado aparecía de una y tapaba justo el selector de especies, que es lo
 primero que hay que elegir.
 
-`askName()` también esconde `.controls` (los 7 botones de cuidado, que sin
+`askName()` también esconde `.controls` (los botones de abajo, que sin
 mascota no sirven de nada) y agrega la clase `.onboarding` a `#screen` mientras
 dura esta pantalla; `start()` saca las dos cosas justo antes de llamar a
 `boot()`. Sin esto, `.controls` sumaba alto de más abajo del overlay (`boot()`
@@ -260,9 +260,32 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   `.overlay-btn danger`. Varios juntos van en `.overlay-actions`. Toda
   confirmación destructiva lleva su Cancelar (la de Reiniciar no tenía y no
   había forma de salir).
-- `.controls`: tarjetas blancas con el ícono en un "squircle" de color propio
-  (`--tint` por id): las acciones se reconocen por color y posición.
-  Reiniciar va como píldora discreta, no como tarjeta.
+- `.controls` en dos niveles: el **dock** (`.dock`) con los cuatro cuidados
+  de todos los días —Comer, Jugar, Limpiar, Dormir—, tarjetas blancas con el
+  ícono en un "squircle" de color propio (`--tint` por id), y debajo
+  **píldoras** (`.pill`) con lo de vez en cuando: Tienda, Personalizar y
+  Reiniciar como ícono chico (destructivo, no tiene por qué estar a mano).
+- **Los botones avisan** (`updateDock()`, desde `render()`, solo toca el DOM
+  si algo cambió): anillo de su color alrededor del ícono (`.need`) y globito
+  arriba (`data-badge`): 💊 en Comer si está enferma (anillo también con
+  hambre bajo 30), 💩 en Limpiar si hay caca, zZ en Dormir con energía bajo
+  `SLEEPY_THRESHOLD` (violeta; rojo si ya está agotada).
+- **Comer abre una bandeja** (`#foodTray`, `toggleFoodTray()`), no una hoja:
+  flota encima del dock y las píldoras con posición absoluta, así **el aparato
+  no cambia de alto** al abrirla (verificado midiendo `#device` abierta y
+  cerrada), y no tapa la pantalla: se ve comer y la barra de hambre. Todas
+  las comidas con su stock, más la medicina en la misma fila (antes eran dos
+  botones —Comer daba la elegida y Menú la elegía— y el botiquín era una
+  sección del menú). Tocar una se la da en el acto (`feedFood()`); la última
+  queda marcada (`state.selectedFood`); una en 0 sale apagada y tocarla abre
+  la tienda en Comida. Se cierra con Cerrar, tocando afuera o al entrar a un
+  minijuego (`showGameControls()`). Mientras está abierta se esconden los
+  globitos (`.tray-open`), que si no asomaban por arriba.
+- **Dormir** (`btnSleep()`) la acuesta en el acto (a la cama si hay una, eso
+  lo hace solo `updateWalker()`); dormida, el mismo botón es ☀️ Despertar y
+  sigue las reglas de `tryWake()` (ver "Sueño y energía"). Con energía en
+  `WAKE_AT` o más no se acuesta ("No tiene nada de sueño"): se despertaría
+  sola en el próximo tick y el botón parecería no hacer nada.
 - Todo lo tocable lleva `-webkit-tap-highlight-color:transparent`,
   `user-select:none` y `touch-action:manipulation`; los `:hover` van dentro de
   `@media (hover:hover)` para que no queden pegados en el teléfono. El `<input>`
@@ -432,13 +455,11 @@ La Red Bull es la única que lo pisa — poca hambre (`restore: 2`), mucha energ
 
 **Medicina:** ya no es un botón propio, gratis e infinito. Es una porción más
 de la despensa (`MEDICINE`, `state.pantry.medicina`): se compra en la tienda,
-pestaña Comida (`price: 15`), y se da desde el menú de comidas, sección
-**Botiquín** (`giveMedicine()`). Se arranca con `MED_START_STOCK = 2`, y los
+pestaña Comida (`price: 15`), y se da desde
+la bandeja de **Comer**, en la misma fila que las comidas (`giveMedicine()`). Se arranca con `MED_START_STOCK = 2`, y los
 saves de antes también reciben esas 2, para que la primera enfermedad no pille
-sin monedas. El lugar del botón de Medicina lo tomó **Personalizar** (ver
-"Estilo"). Para que la enfermedad se siga notando sin ese botón, `render()`
-le pone la clase `.alert` al botón **Menú** mientras está enferma: un 💊 rojo
-que late.
+sin monedas. Para que la enfermedad se siga notando sin un botón propio, el botón
+**Comer** lleva un 💊 rojo que late mientras está enferma (`updateDock()`).
 
 **Los avisos de la tienda van dentro de la tarjeta, no con `say()`**: la burbuja
 tiene `z-index:5` y el overlay `10`, así que un `say()` con un overlay abierto

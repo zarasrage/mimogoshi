@@ -309,8 +309,8 @@ const FOODS = [
 const FOOD_START_STOCK = 5;
 
 /* La medicina ya no es un botón gratis e infinito: se compra en la tienda
-   (pestaña Comida) como cualquier porción y se da desde el menú de comidas,
-   en la sección Botiquín. Se guarda en la misma despensa (state.pantry), con
+   (pestaña Comida) como cualquier porción y se da desde la bandeja de Comer,
+   en la misma fila que las comidas. Se guarda en la misma despensa (state.pantry), con
    su propia clave. Se arranca con MED_START_STOCK para que la primera
    enfermedad no pille sin monedas. */
 const MEDICINE = { id:'medicina', name:'Medicina', emoji:'💊', price: 15 };
@@ -1225,9 +1225,8 @@ function render(){
   if (typeof renderBuddy === 'function') renderBuddy();
   updateFurniture();
 
-  /* Enferma: el botón del menú de comidas (donde está el botiquín) avisa. */
-  document.getElementById('btnFoodMenu').classList.toggle('alert', !!state.sick);
-  document.getElementById('feedIcon').textContent = foodById(state.selectedFood).emoji;
+  /* Los botones de abajo avisan lo que hace falta (enferma, caca, sueño). */
+  updateDock();
 
   document.getElementById('poopFx').classList.toggle('hidden', !state.poop);
   document.getElementById('giftFx').classList.toggle('hidden', !state.gift);
@@ -1384,42 +1383,24 @@ function requireAlive(fn){
   return (...args) => { if (!gameOver && !activeMinigame) fn(...args); };
 }
 
-const btnFeed = () => {
-  if (state.stage === 'egg') { say('Todavía es un huevo…'); return; }
-  if (!tryWake()) return;
+/* Darle una comida de la despensa (la bandeja de Comer). Devuelve true si
+   comió. La que comió queda como `selectedFood`, la marcada en la bandeja. */
+function feedFood(id){
+  if (state.stage === 'egg') { say('Todavía es un huevo…'); return false; }
+  const food = foodById(id);
+  if (foodStock(food.id) <= 0) return false;
+  if (!tryWake()) return false;
   catchUp();
-
-  /* Si se acabó lo que estaba elegido, cae al bocadillo simple en vez de no
-     hacer nada: quedarse con un botón que no responde es peor que dar de comer
-     algo más flojo y avisarlo. Pero el bocadillo también se gasta ahora: si
-     tampoco queda de eso, no hay con qué alimentar y hay que avisar en vez de
-     comer de la nada. */
-  let seAcabo = null;
-  if (foodStock(state.selectedFood) <= 0){
-    seAcabo = foodById(state.selectedFood).name;
-    state.selectedFood = 'simple';
-  }
-
-  if (foodStock(state.selectedFood) <= 0){
-    say('No queda comida… ¡hay que pasar por la tienda! 🛒');
-    return;
-  }
-
-  const food = foodById(state.selectedFood);
   state.pantry[food.id] = (state.pantry[food.id] || 0) - 1;
-
   state.hunger = clamp(state.hunger + food.restore);
   state.energy = clamp(state.energy + (food.energy ?? FOOD_ENERGY_DEFAULT));
+  state.selectedFood = food.id;
   floatFx(food.emoji);
-  say(seAcabo ? `Se acabó ${seAcabo}, le doy ${food.name}` : '¡Ñam ñam!');
+  say('¡Ñam ñam!');
   triggerPetAction('eat');
-
-  // gastada la última porción de lo que no sea el bocadillo, vuelve solo a
-  // este para no dejarlo elegido en 0
-  if (food.id !== 'simple' && foodStock(food.id) <= 0) state.selectedFood = 'simple';
-
   saveState(); render();
-};
+  return true;
+}
 
 const btnClean = () => {
   if (!tryWake()) return;
@@ -1455,7 +1436,7 @@ const collectGift = () => {
 };
 
 /* Dar una medicina de la despensa. Devuelve el aviso si no se pudo (no está
-   enferma, no quedan), para que el menú lo muestre dentro de la hoja. */
+   enferma, no quedan), para que la bandeja de Comer lo muestre. */
 function giveMedicine(){
   catchUp();
   if (!state.sick) return 'No está enferma: guárdala para cuando la necesite';
@@ -1481,60 +1462,109 @@ const btnPet = () => {
   saveState(); render();
 };
 
-/* ===================== Menú de comida ===================== */
+/* Dormir / Despertar: el mismo botón. Dormir la acuesta en el acto (a la
+   cama si hay una: eso lo hace solo updateWalker()); despertar sigue las
+   reglas de siempre (tryWake: bajo ENERGY_LOCK_AT no se puede). Con la
+   energía en WAKE_AT o más no se acuesta: se despertaría sola en el próximo
+   tick y el botón parecería no hacer nada. */
+const btnSleep = () => {
+  if (state.stage === 'egg') { say('Todavía es un huevo…'); return; }
+  if (state.sleeping){ tryWake(); saveState(); render(); return; }
+  if (state.energy >= WAKE_AT){ say('No tiene nada de sueño ☀️'); return; }
+  catchUp();
+  state.sleeping = true;
+  petAction = null;
+  say('A dormir… 💤');
+  saveState(); render();
+};
 
-function openFoodMenu(aviso){
-  const rows = FOODS.map(f => {
-    const stock = foodStock(f.id);
-    const hay = stock > 0;
-    const selected = state.selectedFood === f.id;
-    return `
-      <div class="menu-item ${hay ? '' : 'locked'} ${selected ? 'selected' : ''}" data-food="${f.id}">
-        <span class="emoji">${f.emoji}</span>
-        <div class="info">
-          <b>${escapeHtml(f.name)}</b>
-          <small>${foodDesc(f)} · ${hay ? `te quedan ${stock}` : 'sin porciones'}</small>
-        </div>
-      </div>`;
+/* Los botones de abajo avisan cuando hacen falta (ver .need y data-badge en
+   el CSS). Corre en cada render(), así que solo toca el DOM si algo cambió. */
+function updateDock(){
+  const sleepy = !state.sleeping && state.energy < SLEEPY_THRESHOLD;
+  const want = {
+    btnFeed:  { need: state.hunger < 30 || !!state.sick, badge: state.sick ? '💊' : '' },
+    btnClean: { need: !!state.poop, badge: state.poop ? '💩' : '' },
+    btnSleep: { need: sleepy, badge: sleepy ? 'zZ' : '', soft: !isExhausted(), asleep: !!state.sleeping },
+  };
+  const key = JSON.stringify(want);
+  if (updateDock._key === key) return;
+  updateDock._key = key;
+  for (const [id, w] of Object.entries(want)){
+    const el = document.getElementById(id);
+    el.classList.toggle('need', w.need);
+    if (w.badge) el.dataset.badge = w.badge; else delete el.dataset.badge;
+    el.classList.toggle('badge-soft', !!w.soft);
+  }
+  const sl = document.getElementById('btnSleep');
+  sl.classList.toggle('asleep', want.btnSleep.asleep);
+  sl.title = want.btnSleep.asleep ? 'Despertar' : 'Dormir';
+  document.getElementById('sleepIcon').textContent = want.btnSleep.asleep ? '☀️' : '🌙';
+  document.getElementById('sleepLabel').textContent = want.btnSleep.asleep ? 'Despertar' : 'Dormir';
+}
+
+/* ===================== Bandeja de comidas ===================== */
+
+/* Comer abre una bandeja encima de los botones de abajo (no una hoja: no tapa
+   la pantalla, así se ve comer y se ve la barra de hambre). Tocar una comida
+   se la da en el acto; la medicina va en la misma fila (antes era la sección
+   Botiquín de un menú aparte). Una comida en 0 sale apagada y tocarla lleva a
+   la tienda a comprarla. Los avisos van con say(): la burbuja está en la
+   pantalla, que la bandeja no tapa. */
+function foodTrayOpen(){ return !document.getElementById('foodTray').classList.contains('hidden'); }
+
+function closeFoodTray(){
+  document.getElementById('foodTray').classList.add('hidden');
+  document.getElementById('controls').classList.remove('tray-open');
+}
+
+function toggleFoodTray(){
+  if (foodTrayOpen()){ closeFoodTray(); return; }
+  if (state.stage === 'egg'){ say('Todavía es un huevo…'); return; }
+  renderFoodTray();
+  document.getElementById('foodTray').classList.remove('hidden');
+  document.getElementById('controls').classList.add('tray-open');   // esconde los globitos de aviso
+}
+
+function renderFoodTray(aviso){
+  const tray = document.getElementById('foodTray');
+  const tile = (id, emoji, label, n, cls) => `
+      <button class="tray-food ${cls}" data-tray="${id}">
+        <span class="n">x${n}</span><span class="emo">${emoji}</span><b>${label}</b>
+      </button>`;
+  const short = { simple: 'Simple', rica: 'Rica', especial: 'Especial', redbull: 'Red Bull' };
+  const foods = FOODS.map(f => {
+    const n = foodStock(f.id);
+    return tile(f.id, f.emoji, short[f.id] || f.name, n,
+      (n <= 0 ? 'out ' : '') + (state.selectedFood === f.id ? 'last' : ''));
   }).join('');
-
   const meds = foodStock(MEDICINE.id);
-  const medRow = `
-      <div class="section-label">Botiquín</div>
-      <div class="menu-item ${meds > 0 ? '' : 'locked'} ${state.sick ? 'urgent' : ''}" data-med>
-        <span class="emoji">${MEDICINE.emoji}</span>
-        <div class="info">
-          <b>${MEDICINE.name}</b>
-          <small>${state.sick ? '¡Está enferma! Tócala para dársela' : `Cura la enfermedad · +${MED_HEALTH} de salud`} · ${meds > 0 ? `te quedan ${meds}` : 'sin medicinas'}</small>
-        </div>
-      </div>`;
-
-  showOverlay(`
-    <h3>🍽️ Elegir comida</h3>
-    ${aviso ? `<p class="sheet-note warn">${escapeHtml(aviso)}</p>` : ''}
-    <div class="menu-list">${rows}${medRow}</div>
-    <button class="overlay-btn secondary" id="btnCloseMenu">Cerrar</button>
-  `, hideOverlay);
-
-  /* La medicina se da al tocarla (no se "elige" como la comida). Si no se
-     pudo, el aviso va dentro de la hoja: un say() quedaría tapado. */
-  document.querySelector('[data-med]').addEventListener('click', () => {
-    const problema = giveMedicine();
-    if (problema) openFoodMenu(problema);
-    else hideOverlay();
-  });
-
-  /* A las que no tienen porciones no se les engancha nada: ya salen en gris y
-     con cursor de "no". Un say() acá tampoco se vería, queda bajo el overlay. */
-  document.querySelectorAll('[data-food]').forEach(el => {
-    if (foodStock(el.dataset.food) <= 0) return;
-    el.addEventListener('click', () => {
-      state.selectedFood = el.dataset.food;
-      saveState(); render();
-      hideOverlay();
-    });
-  });
-  document.getElementById('btnCloseMenu').addEventListener('click', hideOverlay);
+  const med = tile(MEDICINE.id, MEDICINE.emoji, MEDICINE.name, meds,
+    'med ' + (meds <= 0 ? 'out ' : '') + (state.sick ? 'urgent' : ''));
+  const sub = aviso
+    ? `<small class="warn">${escapeHtml(aviso)}</small>`
+    : `<small>${state.sick ? '¡Está enferma! Dale una medicina' : 'Toca para dársela · marcada, la última'}</small>`;
+  tray.innerHTML = `
+    <div class="tray-head"><span><b>¿Qué come?</b>${sub}</span>
+      <button class="tray-close" id="trayClose">Cerrar</button></div>
+    <div class="tray-foods">${foods}${med}</div>`;
+  tray.querySelector('#trayClose').addEventListener('click', closeFoodTray);
+  tray.querySelectorAll('[data-tray]').forEach(el => el.addEventListener('click', requireAlive(() => {
+    const id = el.dataset.tray;
+    if (id === MEDICINE.id){
+      if (meds <= 0){ closeFoodTray(); shopTab = 'food'; openShop('No te quedan medicinas'); return; }
+      const problema = giveMedicine();
+      if (problema) renderFoodTray(problema); else closeFoodTray();
+      return;
+    }
+    if (foodStock(id) <= 0){
+      closeFoodTray();
+      shopTab = 'food';
+      openShop(`No te queda ${foodById(id).name}`);
+      return;
+    }
+    if (feedFood(id)) closeFoodTray();
+  })));
 }
 
 /* ===================== Tienda =====================
@@ -2203,6 +2233,7 @@ function saveBestScore(id, score){
    controles encima, y de paso los botones quedan donde está el pulgar. Reflejos
    y memorice no usan esto: se juegan tocando la pantalla sí o sí. */
 function showGameControls(html){
+  closeFoodTray();
   const cont = document.getElementById('gameControls');
   cont.innerHTML = html;
   cont.classList.remove('hidden');
@@ -5223,10 +5254,14 @@ function renderDebugPanel(){
 }
 
 function wireButtons(){
-  document.getElementById('btnFeed').addEventListener('click', requireAlive(btnFeed));
+  document.getElementById('btnFeed').addEventListener('click', requireAlive(toggleFoodTray));
+  document.getElementById('btnSleep').addEventListener('click', requireAlive(btnSleep));
+  /* La bandeja de comidas se cierra al tocar cualquier cosa fuera de ella. */
+  document.addEventListener('pointerdown', (e) => {
+    if (foodTrayOpen() && !e.target.closest('#foodTray, #btnFeed')) closeFoodTray();
+  });
   document.getElementById('btnPlay').addEventListener('click', requireAlive(() => openGamesMenu()));
   document.getElementById('btnClean').addEventListener('click', requireAlive(btnClean));
-  document.getElementById('btnFoodMenu').addEventListener('click', requireAlive(() => openFoodMenu()));
   document.getElementById('btnShop').addEventListener('click', requireAlive(() => openShop()));
   document.getElementById('btnStyle').addEventListener('click', requireAlive(() => openPersonalize()));
   document.getElementById('btnDebug').addEventListener('click', requireAlive(toggleDebugPanel));

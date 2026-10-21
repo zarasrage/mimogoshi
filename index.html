@@ -83,28 +83,30 @@
       </div>
     </div>
 
+    <!-- Abajo, dos niveles: los cuatro cuidados de todos los días, grandes, y
+         lo de vez en cuando (tienda, personalizar, reiniciar) en píldoras.
+         La bandeja de comidas flota encima de todo esto sin cambiar el alto. -->
     <div class="controls" id="controls">
-      <button class="btn" id="btnFeed" title="Alimentar">
-        <span class="btn-icon" id="feedIcon">🍬</span><span class="btn-label">Comer</span>
-      </button>
-      <button class="btn" id="btnPlay" title="Jugar">
-        <span class="btn-icon">🎮</span><span class="btn-label">Jugar</span>
-      </button>
-      <button class="btn" id="btnClean" title="Limpiar">
-        <span class="btn-icon">🧹</span><span class="btn-label">Limpiar</span>
-      </button>
-      <button class="btn" id="btnFoodMenu" title="Elegir comida">
-        <span class="btn-icon">🍽️</span><span class="btn-label">Menú</span>
-      </button>
-      <button class="btn" id="btnStyle" title="Personalizar">
-        <span class="btn-icon">🎨</span><span class="btn-label">Personalizar</span>
-      </button>
-      <button class="btn" id="btnShop" title="Tienda">
-        <span class="btn-icon">🛒</span><span class="btn-label">Tienda</span>
-      </button>
-      <button class="btn btn-ghost btn-wide" id="btnReset" title="Reiniciar">
-        <span class="btn-icon">↺</span><span class="btn-label">Reiniciar</span>
-      </button>
+      <div class="dock">
+        <button class="btn" id="btnFeed" title="Comer">
+          <span class="btn-icon">🍽️</span><span class="btn-label">Comer</span>
+        </button>
+        <button class="btn" id="btnPlay" title="Jugar">
+          <span class="btn-icon">🎮</span><span class="btn-label">Jugar</span>
+        </button>
+        <button class="btn" id="btnClean" title="Limpiar">
+          <span class="btn-icon">🧹</span><span class="btn-label">Limpiar</span>
+        </button>
+        <button class="btn" id="btnSleep" title="Dormir">
+          <span class="btn-icon" id="sleepIcon">🌙</span><span class="btn-label" id="sleepLabel">Dormir</span>
+        </button>
+      </div>
+      <div class="dock-sec">
+        <button class="pill" id="btnShop" title="Tienda">🛒 Tienda</button>
+        <button class="pill" id="btnStyle" title="Personalizar">🎨 Personalizar</button>
+        <button class="pill pill-icon" id="btnReset" title="Reiniciar">↺</button>
+      </div>
+      <div class="food-tray hidden" id="foodTray"></div>
     </div>
 
     <!-- Reemplaza a .controls mientras dura un minijuego: los mandos del juego
