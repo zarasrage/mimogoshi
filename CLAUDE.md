@@ -381,7 +381,7 @@ simulación, no solo cómo se ve.
 - **< `ENERGY_LOCK_AT` (7): candado.** Se duerme en el acto aunque esté
   despierta (`collapseIfDrained()`, también al terminar un minijuego que la
   dejó sin energía) y nada la despierta, ni de noche. De 0 a 7 recupera en
-  ~15 min reales.
+  ~8 min reales.
 - **< `EXHAUSTED_AT` (15): agotada.** Se la puede despertar (`tryWake()` avisa
   que está agotada), pero **despierta** pierde salud a `EXHAUSTED_HEALTH_MULT`
   (x3) el ritmo de una causa normal (~17 de salud por hora real) y se la ve
@@ -395,6 +395,10 @@ simulación, no solo cómo se ve.
   despertaba para jugar y se dormía en el menú).
 - **`WAKE_AT` (90): se despierta sola.**
 - Para lanzar un minijuego hace falta `GAME_MIN_ENERGY` (10).
+
+Durmiendo recupera `ENERGY_RECOVER_PER_HOUR` = 100/106 por hora de juego: la
+barra entera en ~1 h 45 min reales (antes 100/212, ~3.5 h: se pidió el doble
+de rápido). Con cama, x1.25 encima de eso.
 
 Antes el candado era 25 y el sueño empezaba en 35: pasaba mucho rato dormida
 sin que se pudiera hacer nada. Ahora el candado es corto y la franja de 7 a 15

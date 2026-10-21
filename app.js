@@ -622,7 +622,7 @@ function stageDeviceScale(stage){
    - con WAKE_AT se despierta sola.
    Antes el candado era 25 y el sueño empezaba en 35: con barras de 0 a 100
    se pasaba mucho rato dormida sin poder hacer nada. Ahora el candado es
-   corto (de 0 a 7 se recupera en ~15 min reales) y lo que hay entre medio
+   corto (de 0 a 7 se recupera en ~8 min reales) y lo que hay entre medio
    es una decisión: despertarla cuesta salud. */
 const ENERGY_LOCK_AT = 7;
 const EXHAUSTED_AT = 15;
@@ -664,7 +664,7 @@ const DECAY_PER_HOUR = {
   energy:    100 / 3395,   // 3395 h de juego ≈ 56.6 horas reales
   hygiene:   100 / 212,    // 212 h de juego ≈ 3.5 horas reales, pero solo si hay caca (antes 424)
 };
-const ENERGY_RECOVER_PER_HOUR = 100 / 212;  // durmiendo: barra entera en ~3.5 horas reales
+const ENERGY_RECOVER_PER_HOUR = 100 / 106;  // durmiendo: barra entera en ~1 h 45 min reales (antes 212, la mitad de rápido)
 
 /* Probabilidad de que aparezca caca, por hora de juego. Antes daba mediana a
    la hora real; escalada al mismo ~3.54x da mediana a las ~3.5 horas reales
