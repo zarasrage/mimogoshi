@@ -57,7 +57,9 @@ const FURNI_ITEMS = [
   { id:'banera',     name:'Bañera',      use:'se baña',        price: 70 },
   { id:'tocador',    name:'Tocador',     use:'se arregla',     price: 60 },
   { id:'trampolin',  name:'Trampolín',   use:'rebota',         price: 50 },
-  { id:'pelota',     name:'Pelota',      use:'la patea',       price: 25 },
+  { id:'pelota',     name:'Pelota',      use:'juega con ella', price: 25 },
+  { id:'balon',      name:'Balón',       use:'mete goles',     price: 35 },
+  { id:'playa',      name:'Pelota de playa', use:'la lanza',   price: 30 },
   { id:'columpio',   name:'Columpio',    use:'se columpia',    price: 70 },
   { id:'tobogan',    name:'Tobogán',     use:'se tira',        price: 90 },
   { id:'radiocasete',name:'Radiocasete', use:'baila',          price: 40 },
@@ -195,17 +197,104 @@ function furniThumb(id){
 let furniRt = [];
 
 function furniRestState(id){
-  const rt = { id, ballDx: 0, ballRot: 0, swing: 0, on: false, food: false, users: new Set() };
+  const rt = { id, ballDx: 0, ballY: 0, ballRot: 0, ballAnim: null, ballFollow: null,
+    swing: 0, on: false, food: false, users: new Set() };
   const art = FURNI_ART[id];
   if (art && art.init) art.init(rt);
   return rt;
 }
 
 function resetFurniRt(rt){
+  /* La pelota se queda donde quedó. Si iba volando sigue su vuelo; si la
+     llevaba alguien (en la cabeza, en las manos), se cae al piso. */
+  const b = ballNow(rt);
   const keep = { id: rt.id, entry: rt.entry, x: rt.x, els: rt.els, users: rt.users, removed: rt.removed,
-    ballDx: rt.ballDx, ballRot: rt.ballRot };   // la pelota se queda donde quedó
+    ballDx: b.dx, ballY: rt.ballFollow ? b.y : rt.ballY, ballRot: rt.ballRot,
+    ballAnim: rt.ballFollow ? null : rt.ballAnim, _bx: rt._bx };
   for (const k of Object.keys(rt)) delete rt[k];
   Object.assign(rt, furniRestState(keep.id), keep);
+  /* Quedó (o iba a quedar) en alto, en una cabeza o en unas manos: se cae. */
+  if (rt.ballY > 0 || (rt.ballAnim && rt.ballAnim.y1 > 0)) ballTo(rt, { dx: 0, y: 0, h: 4, bounces: 2, ms: 650 });
+}
+
+/* ---------- la pelota ----------
+   Las pelotas (pelota, balón, pelota de playa) se mueven de verdad: ruedan,
+   botan, vuelan y se pueden llevar encima. El estado vive en el rt:
+   - ballDx / ballY: dónde quedó (px CSS desde el centro del mueble, y alto
+     sobre el piso);
+   - ballAnim: un movimiento en curso (rodar o volar, con botes);
+   - ballFollow: va pegada a un personaje (en la cabeza, en las manos, a los
+     pies empujándola).
+   ballNow() calcula dónde está en este instante; la pieza la dibuja ahí
+   (pose) y los guiones la apuntan con ballAbsX(). */
+
+const BALL_BOUNCE_KEEP = 0.42;   // cada bote llega al 42% del alto del anterior
+
+function ballNow(rt, now = performance.now()){
+  const f = rt.ballFollow;
+  if (f){
+    const fw = floorWidth();
+    return { dx: (clampX(f.act.x + f.dx * f.act.dir / fw) - rt.x) * fw, y: f.act.y + f.dy };   // nunca sale del piso
+  }
+  const a = rt.ballAnim;
+  if (!a) return { dx: rt.ballDx || 0, y: rt.ballY || 0 };
+  const u = Math.min(1, (now - a.t0) / a.ms);
+  if (u >= 1){
+    rt.ballDx = a.dx1; rt.ballY = a.y1; rt.ballAnim = null;
+    return { dx: a.dx1, y: a.y1 };
+  }
+  /* Rodar frena (sale rápido y se detiene); volar va parejo. */
+  const e = a.ease === 'out' ? 1 - (1 - u) * (1 - u) : u;
+  let hop = 0;
+  for (const sg of a.segs){
+    if (u < sg.u1){ const v = (u - sg.u0) / (sg.u1 - sg.u0); hop = 4 * sg.h * v * (1 - v); break; }
+  }
+  return { dx: lerp(a.dx0, a.dx1, e), y: lerp(a.y0, a.y1, u) + hop };
+}
+
+function ballAbsX(rt){ return rt.x + ballNow(rt).dx / floorWidth(); }
+function ballIdle(rt){ return !rt.ballAnim && !rt.ballFollow; }
+
+/* Mueve la pelota. `o.x` = destino en fracción del piso (o `o.dx` = cuánto
+   correrla, px CSS), `o.y` = alto al que llega (0 = el piso), `o.h` = alto
+   del arco, `o.bounces` = botes después del primer arco, cada uno más bajo
+   (BALL_BOUNCE_KEEP) y más corto (la duración va con la raíz del alto, como
+   una caída de verdad). Nunca sale del piso. */
+function ballTo(rt, o){
+  const now = performance.now();
+  const cur = ballNow(rt, now);
+  rt.ballFollow = null;
+  const fw = floorWidth();
+  const target = o.x !== undefined ? o.x : rt.x + (cur.dx + (o.dx || 0)) / fw;
+  const dx1 = (clampX(target) - rt.x) * fw;
+  /* Que el arco no se salga por arriba de la pieza (en un teléfono chico el
+     piso mide ~150 px de alto). */
+  const top = floorHeight() - FURNI_ART[rt.id].w * furniK() - 6;
+  const h = Math.max(0, Math.min(o.h || 0, top - Math.max(cur.y, o.y || 0))), n = o.bounces || 0;
+  const hs = [h];
+  for (let i = 0; i < n; i++) hs.push(hs[i] * BALL_BOUNCE_KEEP);
+  const w = hs.map(x => Math.sqrt(Math.max(x, 0.5)));
+  const tot = w.reduce((a, b) => a + b, 0);
+  let acc = 0;
+  const segs = hs.map((hh, i) => { const u0 = acc / tot; acc += w[i]; return { u0, u1: acc / tot, h: hh }; });
+  rt.ballAnim = { t0: now, ms: o.ms || 600, dx0: cur.dx, dx1, y0: cur.y, y1: o.y || 0, ease: o.ease || 'lin', segs };
+}
+
+/* La pelota va pegada a un personaje: `dx` hacia adelante (se da vuelta con
+   él) y `dy` de alto sobre sus pies. */
+function ballFollow(rt, act, dx, dy){
+  const cur = ballNow(rt);
+  rt.ballDx = cur.dx; rt.ballY = cur.y; rt.ballAnim = null;
+  rt.ballFollow = { act, dx, dy };
+}
+
+/* La suelta: si estaba en alto, se cae y bota. */
+function ballRelease(rt){
+  if (!rt.ballFollow) return;
+  const cur = ballNow(rt);
+  rt.ballFollow = null;
+  rt.ballDx = cur.dx; rt.ballY = cur.y;
+  if (cur.y > 0) ballTo(rt, { dx: 0, y: 0, h: Math.min(10, 3 + cur.y * 0.15), bounces: 2, ms: 420 + cur.y * 6 });
 }
 
 function partVisible(part, rt, now){
@@ -571,6 +660,13 @@ function floorWidth(){
   return furniFloorW || 300;
 }
 
+let furniFloorH = 0;
+function floorHeight(){
+  const h = document.getElementById('creatureFloor').clientHeight;
+  if (h > 0) furniFloorH = h;
+  return furniFloorH || 150;
+}
+
 const clampX = x => Math.min(0.96, Math.max(0.04, x));
 const lerp = (a, b, t) => a + (b - a) * t;
 const pickOne = list => list[Math.floor(Math.random() * list.length)];
@@ -739,7 +835,7 @@ const resolveStep = (v, a, act) => typeof v === 'function' ? v(a, act) : v;
    - hop: {x, y} | fn      salto en parábola de alto `h` (px CSS) en `ms`
    - slide: {x, y} | fn    movimiento recto (subir una escalera, tirarse)
    - bounce: n             n saltos en el lugar (`onBounce` en cada uno)
-   - kick: dx              patear la pelota del mueble dx px CSS
+   - kick: dx              patear la pelota del mueble dx px CSS (h/bounces: con botes)
    - ride: ms | until      ir montado en el otro (dx, dy)
    - sync: 'nombre'        esperar a que el otro llegue al mismo nombre
    - call: fn              ejecutar algo y seguir
@@ -747,16 +843,25 @@ const resolveStep = (v, a, act) => typeof v === 'function' ? v(a, act) : v;
                            otro), flip (bailar), swing (columpio), track
                            (fn que fija x/y cada cuadro)
    En cualquiera: anim, fx + fxEvery (partículas), hide (desaparecer, por
-   ejemplo adentro del cohete), start/end (rt, act, a). */
+   ejemplo adentro del cohete), start/end (rt, act, a), y para la pelota del
+   mueble: ball (lanzarla, ver ballTo), follow: [dx, dy] (llevarla encima),
+   release (soltarla); dir: 'ball' mira la pelota. */
 function runFurniActivity(dt, now, act = walker){
   const a = act.activity;
   const s = a.steps[a.i];
   if (!s){ finishFurniActivity(act); return; }
   const partner = a.partner;
   if (!a.st){
-    a.st = now; a.x0 = act.x; a.y0 = act.y; a.b0 = a.rt ? a.rt.ballDx : 0; a.fxAt = now; a.flipAt = now;
-    a.to = null; a.bounceN = -1; a.apexDone = false;
+    a.st = now; a.x0 = act.x; a.y0 = act.y; a.fxAt = now; a.flipAt = now;
+    a.to = null; a.bounceN = -1; a.apexDone = false; a.kicked = false;
     if (s.hide !== undefined) act.hidden = s.hide;
+    /* La pelota del mueble, en cualquier paso: lanzarla (`ball`), llevarla
+       encima (`follow: [dx, dy]`, px CSS) o soltarla (`release`). */
+    if (a.rt){
+      if (s.release) ballRelease(a.rt);
+      if (s.ball) ballTo(a.rt, resolveStep(s.ball, a, act));
+      if (s.follow){ const fo = resolveStep(s.follow, a, act); ballFollow(a.rt, act, fo[0], fo[1]); }
+    }
     if (s.start) s.start(a.rt, act, a);
     if (s.call){ s.call(a.rt, act, a); a.i++; a.st = 0; return; }
     if (s.fx && !s.fxEvery) petFx(pickOne(s.fx), act);
@@ -764,6 +869,12 @@ function runFurniActivity(dt, now, act = walker){
   const el = now - a.st;
   const next = () => { if (s.end) s.end(a.rt, act, a); a.i++; a.st = 0; };
   const faceTo = x => { if (Math.abs(x - act.x) > 0.002) act.dir = x > act.x ? 1 : -1; };
+  /* `dir`: 1 / -1, 'partner' (mira al otro) o 'ball' (mira la pelota). */
+  const faceDir = () => {
+    if (s.dir === 'partner'){ if (partner) faceTo(partner.x); }
+    else if (s.dir === 'ball'){ if (a.rt) faceTo(ballAbsX(a.rt)); }
+    else if (s.dir) act.dir = s.dir;
+  };
   const anim = v => setWalkerAnim(typeof v === 'function' ? v(a, act) : v, now, act);
   if (s.fx && s.fxEvery && now - a.fxAt >= s.fxEvery){
     a.fxAt = now;
@@ -806,16 +917,14 @@ function runFurniActivity(dt, now, act = walker){
     const u = (el % s.ms) / s.ms;
     if (!a.apexDone && u >= 0.5){ a.apexDone = true; if (s.onApex) s.onApex(a.rt, act, n); }
     act.y = a.y0 + 4 * u * (1 - u) * s.h;
-    if (s.dir) act.dir = s.dir === 'partner' && partner ? (partner.x > act.x ? 1 : -1) : s.dir;
+    faceDir();
     anim(s.anim ? s.anim : (u < 0.1 || u > 0.9 ? 'idle' : 'happy'));
   } else if (s.kick !== undefined){
-    const t = Math.min(1, el / s.ms);
-    const e = 1 - (1 - t) * (1 - t);   // sale rápido y frena
-    const prev = a.rt.ballDx;
-    a.rt.ballDx = a.b0 + s.kick * e;
-    a.rt.ballRot += (a.rt.ballDx - prev) / (4.5 * furniK());
-    anim(el < 300 ? 'happy' : 'idle');
-    if (t >= 1) next();
+    /* Patada: la pelota sale rápido y frena (con botes si se pide `h`). */
+    if (!a.kicked){ a.kicked = true; ballTo(a.rt, { dx: s.kick, ms: s.ms, h: s.h, bounces: s.bounces, ease: s.h ? 'lin' : 'out' }); }
+    faceDir();
+    anim(el < 300 ? (s.anim || 'happy') : 'idle');
+    if (el >= s.ms){ a.kicked = false; next(); }
   } else if (s.ride !== undefined){
     if (!partner){ next(); return; }
     act.x = partner.x + (s.dx || 0) * partner.dir / a.fw;
@@ -826,14 +935,12 @@ function runFurniActivity(dt, now, act = walker){
     if (done) next();
   } else if (s.sync !== undefined){
     a.duo.reached[act.key].add(s.sync);
-    if (s.dir === 'partner' && partner) faceTo(partner.x);
-    else if (s.dir) act.dir = s.dir;
+    faceDir();
     anim(s.anim || 'idle');
     const pa = partner && partner.activity;
     if (!pa || pa.duo !== a.duo || a.duo.reached[partner.key].has(s.sync)) next();
   } else {
-    if (s.dir === 'partner' && partner) faceTo(partner.x);
-    else if (s.dir) act.dir = s.dir;
+    faceDir();
     anim(s.anim || 'idle');
     if (s.flip && now - a.flipAt >= s.flip){ a.flipAt = now; act.dir *= -1; }
     if (s.swing){
@@ -922,6 +1029,328 @@ const S = {
   call: fn => ({ call: fn }),
   fx: (list) => ({ call: (rt, act) => petFx(pickOne(list), act) }),
 };
+
+/* ---------- las pelotas ----------
+   Tres pelotas (pelota, balón, pelota de playa) con distinto dibujo y tamaño
+   pero los MISMOS guiones: BALL_VISITS (16 formas de jugar solo) y
+   BALL_DUOS (3 de a dos). Los guiones se escriben con ballKit(f), que mide
+   la pelota del mueble (diámetro en px CSS) y al personaje, así sirven para
+   cualquier tamaño de pelota y cualquier etapa. La pelota no vuelve a su
+   lugar: queda donde terminó el juego, como una pelota de verdad. */
+function ballKit(f){
+  const rt = f.rt, D = FURNI_ART[rt.id].w * f.k, R = D / 2, fw = f.fw;
+  const px = v => v / fw;                          // px CSS → fracción del piso
+  const bx = () => ballAbsX(rt);
+  const side = bx() < 0.5 ? 1 : -1;                // hacia donde hay más pieza
+  const reach = px(R + f.h * 0.3);                 // a qué distancia se para para patearla
+  const hands = act => [R * 0.3 + actorCssH(act) * 0.32, actorCssH(act) * 0.28];
+  return { rt, D, R, px, bx, side, reach, hands,
+    head: act => actorCssH(act) * 0.8,             // coronilla, px CSS sobre los pies
+    behind: (sd = side) => () => clampX(ballAbsX(rt) - sd * reach),   // detrás, para patearla hacia sd
+    idle: () => ballIdle(rt),
+    /* Tomarla con las manos: la levanta (un saltito) y la lleva pegada. */
+    pickup: () => [
+      { ball: (a, act) => ({ x: act.x + act.dir * px(hands(act)[0]), y: hands(act)[1], h: 6, ms: 300 }), anim: 'happy', ms: 300 },
+      { follow: (a, act) => hands(act), anim: 'happy', ms: 120 },
+    ],
+  };
+}
+
+const BALL_VISITS = [
+  /* Patadas largas: la pelota va dando botecitos y la persigue corriendo. */
+  f => {
+    const B = ballKit(f), sd = B.side, far = f.fw * 0.26;
+    return [
+      { go: B.behind(sd) },
+      { kick: sd * far, ms: 1100, h: 7, bounces: 2, dir: sd },
+      { go: B.behind(-sd), speed: 0.18 }, S.happy(350, { dir: 'ball' }),
+      { kick: -sd * far, ms: 1100, h: 7, bounces: 2, dir: -sd },
+      { go: B.behind(sd), speed: 0.18 }, S.happy(350, { dir: 'ball', fx: ['⭐'] }),
+      { kick: sd * far * 0.6, ms: 900, h: 12, bounces: 2, dir: sd },
+      { go: B.behind(sd), speed: 0.18 }, S.dance(900, 300, { fx: ['⚽'] }),
+    ];
+  },
+  /* Dribleo: patadas cortitas, de un lado a otro. */
+  f => {
+    const B = ballKit(f), sd = B.side, st = [{ go: B.behind(sd) }];
+    for (let i = 0; i < 5; i++) st.push({ kick: sd * f.fw * 0.07, ms: 380, dir: sd }, { go: B.behind(sd), speed: 0.16 });
+    st.push({ go: B.behind(-sd), speed: 0.14 }, S.happy(300, { fx: ['⚽'] }));
+    for (let i = 0; i < 5; i++) st.push({ kick: -sd * f.fw * 0.07, ms: 380, dir: -sd }, { go: B.behind(-sd), speed: 0.16 });
+    st.push(S.dance(900, 300, { fx: ['⭐'] }));
+    return st;
+  },
+  /* Número de circo: arriba de la pelota, haciendo equilibrio. */
+  f => {
+    const B = ballKit(f), top = B.D - 1;
+    return [
+      { go: B.behind(B.side) },
+      { hop: () => ({ x: B.bx(), y: top }), ms: 500, h: 18 },
+      { anim: 'happy', ms: 3600, flip: 900, fx: ['🎪', '⭐'], fxEvery: 900,
+        track: (rt, el) => ({ x: ballAbsX(rt) + Math.sin(el / 160) * B.px(1.2), y: top + Math.abs(Math.sin(el / 320)) * 2 }) },
+      { hop: () => ({ x: clampX(B.bx() + B.side * B.reach * 1.3), y: 0 }), ms: 500, h: 16 },
+      S.happy(700, { fx: ['👏'] }),
+    ];
+  },
+  /* Cabecitas: la sube a la cabeza y la hace rebotar ahí, sin que se caiga. */
+  f => {
+    const B = ballKit(f);
+    const st = [{ go: B.behind(B.side) }, S.wait(250, 'idle', { dir: 'ball' }),
+      { ball: (a, act) => ({ x: act.x, y: B.head(act), h: 26, ms: 650 }), anim: 'happy', ms: 650 }];
+    for (let i = 0; i < 7; i++){
+      const ms = 430 + (i % 3) * 60;
+      st.push({ ball: (a, act) => ({ x: act.x, y: B.head(act), h: 14 + (i % 3) * 7, ms }), bounce: 1, ms, h: 5, anim: 'happy',
+        fx: i === 3 ? ['⭐'] : undefined });
+    }
+    st.push({ ball: (a, act) => ({ x: act.x + act.dir * B.px(B.R + actorCssH(act) * 0.5), h: 10, bounces: 2, ms: 900 }),
+      anim: 'celebrate', ms: 1000, fx: ['🎉'] }, S.happy(500, { dir: 'ball' }));
+    return st;
+  },
+  /* Lanzarla al aire y atraparla, cada vez más alto. La última le cae en la cabeza. */
+  f => {
+    const B = ballKit(f);
+    const up = (h, ms) => ({ ball: (a, act) => ({ x: act.x + act.dir * B.px(B.hands(act)[0]), y: B.hands(act)[1], h, ms }),
+      anim: 'idle', until: B.idle });
+    const atrapa = { follow: (a, act) => B.hands(act), anim: 'happy', ms: 500 };
+    return [
+      { go: B.behind(B.side) }, ...B.pickup(), S.wait(300, 'happy'),
+      up(40, 850), atrapa, up(62, 1050), { ...atrapa, fx: ['⭐'] },
+      { ball: (a, act) => ({ x: act.x, y: B.head(act), h: 85, ms: 1250 }), anim: 'idle', until: B.idle },
+      { ball: (a, act) => ({ x: act.x + act.dir * B.px(B.R + actorCssH(act) * 0.6), h: 12, bounces: 2, ms: 800 }),
+        anim: 'sick', ms: 900, fx: ['💫'] },
+      S.happy(700, { dir: 'ball', fx: ['😆'] }),
+    ];
+  },
+  /* Golazo: toma vuelo, corre y la patea fuerte. */
+  f => {
+    const B = ballKit(f), sd = B.side;
+    return [
+      { go: B.behind(sd) },
+      { go: () => clampX(B.bx() - sd * (B.reach + 0.12)), speed: 0.1 },   // retrocede para tomar impulso
+      S.wait(400, 'idle', { dir: sd }),
+      { go: B.behind(sd), speed: 0.24 },
+      { kick: sd * f.fw * 0.45, ms: 1500, h: 30, bounces: 3, dir: sd, anim: 'celebrate' },
+      { anim: 'celebrate', ms: 1300, dir: sd, fx: ['⚽', '🎉', '⭐'], fxEvery: 420 },
+      S.dance(800, 260),
+      { go: B.behind(-sd), speed: 0.15 }, S.happy(400, { dir: 'ball' }),
+    ];
+  },
+  /* Contra la pared: la tira, rebota y le vuelve. Tres veces. */
+  f => {
+    const B = ballKit(f), sd = B.side, wall = sd > 0 ? 0.96 : 0.04;
+    const st = [{ go: B.behind(sd) }];
+    for (let i = 0; i < 3; i++){
+      st.push(
+        { ball: { x: wall, ms: 700 }, anim: 'happy', dir: sd, until: B.idle },
+        { ball: (a, act) => ({ x: clampX(act.x + sd * B.reach), ms: 850, ease: 'out', h: 4, bounces: 1 }), anim: 'idle', dir: sd, until: B.idle },
+        S.happy(300, { dir: sd }),
+      );
+    }
+    st.push(S.dance(800, 300, { fx: ['⭐'] }));
+    return st;
+  },
+  /* Se le escapa: rueda, la persigue, se le vuelve a escapar, y al final se le tira encima. */
+  f => {
+    const B = ballKit(f), sd = B.side;
+    return [
+      { go: B.behind(sd) },
+      { kick: sd * f.fw * 0.12, ms: 600, dir: sd },
+      { ball: { dx: sd * f.fw * 0.16, ms: 1700, ease: 'out' }, go: B.behind(sd), speed: 0.12 },
+      { ball: { dx: sd * f.fw * 0.12, ms: 900, ease: 'out' }, anim: 'sad', ms: 600, fx: ['😤'] },
+      { go: B.behind(sd), speed: 0.18 },
+      { hop: () => ({ x: B.bx(), y: 0 }), ms: 450, h: 20 },
+      { anim: 'pet', ms: 1300, fx: ['💗'] },
+      S.happy(600, { fx: ['😆'] }),
+    ];
+  },
+  /* Sentada encima, rebotando como en un saltarín. */
+  f => {
+    const B = ballKit(f), top = B.D * 0.8;
+    return [
+      { go: B.behind(B.side) },
+      { hop: () => ({ x: B.bx(), y: top }), ms: 480, h: 16 },
+      { bounce: 6, ms: 420, h: 16, fx: ['😆'], fxEvery: 1200 },
+      { bounce: 2, ms: 650, h: 30, anim: 'celebrate' },
+      { hop: () => ({ x: clampX(B.bx() - B.side * B.reach * 1.2), y: 0 }), ms: 480, h: 14 },
+      S.happy(600),
+    ];
+  },
+  /* Pataditas: la mantiene en el aire con el pie, sin dejarla caer. */
+  f => {
+    const B = ballKit(f), foot = act => B.px(B.R + actorCssH(act) * 0.28);
+    const st = [{ go: B.behind(B.side) }, S.wait(200, 'idle', { dir: 'ball' })];
+    for (let i = 0; i < 8; i++){
+      st.push({ ball: (a, act) => ({ x: act.x + act.dir * foot(act), h: 16 + (i % 2) * 8, ms: 460 }),
+        anim: i % 2 ? 'happy' : 'idle', ms: 460, fx: i === 7 ? ['⭐'] : undefined });
+    }
+    st.push({ ball: (a, act) => ({ x: clampX(act.x + act.dir * (foot(act) + 0.2)), h: 30, bounces: 2, ms: 1200 }),
+      anim: 'celebrate', ms: 1200, fx: ['🎉'] }, S.happy(400, { dir: 'ball' }));
+    return st;
+  },
+  /* Cabezazo: se la tira a sí misma y la cabecea lejos. */
+  f => {
+    const B = ballKit(f), sd = B.side;
+    return [
+      { go: B.behind(sd) }, ...B.pickup(), S.wait(300, 'idle', { dir: sd }),
+      { ball: (a, act) => ({ x: act.x, y: B.head(act), h: 45, ms: 950 }), anim: 'idle', dir: sd, until: B.idle },
+      { ball: (a, act) => ({ x: clampX(act.x + sd * 0.4), h: 34, bounces: 2, ms: 1500 }), bounce: 1, ms: 420, h: 12, dir: sd },
+      S.wait(900, 'idle', { dir: 'ball' }),
+      { anim: 'celebrate', ms: 1100, fx: ['⚽', '✨'], fxEvery: 500 },
+      { go: B.behind(-sd), speed: 0.14 }, S.happy(400, { dir: 'ball' }),
+    ];
+  },
+  /* La empuja con la nariz de una punta a la otra, y de vuelta. */
+  f => {
+    const B = ballKit(f), sd = B.side;
+    const nose = (a, act) => [B.R + actorCssH(act) * 0.3, 0];
+    const far = clampX(B.bx() + sd * 0.34);
+    return [
+      { go: B.behind(sd) },
+      { follow: nose, anim: 'happy', ms: 250, dir: sd },
+      { go: far, speed: 0.08 },
+      { release: true, anim: 'happy', ms: 400, fx: ['😆'] },
+      { go: B.behind(-sd), speed: 0.12 },
+      { follow: nose, ms: 250 },
+      { go: clampX(far - sd * 0.3), speed: 0.08 },
+      { release: true, anim: 'happy', ms: 600, fx: ['⭐'] },
+    ];
+  },
+  /* Bolos: la hace rodar despacito, la mira llegar lejos y celebra. */
+  f => {
+    const B = ballKit(f), sd = B.side;
+    return [
+      { go: B.behind(sd) }, S.wait(400, 'idle', { dir: sd }),
+      { bounce: 1, ms: 300, h: 4, dir: sd },
+      { kick: sd * f.fw * 0.4, ms: 2400, dir: sd },
+      S.wait(400, 'idle', { dir: sd }),
+      { anim: 'celebrate', ms: 1200, dir: sd, fx: ['🎳', '✨', '⭐'], fxEvery: 400 },
+      { go: B.behind(-sd), speed: 0.15 }, S.happy(500, { dir: 'ball' }),
+    ];
+  },
+  /* Siestita abrazada a la pelota. */
+  f => {
+    const B = ballKit(f);
+    return [
+      { go: () => clampX(B.bx() - B.side * B.px(B.R + f.h * 0.22)) },
+      S.wait(400, 'idle', { dir: 'ball', fx: ['😪'] }),
+      { anim: 'sleep', ms: 4200, dir: 'ball', fx: ['💤'], fxEvery: 1400 },
+      S.wait(500, 'idle', { dir: 'ball' }),
+      { anim: 'pet', ms: 1200, dir: 'ball', fx: ['💗'] },
+      { kick: B.side * f.fw * 0.08, ms: 600, dir: B.side },
+      S.happy(500),
+    ];
+  },
+  /* Baile con la pelota: la lleva en las manos (al girar se la cambia de
+     lado) y la hace botar sobre la cabeza al ritmo. */
+  f => {
+    const B = ballKit(f);
+    const st = [{ go: B.behind(B.side) }, ...B.pickup(), S.dance(1600, 400, { fx: ['🎵', '🎶'], fxEvery: 600 })];
+    for (let i = 0; i < 4; i++){
+      st.push({ ball: (a, act) => ({ x: act.x, y: B.head(act) + 2, h: 16, ms: 420 }), bounce: 1, ms: 420, h: 7, anim: 'celebrate' });
+    }
+    st.push(...B.pickup(), S.dance(1200, 300, { fx: ['🎶'] }), { release: true, anim: 'happy', ms: 700, fx: ['✨'] });
+    return st;
+  },
+  /* La lleva en la cabeza, caminando con cuidado... hasta que se le cae. */
+  f => {
+    const B = ballKit(f), sd = B.side;
+    const p1 = clampX(B.bx() + sd * 0.25), p2 = clampX(B.bx() - sd * 0.05);
+    return [
+      { go: B.behind(sd) },
+      { ball: (a, act) => ({ x: act.x, y: B.head(act), h: 20, ms: 600 }), anim: 'happy', ms: 600 },
+      { follow: (a, act) => [0, B.head(act)], ms: 100 },
+      { go: p1, speed: 0.07, fx: ['🎪'] },
+      S.wait(500, 'happy', { fx: ['⭐'] }),
+      { go: p2, speed: 0.07 },
+      { release: true, anim: 'sick', ms: 900, fx: ['😮'] },
+      S.happy(700, { dir: 'ball', fx: ['😆'] }),
+    ];
+  },
+];
+
+const BALL_DUOS = [
+  /* Pases: cada uno a un lado, de ida y vuelta (el del medio, con botes). */
+  f => {
+    const B = ballKit(f), sd = B.side, dist = 0.3, far = clampX(B.bx() + sd * dist);
+    const P = { dir: 'partner' };
+    const a = [{ go: B.behind(sd) }, S.sync('in', P)];
+    const b = [{ go: clampX(far + sd * B.reach) }, S.sync('in', P)];
+    for (let i = 0; i < 3; i++){
+      const h = i === 1 ? 14 : 0, bounces = i === 1 ? 2 : 0;
+      a.push({ kick: sd * f.fw * dist, ms: 950, h, bounces, dir: 'partner' }, S.sync('k' + 2 * i), S.wait(950, 'idle', { dir: 'ball' }), S.sync('k' + (2 * i + 1)));
+      b.push(S.wait(950, 'idle', { dir: 'ball' }), S.sync('k' + 2 * i), { kick: -sd * f.fw * dist, ms: 950, h, bounces, dir: 'partner' }, S.sync('k' + (2 * i + 1)));
+    }
+    a.push(S.dance(900, 300, { fx: ['⚽'] }));
+    b.push(S.dance(900, 300, { fx: ['😆'] }));
+    return { a, b };
+  },
+  /* Cabezazos: se la pasan de cabeza a cabeza sin que toque el suelo. */
+  f => {
+    const B = ballKit(f), sd = B.side, P = { dir: 'partner' };
+    const xa = clampX(B.bx() - sd * B.reach), xb = clampX(xa + sd * 0.24);
+    const headOf = act => actorCssH(act) * 0.8;
+    const a = [{ go: xa }, S.sync('in', P), ...B.pickup(),
+      { ball: (st, act) => ({ x: act.x, y: headOf(act), h: 30, ms: 800 }), anim: 'idle', dir: 'partner', until: B.idle }];
+    const b = [{ go: xb }, S.sync('in', P)];
+    for (let i = 0; i < 6; i++){
+      const [snd, rcv] = i % 2 ? [b, a] : [a, b];
+      snd.push(
+        { ball: (st, act) => ({ x: st.partner.x, y: headOf(st.partner), h: 26, ms: 900 }), bounce: 1, ms: 380, h: 10, dir: 'partner', anim: 'happy' },
+        { anim: 'idle', dir: 'partner', until: B.idle },
+        S.sync('h' + i, P));
+      rcv.push(S.sync('h' + i, P));
+    }
+    a.push({ ball: (st, act) => ({ x: act.x + act.dir * B.px(B.R + actorCssH(act) * 0.6), h: 8, bounces: 2, ms: 800 }), anim: 'sick', ms: 800, fx: ['💫'] },
+      S.sync('end', P), S.happy(1100, { ...P, fx: ['😆'] }));
+    b.push(S.sync('end', P), S.happy(1100, { ...P, fx: ['😂'] }));
+    return { a, b };
+  },
+  /* Arquero: `a` ataja en el arco y `b` patea tres penales. Si ataja, la
+     pelota rebota hacia la cancha; si es gol, el arquero va a buscarla. */
+  f => {
+    const B = ballKit(f), sd = B.side;
+    const goalX = sd > 0 ? 0.86 : 0.14, wall = sd > 0 ? 0.97 : 0.03;
+    const a = [{ go: goalX }, S.sync('in', { dir: -sd })];
+    const b = [{ go: B.behind(sd) }, S.sync('in', { dir: sd })];
+    for (let i = 0; i < 3; i++){
+      const ataja = Math.random() < 0.5;
+      b.push({ go: B.behind(sd), speed: 0.14 }, S.sync('ready' + i, { dir: sd }), S.wait(350, 'idle', { dir: sd }),
+        { ball: ataja ? (st) => ({ x: clampX(st.partner.x - sd * 0.02), y: actorCssH(st.partner) * 0.45, h: 16, ms: 750 })
+                      : { x: wall, h: 22, ms: 850 },
+          bounce: 1, ms: 300, h: 6, dir: sd },
+        { anim: 'idle', dir: sd, until: B.idle },
+        S.sync('r' + i));
+      a.push(S.sync('ready' + i, { dir: -sd }), S.wait(450, 'idle', { dir: -sd }),
+        ataja ? { bounce: 1, ms: 450, h: 18, anim: 'happy', dir: -sd }
+              : { hop: { x: clampX(goalX + sd * 0.04), y: 0 }, ms: 420, h: 10, anim: 'sad' },
+        S.sync('r' + i, { dir: -sd }));
+      if (ataja){
+        a.push({ ball: { x: clampX(goalX - sd * 0.42), h: 12, bounces: 2, ms: 1100 }, anim: 'celebrate', ms: 1100, dir: -sd, fx: ['🧤', '⭐'], fxEvery: 500 },
+          { go: goalX, speed: 0.12 }, S.sync('e' + i, { dir: -sd }));
+        b.push(S.wait(1100, 'sad', { dir: 'ball', fx: ['😮'] }), S.sync('e' + i));
+      } else {
+        b.push({ anim: 'celebrate', ms: 1300, fx: ['⚽', '🎉'], fxEvery: 450 }, S.sync('e' + i));
+        a.push({ go: B.behind(-sd), speed: 0.15 }, { kick: -sd * f.fw * 0.36, ms: 1000, h: 10, bounces: 2, dir: -sd },
+          { go: goalX, speed: 0.14 }, S.sync('e' + i, { dir: -sd }));
+      }
+    }
+    a.push(S.sync('end', { dir: 'partner' }), S.happy(900, { dir: 'partner', fx: ['👏'] }));
+    b.push(S.sync('end', { dir: 'partner' }), S.dance(900, 300));
+    return { a, b };
+  },
+];
+
+/* Una pelota: solo cambia el dibujo (y el tamaño). La pieza se dibuja donde
+   esté la pelota en este instante y gira según cuánto rodó. */
+function ballArt(w, draw){
+  return { w, h: w, free: true,
+    parts: [{ id: 'ball', draw, pose: (rt, now, k) => {
+      const b = ballNow(rt, now);
+      if (rt._bx !== undefined) rt.ballRot += (b.dx - rt._bx) / (w * k / 2);
+      rt._bx = b.dx;
+      return { x: b.dx, y: b.y, r: rt.ballRot };
+    } }],
+    visits: BALL_VISITS, duos: BALL_DUOS };
+}
 
 const FURNI_ART = {
   /* ---------------- los 14 de antes, con más de un guion ---------------- */
@@ -1211,83 +1640,46 @@ const FURNI_ART = {
       }),
     ] },
 
-  pelota: { w: 9, h: 9, free: true,
-    parts: [{ id: 'ball', pose: rt => ({ x: rt.ballDx, r: rt.ballRot }), draw: p => {
-      p.disc(4.5, 4.5, 4.5, (x, y) => y < 4 ? FP.red : y === 4 ? FP.O : FP.white);
-      p.r(2, 2, 1, 1, FP.pinkL);
-    } }],
-    /* La pelota se mueve de verdad. Siempre termina donde estaba: número par
-       de patadas de ida y vuelta. */
-    visits: [
-      f => {
-        const bx = f.rt.x + f.rt.ballDx / f.fw;
-        const side = bx < 0.5 ? 1 : -1;
-        const lejos = bx + side * 0.27;
-        const steps = [{ go: bx - side * f.dx(10) }];
-        for (let vuelta = 0; vuelta < 2; vuelta++){
-          steps.push(
-            { kick: side * f.fw * 0.27, ms: 900 },
-            { go: lejos + side * f.dx(10), speed: 0.17 },   // la persigue corriendo
-            S.happy(500),
-            { kick: -side * f.fw * 0.27, ms: 900 },
-            { go: bx - side * f.dx(10), speed: 0.17 },
-            S.happy(500, { fx: ['⭐'] }),
-          );
-        }
-        return steps;
-      },
-      /* Dribleo: patadas cortitas mientras la lleva de un lado a otro. */
-      f => {
-        const bx = f.rt.x + f.rt.ballDx / f.fw;
-        const side = bx < 0.5 ? 1 : -1;
-        const steps = [{ go: bx - side * f.dx(9) }];
-        let pos = bx;
-        for (let i = 0; i < 6; i++){
-          steps.push({ kick: side * f.fw * 0.06, ms: 420 }, { go: (pos += side * 0.06) - side * f.dx(9), speed: 0.15 });
-        }
-        steps.push(S.happy(400, { fx: ['⚽'] }));
-        for (let i = 0; i < 6; i++){
-          const at = pos;
-          steps.push({ go: at + side * f.dx(9), speed: 0.15 }, { kick: -side * f.fw * 0.06, ms: 420 });
-          pos -= side * 0.06;
-        }
-        steps.push(S.dance(900, 300, { fx: ['⭐'] }));
-        return steps;
-      },
-      /* Número de circo: se sube encima de la pelota y hace equilibrio. */
-      f => {
-        const bx = f.rt.x + f.rt.ballDx / f.fw;
-        const top = f.y(9);
-        return [
-          { go: bx - f.dx(14) },
-          { hop: () => ({ x: f.rt.x + f.rt.ballDx / f.fw, y: top }), ms: 500, h: 18 },
-          { anim: 'happy', ms: 3600, flip: 900, fx: ['🎪', '⭐'], fxEvery: 900,
-            track: (rt, el) => ({ x: rt.x + rt.ballDx / f.fw + Math.sin(el / 160) * f.dx(0.6), y: top + Math.abs(Math.sin(el / 320)) * 2 }) },
-          { hop: () => ({ x: f.rt.x + f.rt.ballDx / f.fw + f.dx(16), y: 0 }), ms: 500, h: 16 },
-          S.happy(700, { fx: ['👏'] }),
-        ];
-      },
-    ],
-    /* Se la pasan: cada uno a un lado, patadas de ida y vuelta. */
-    duos: [
-      f => {
-        const bx = f.rt.x + f.rt.ballDx / f.fw;
-        const dist = 0.3;
-        const side = bx < 0.5 ? 1 : -1;
-        const far = bx + side * dist;
-        const kickA = (n) => [{ kick: side * f.fw * dist, ms: 900 }, S.sync('k' + n)];
-        const kickB = (n) => [{ kick: -side * f.fw * dist, ms: 900 }, S.sync('k' + n)];
-        const a = [{ go: bx - side * f.dx(10) }, S.sync('in', { dir: 'partner' })];
-        const b = [{ go: far + side * f.dx(10) }, S.sync('in', { dir: 'partner' })];
-        for (let i = 0; i < 3; i++){
-          a.push(...kickA(i * 2), S.wait(900, 'happy', { dir: 'partner' }), S.sync('k' + (i * 2 + 1)));
-          b.push(S.wait(900, 'idle', { dir: 'partner' }), S.sync('k' + i * 2), ...kickB(i * 2 + 1));
-        }
-        a.push(S.dance(900, 300, { fx: ['⚽'] }));
-        b.push(S.dance(900, 300, { fx: ['😆'] }));
-        return { a, b };
-      },
-    ] },
+  /* Tres pelotas, mismos 16 juegos solos y 3 de a dos (BALL_VISITS / BALL_DUOS). */
+  pelota: ballArt(9, p => {
+    p.disc(4.5, 4.5, 4.5, (x, y) => y < 4 ? FP.red : y === 4 ? FP.O : FP.white);
+    p.r(2, 2, 1, 1, FP.pinkL);
+  }),
+  /* Balón de fútbol: el pentágono negro al centro y medio pentágono en cada
+     borde, como el clásico. Dibujado píxel a píxel: a 10x10, generado con
+     discos los parches no se leían. Sombra gris abajo a la derecha. */
+  balon: ballArt(10, p => {
+    const MAP = [
+      '..OOOOOO..',
+      '.OWWWWWWO.',
+      'OWWWKKWWWO',
+      'OWWKKKKWWO',
+      'OWWWKKWWWO',
+      'OKWWWWWWKO',
+      'OKKWWWWKKO',
+      'OWWWKKWWWO',
+      '.OWKKKKWO.',
+      '..OOOOOO..',
+    ];
+    /* Los parches van en un gris carbón y no del color del contorno: si no,
+       se pegan al borde y el balón se lee como una calavera. */
+    MAP.forEach((row, y) => [...row].forEach((c, x) => {
+      if (c === 'O') p.r(x, y, 1, 1, FP.O);
+      else if (c === 'K') p.r(x, y, 1, 1, '#4a4058');
+      else if (c === 'W') p.r(x, y, 1, 1, x + y >= 12 ? FP.gray : FP.white);
+    }));
+    p.r(2, 2, 1, 1, FP.whiteL);
+  }),
+  /* Pelota de playa: seis gajos de colores y el botón blanco al centro. */
+  playa: ballArt(12, p => {
+    const col = [FP.red, FP.yel, FP.blue, FP.white, FP.green, FP.orange];
+    p.disc(6, 6, 6, (x, y) => {
+      const dx = x + 0.5 - 6, dy = y + 0.5 - 6;
+      if (Math.hypot(dx, dy) < 1.6) return FP.white;
+      return col[Math.floor((Math.atan2(dy, dx) + Math.PI) / (Math.PI / 3)) % 6];
+    });
+    p.r(3, 3, 1, 1, FP.whiteL); p.r(4, 2, 1, 1, FP.whiteL);
+  }),
 
   columpio: { w: 28, h: 36,
     parts: [

@@ -563,7 +563,7 @@ más alto, pero no rompe.
 #### Muebles
 
 Cuarta clase de cosas en Estilo (`kind:'furni'`, sección "Muebles", la primera):
-34 muebles que los personajes **usan**. Todo vive en `muebles.js`: el catálogo
+36 muebles que los personajes **usan**. Todo vive en `muebles.js`: el catálogo
 (`FURNI_ITEMS`, que se suma a `STYLE_ITEMS` con `kind:'furni'`), el arte y los
 guiones (`FURNI_ART`) y el motor que los corre. Los 14 primeros: cama, plato,
 bañera, tocador, trampolín, pelota, columpio, tobogán, radiocasete, tele,
@@ -571,7 +571,7 @@ piano, tarima, librero y cajas; los 20 que se sumaron después: pecera, maceta,
 rueda (de hámster), balancín, cohete, arenero, piscina, hamaca, telescopio,
 reloj cucú, caballito, batería, caballete, cocinita, cofre, muro de escalada,
 ventilador, bola disco (prendida llena la pieza de luces: `.creature-floor.party`),
-puf y piñata. Se ponen hasta `FURNI_MAX` (3) a la vez, **en cualquier
+puf y piñata; y dos pelotas más, el balón y la pelota de playa (ver "Pelotas"). Se ponen hasta `FURNI_MAX` (3) a la vez, **en cualquier
 parte del piso**: `state.style.furniture = [{id, x}]`, con `x` = centro del
 mueble como fracción del ancho del piso. (Antes eran tres lugares fijos,
 izq./centro/der.; `loadState()` convierte esos saves con `LEGACY_FURNI_SLOTS`
@@ -656,8 +656,36 @@ más cosas que hacer (dos vueltas de tobogán, cuatro patadas a la pelota que la
 persigue corriendo, tandas de rebote de distinto alto, bailar a los dos lados
 del radiocasete...). Con visitas más largas, el ritmo de visitas
 (`FURNI_VISIT_CHANCE`/`FURNI_VISIT_GAP_MS`) queda igual. La pelota siempre
-patea un número par de veces, así termina donde estaba. Los tramos del columpio
-duran un múltiplo exacto de su período, así el asiento termina derecho.
+Los tramos del columpio duran un múltiplo exacto de su período, así el asiento
+termina derecho.
+
+**Pelotas.** Tres (`pelota` 9x9, `balon` 10x10, `playa` 12x12) con distinto
+dibujo y tamaño pero los **mismos guiones**: `BALL_VISITS` (16 formas de jugar
+solo: patadas largas con botes, dribleo, equilibrio encima, cabecitas,
+lanzarla y atraparla, golazo, contra la pared, se le escapa, sentada
+rebotando, pataditas, cabezazo, empujarla con la nariz, bolos, siesta
+abrazada, bailar con ella y llevarla en la cabeza) y `BALL_DUOS` (pases,
+cabezazos de a dos y penales con arquero). Cada pelota es `ballArt(w, draw)`.
+Los guiones se escriben con `ballKit(f)`, que mide la pelota (diámetro en px
+CSS) y al personaje (cabeza, manos), así valen para cualquier tamaño de
+pelota y de personaje. La pelota se mueve de verdad (física en `muebles.js`,
+junto a `ballNow()`):
+- `ballTo(rt, {x | dx, y, h, bounces, ms, ease})`: rodar (`ease:'out'`,
+  frena) o volar en arco, con botes que llegan cada uno al
+  `BALL_BOUNCE_KEEP` (42%) del anterior y duran según la raíz del alto, como
+  una caída de verdad. El arco se topa al alto del piso (`floorHeight()`):
+  en un teléfono chico no se sale por arriba.
+- `ballFollow(rt, act, dx, dy)` / `ballRelease(rt)`: llevarla pegada a un
+  personaje (cabeza, manos, a los pies empujándola); al soltarla en alto se
+  cae botando. Nunca sale del piso.
+- En los guiones: pasos con `ball:` (lanzarla), `follow: [dx, dy]`,
+  `release`, `kick` (con `h`/`bounces` opcionales) y `dir: 'ball'`.
+- Gira según cuánto rodó. **No vuelve a su lugar**: queda donde terminó el
+  juego, como una pelota de verdad. Si se corta un juego con la pelota en
+  alto, `resetFurniRt()` la deja caer.
+- El dibujo del balón va píxel a píxel (un mapa de 10x10) y los parches en
+  gris carbón, no del color del contorno: generado con discos, o con parches
+  del color del borde, se leía como una calavera.
 
 Efectos en las barras, chicos a propósito: dormir con cama puesta recupera
 energía `FURNI_BED_ENERGY_MULT` (x1.5) más rápido (se mira el save, así vale
@@ -683,9 +711,10 @@ de la piñata se puedan tocar con el dedo) se lo come el mueble. El destello
 `updateFurniture()` cada cuadro.
 
 **Probado** corriendo en Chromium cada guion de cada mueble por índice (visitas
-con la mascota y con el acompañante, duos y rutinas: 104 en total): 0 errores,
-0 que se queden trabados esperando en un `sync`, y todos terminan con los dos
-en el piso. Al sumar o cambiar un guion, conviene repetir eso.
+con la mascota y con el acompañante, duos y rutinas; con las pelotas son
+157): 0 errores,
+0 que se queden trabados esperando en un `sync`, todos terminan con los dos
+en el piso y la pelota siempre queda quieta, en el piso y dentro de la pieza. Al sumar o cambiar un guion, conviene repetir eso.
 
 **Ids únicos en todo `STYLE_ITEMS`**: el mueble radiocasete se llamaba `radio` y
 chocaba con el adorno 📻 `radio`; `styleItemById()` devolvía el adorno y tocar el
