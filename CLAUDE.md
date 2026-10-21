@@ -300,6 +300,20 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   pieza, los muebles y los minijuegos leen el tamaño real (`floorWidth()`,
   `fitGameCanvas()`). Medido en 360x640, 375x667, 390x844 y 414x896: sin
   scroll en ninguno. En escritorio sigue el aparato de 420px centrado.
+- **Y de arriba a abajo también**: en el teléfono el aparato llena el alto de
+  la ventana y lo que sobra se lo lleva la pantalla (`#stage` deja el
+  `margin:auto` y cada nivel —`.layout-row`, `.device`, `.screen-bezel`,
+  `.screen`— pasa el alto con `flex:1`; adentro, la pieza ya era `flex:1`).
+  Antes quedaba centrado con ~125px vacíos abajo en 390x844 y la LCD medía
+  388 de alto; ahora 550. Se sacó la nota de abajo ("Cuídalo bien. No hay
+  servidor..."), que no le servía a nadie. **Ojo con los minijuegos**: como
+  la pantalla se estira, cualquier cambio de alto abajo la cambia de tamaño.
+  `enterMinigame()` mide el canvas *antes* de que `showGameControls()`
+  cambie los botones por los del juego (que son ~15 px más bajos), y el
+  canvas quedaba estirado; `showGameControls()` mide cuánto creció la
+  pantalla al cambiar los mandos y se lo suma a su `min-height`, así la
+  pantalla queda del alto con que se midió (verificado en los 12 juegos:
+  canvas 1:1).
 
 ## Estado del juego
 
@@ -528,8 +542,10 @@ guardado), y en la tienda lo ya comprado sale como "Tuyo ✓": tocarlo solo
 avisa que se cambia en Personalizar. Personalizar muestra únicamente lo
 comprado, por sección (`styleRows('mine')`; la tienda usa `styleRows('shop')`),
 y ahí tocar algo lo pone o lo saca. En Personalizar el overlay va con
-`.clear` y la hoja no pasa del 66% de alto, así el cambio se ve puesto atrás
-al tiro. La tienda **no**: sus tres pestañas usan la misma hoja a todo el alto
+`.clear` (sin desenfoque) y la hoja mide siempre el 80% del aparato
+(`.sheet-tall`, la lista se estira): arriba se sigue viendo la carcasa y la
+pantalla con el cambio puesto. Antes se topaba al 66% con la lista a su alto
+natural y quedaba en una franja chica. La tienda **no**: sus tres pestañas usan la misma hoja a todo el alto
 (`.sheet-full`, la lista se estira y se lleva el scroll), así no salta al
 cambiar de pestaña. Antes la pestaña Estilo también iba con `.clear` y topada
 al 66%, y su lista quedaba en la mitad de alto que las otras (188 px contra

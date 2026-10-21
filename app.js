@@ -1801,6 +1801,7 @@ function openPersonalize(aviso){
     </div>
   `, hideOverlay);
   document.getElementById('overlay').classList.add('clear');
+  document.getElementById('overlayCard').classList.add('sheet-tall');
   const arr = document.getElementById('btnArrange');
   if (arr) arr.addEventListener('click', enterArrange);
 
@@ -2235,18 +2236,29 @@ function saveBestScore(id, score){
    cuidado de abajo. Así la pantalla queda libre para el juego en vez de tener
    controles encima, y de paso los botones quedan donde está el pulgar. Reflejos
    y memorice no usan esto: se juegan tocando la pantalla sí o sí. */
+/* En el teléfono la pantalla se estira hasta llenar el aparato, así que si
+   los mandos del juego son más bajos que los de siempre la pantalla crece
+   justo después de que el juego midió su canvas (enterMinigame va antes), y
+   el canvas queda estirado. Se les suma a los mandos lo que habría crecido
+   la pantalla: la pantalla queda del mismo alto con que se midió. */
 function showGameControls(html){
   closeFoodTray();
+  const screen = document.getElementById('screen');
+  const before = screen.getBoundingClientRect().height;
   const cont = document.getElementById('gameControls');
   cont.innerHTML = html;
+  cont.style.minHeight = '';
   cont.classList.remove('hidden');
   document.getElementById('controls').classList.add('hidden');
+  const grow = screen.getBoundingClientRect().height - before;
+  if (grow > 0.5) cont.style.minHeight = (cont.getBoundingClientRect().height + grow) + 'px';
   return cont;
 }
 
 function hideGameControls(){
   const cont = document.getElementById('gameControls');
   cont.innerHTML = '';   // se lleva los listeners junto con los nodos
+  cont.style.minHeight = '';
   cont.classList.add('hidden');
   document.getElementById('controls').classList.remove('hidden');
 }
@@ -5010,7 +5022,7 @@ function showOverlay(html, onDismiss){
   const overlay = document.getElementById('overlay');
   const card = document.getElementById('overlayCard');
   card.innerHTML = html;
-  card.classList.remove('sheet-full');
+  card.classList.remove('sheet-full', 'sheet-tall');
   overlay.onclick = onDismiss ? (e => { if (e.target === overlay) onDismiss(); }) : null;
   overlay.classList.remove('hidden', 'clear');
 }
