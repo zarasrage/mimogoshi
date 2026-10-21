@@ -5096,7 +5096,10 @@ function renderDebugPanel(){
         <button class="debug-btn wide ${debugMode ? 'active':''}" id="dbgToggleGod">
           ${debugMode ? '✅ Stats al máximo: ON' : '⬜ Stats al máximo: OFF'}
         </button>
-        <button class="debug-btn wide" id="dbgCoins" style="margin-top:6px">💰 +1000 monedas</button>
+        <div class="debug-grid" style="margin-top:6px; grid-template-columns:1fr 1fr">
+          <button class="debug-btn" data-coins="100">💰 +100 monedas</button>
+          <button class="debug-btn" data-coins="1000">💰 +1000 monedas</button>
+        </div>
         <button class="debug-btn wide" id="dbgNight" style="margin-top:6px">${
           debugForcedNight === null ? '🕐 Día/noche: hora real' : debugForcedNight ? '🌙 Día/noche: noche forzada' : '☀️ Día/noche: día forzado'}</button>
       </div>
@@ -5194,9 +5197,9 @@ function renderDebugPanel(){
   document.getElementById('dbgTapPrueba').addEventListener('click', () => { closeDebugPanel(); startTapPruebaGame(); });
   /* Para probar la tienda (muebles, estilo, juegos) sin tener que jugar
      partidas. Son monedas reales del save: no se devuelven al apagar nada. */
-  document.getElementById('dbgCoins').addEventListener('click', () => {
-    state.coins += 1000; saveState(); render(); renderDebugPanel();
-  });
+  document.querySelectorAll('[data-coins]').forEach(el => el.addEventListener('click', () => {
+    state.coins += +el.dataset.coins; saveState(); render(); renderDebugPanel();
+  }));
   /* Gira entre hora real → noche → día. Cambia también la simulación (el
      decaimiento y el sueño leen isNightMode()), no solo cómo se ve. */
   document.getElementById('dbgNight').addEventListener('click', () => {
