@@ -704,7 +704,12 @@ const NIGHT_DECAY_FACTOR = 0.5;
 const NIGHT_SLEEP_ENTER_CHANCE = 0.03;
 const NIGHT_SLEEP_EXIT_CHANCE = 0.01;
 
+/* El panel de prueba puede forzar día (false) o noche (true) para ver cómo
+   se ve sin esperar a medianoche; null = la hora real. */
+let debugForcedNight = null;
+
 function isNightMode(){
+  if (debugForcedNight !== null) return debugForcedNight;
   const h = new Date().getHours();
   return h >= NIGHT_START_HOUR && h < NIGHT_END_HOUR;
 }
@@ -1150,6 +1155,18 @@ function render(){
   });
 
   updateLed();
+
+  /* Día o noche, a la vista: el ícono de arriba y la pantalla oscurecida con
+     estrellas. Sin esto el modo nocturno existía (todo baja a la mitad y
+     duerme más) pero no había cómo saberlo. */
+  const night = isNightMode();
+  if (render._night !== night){
+    render._night = night;
+    document.getElementById('screen').classList.toggle('night', night);
+    const dn = document.getElementById('dayNight');
+    dn.textContent = night ? '🌙' : '☀️';
+    dn.title = night ? 'De noche' : 'De día';
+  }
 
   const canvas = document.getElementById('petCanvas');
   fitPetCanvas(canvas);
@@ -5798,6 +5815,8 @@ function renderDebugPanel(){
           ${debugMode ? '✅ Stats al máximo: ON' : '⬜ Stats al máximo: OFF'}
         </button>
         <button class="debug-btn wide" id="dbgCoins" style="margin-top:6px">💰 +1000 monedas</button>
+        <button class="debug-btn wide" id="dbgNight" style="margin-top:6px">${
+          debugForcedNight === null ? '🕐 Día/noche: hora real' : debugForcedNight ? '🌙 Día/noche: noche forzada' : '☀️ Día/noche: día forzado'}</button>
       </div>
       <div class="debug-section">
         <h4>Etapa del monito</h4>
@@ -5895,6 +5914,12 @@ function renderDebugPanel(){
   document.getElementById('dbgCoins').addEventListener('click', () => {
     state.coins += 1000; saveState(); render(); renderDebugPanel();
   });
+  /* Gira entre hora real → noche → día. Cambia también la simulación (el
+     decaimiento y el sueño leen isNightMode()), no solo cómo se ve. */
+  document.getElementById('dbgNight').addEventListener('click', () => {
+    debugForcedNight = debugForcedNight === null ? true : debugForcedNight ? false : null;
+    render(); renderDebugPanel();
+  });
   document.getElementById('dbgPoop').addEventListener('click', () => {
     state.poop = true; saveState(); render(); renderDebugPanel();
   });
@@ -5926,6 +5951,12 @@ function wireButtons(){
   /* stopPropagation: si no, el click burbujea hasta el listener de #screen de
      más abajo, que limpia la caca si hay una — tocar el regalo no tiene por
      qué limpiar caca de arriba. */
+  document.getElementById('dayNight').addEventListener('click', (e) => {
+    e.stopPropagation();   // que no limpie caca de pasada (listener de #screen)
+    say(isNightMode()
+      ? 'Es de noche (00:00 a 06:00): todo baja a la mitad y duerme más seguido'
+      : `Es de día. De ${String(NIGHT_START_HOUR).padStart(2, '0')}:00 a ${String(NIGHT_END_HOUR).padStart(2, '0')}:00 es de noche`, 2800);
+  });
   document.getElementById('giftFx').addEventListener('click', requireAlive((e) => {
     e.stopPropagation();
     collectGift();

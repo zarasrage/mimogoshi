@@ -326,6 +326,15 @@ puede entregar de una un rango de horas que cruza medianoche, y como
 tramo nocturno adentro de un catchUp largo no se trata distinto del resto —
 el mismo compromiso que ya hace `sleepFactor` con horas acumuladas.
 
+El modo nocturno **se ve**: `render()` le pone `.night` a `#screen` (el fondo
+de la LCD se oscurece —solo el fondo, la mascota no— y salen estrellas que
+titilan en `.night-sky`) y cambia el ícono `#dayNight` de la barra de arriba
+entre ☀️ y 🌙. Tocar el ícono hace que la mascota explique qué cambia de noche.
+Antes el modo existía pero no había ninguna señal de que estaba activo. En el
+panel de prueba, "Día/noche" gira entre hora real → noche forzada → día
+forzado (`debugForcedNight`, que lee `isNightMode()`): cambia también la
+simulación, no solo cómo se ve.
+
 - **Etapas** (`ALL_STAGES`): `egg → child → teen → adult` (`EGG_HOURS = 0.1`,
   ~6 s reales de huevo; `CHILD_HOURS = 24*60` y `TEEN_HOURS = 4*24*60`, 1 día
   real de niño y 3 días más de adolescente, 4 días reales en total hasta
