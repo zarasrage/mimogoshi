@@ -478,6 +478,7 @@ function furniCommandBlocked(){
   const mood = displayMood();
   if (state.sleeping || mood === 'sleepy') return 'Shh… está durmiendo 💤';
   if (mood === 'sick') return 'Se siente mal: primero, una medicina 💊';
+  if (isExhausted()) return 'Está agotado: lo que necesita es dormir 💤';
   if (mood === 'sad') return 'Está triste, no tiene ganas de jugar…';
   return null;
 }

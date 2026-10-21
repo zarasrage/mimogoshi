@@ -611,8 +611,33 @@ const DPR = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
 function stageDeviceScale(stage){
   return Math.max(1, Math.round((STAGE_CSS_PX[stage] || STAGE_CSS_PX.adult) * DPR / 32));
 }
-const SLEEPY_THRESHOLD = 35;   // bajo esto puede quedarse dormido solo
-const RED_ZONE = 25;           // bajo esto, ni alimentarlo/jugar lo despierta
+/* Sueño y energía, de abajo hacia arriba:
+   - bajo ENERGY_LOCK_AT se desploma: se duerme en el acto (aunque esté
+     despierta) y nada la despierta hasta que recupere un poco;
+   - bajo EXHAUSTED_AT está agotada: se la puede despertar, pero mientras
+     siga despierta pierde salud (EXHAUSTED_HEALTH_MULT veces el ritmo de una
+     causa normal) y se la ve triste;
+   - bajo SLEEPY_THRESHOLD puede quedarse dormida sola, con más probabilidad
+     mientras menos energía le quede;
+   - con WAKE_AT se despierta sola.
+   Antes el candado era 25 y el sueño empezaba en 35: con barras de 0 a 100
+   se pasaba mucho rato dormida sin poder hacer nada. Ahora el candado es
+   corto (de 0 a 7 se recupera en ~15 min reales) y lo que hay entre medio
+   es una decisión: despertarla cuesta salud. */
+const ENERGY_LOCK_AT = 7;
+const EXHAUSTED_AT = 15;
+const EXHAUSTED_HEALTH_MULT = 3;
+const SLEEPY_THRESHOLD = 20;
+const WAKE_AT = 90;
+/* Después de despertarla a mano no se vuelve a dormir sola por un rato: si
+   no, se la despertaba para jugar y se dormía en el menú. */
+const WAKE_GRACE_MS = 90 * 1000;
+/* Mínimo para lanzar un minijuego (antes 12). Jugar cansada puede dejarla
+   bajo ENERGY_LOCK_AT, y ahí se desploma al terminar. */
+const GAME_MIN_ENERGY = 10;
+let wokeUpAt = 0;   // Date.now() de la última vez que se la despertó a mano
+
+function isExhausted(){ return !state.sleeping && state.energy < EXHAUSTED_AT; }
 
 /* Desgaste en puntos por hora de juego. Van escritos como 100 / <horas de juego>
    para que se lea directo cuánto tarda cada barra en vaciarse entera; con
@@ -914,12 +939,16 @@ function applyDecay(hours){
 
   if (!state.gift && Math.random() < hours * GIFT_CHANCE_PER_HOUR) state.gift = true;
 
-  /* Salud: las dos causas se suman, y solo se recupera si no hay ninguna. */
+  /* Salud: las causas se suman, y solo se recupera si no hay ninguna. La
+     energía no cuenta como las otras barras (bajo HEALTH_RISK_AT): dormida
+     se está recuperando y no tiene por qué costar salud; lo que cuesta es
+     tenerla despierta estando agotada, y cuesta más (ver EXHAUSTED_AT). */
   const enRiesgo = state.hunger    < HEALTH_RISK_AT || state.happiness < HEALTH_RISK_AT ||
-                   state.energy    < HEALTH_RISK_AT || state.hygiene   < HEALTH_RISK_AT;
+                   state.hygiene   < HEALTH_RISK_AT;
   let healthDelta = 0;
   if (enRiesgo)   healthDelta -= HEALTH_DECAY_PER_HOUR * nightFactor;
   if (state.sick) healthDelta -= HEALTH_DECAY_PER_HOUR * nightFactor;
+  if (isExhausted()) healthDelta -= HEALTH_DECAY_PER_HOUR * EXHAUSTED_HEALTH_MULT * nightFactor;
   if (healthDelta === 0) healthDelta = HEALTH_RECOVER_PER_HOUR;
   state.health = clamp(state.health + hours * healthDelta);
 
@@ -959,24 +988,35 @@ function catchUp(){
   state.lastUpdate = now;
 }
 
+/* Bajo ENERGY_LOCK_AT se duerme en el acto, de día o de noche. */
+function collapseIfDrained(){
+  if (state.sleeping || gameOver || state.stage === 'egg' || state.energy >= ENERGY_LOCK_AT) return false;
+  state.sleeping = true;
+  return true;
+}
+
 function maybeAutoSleep(){
   if (gameOver || state.stage === 'egg') return;
+  if (collapseIfDrained()) return;
+  /* Con el candado puesto no se despierta sola tampoco de noche. */
+  if (state.sleeping && state.energy < ENERGY_LOCK_AT) return;
+  const recienDespierta = !state.sleeping && Date.now() - wokeUpAt < WAKE_GRACE_MS;
   /* De noche el sueño no depende de la energía: es una tendencia horaria
      aparte, con su propia probabilidad de entrar y salir (ver
      NIGHT_SLEEP_ENTER_CHANCE / NIGHT_SLEEP_EXIT_CHANCE más arriba). */
   if (isNightMode()){
     if (state.sleeping){
       if (Math.random() < NIGHT_SLEEP_EXIT_CHANCE) state.sleeping = false;
-    } else if (Math.random() < NIGHT_SLEEP_ENTER_CHANCE){
+    } else if (!recienDespierta && Math.random() < NIGHT_SLEEP_ENTER_CHANCE){
       state.sleeping = true;
     }
     return;
   }
   if (state.sleeping){
-    if (state.energy >= 90) state.sleeping = false;
+    if (state.energy >= WAKE_AT) state.sleeping = false;
     return;
   }
-  if (state.energy < SLEEPY_THRESHOLD){
+  if (!recienDespierta && state.energy < SLEEPY_THRESHOLD){
     const chance = (SLEEPY_THRESHOLD - state.energy) / SLEEPY_THRESHOLD * 0.22;
     if (Math.random() < chance) state.sleeping = true;
   }
@@ -1039,12 +1079,15 @@ function forceCloseMinigames(){
 /* Devuelve true si la acción puede proceder (y despierta a la mascota si corresponde) */
 function tryWake(){
   if (!state.sleeping) return true;
-  if (state.energy < RED_ZONE){
-    say('Está profundamente dormido…');
+  if (state.energy < ENERGY_LOCK_AT){
+    say('Está profundamente dormido… 💤');
     return false;
   }
   state.sleeping = false;
-  say('¡Buenos días!');
+  wokeUpAt = Date.now();
+  say(state.energy < EXHAUSTED_AT
+    ? 'Se despertó, pero está agotado: despierto pierde salud'
+    : '¡Buenos días!', state.energy < EXHAUSTED_AT ? 2600 : 1600);
   return true;
 }
 
@@ -1055,6 +1098,7 @@ function currentMood(){
   if (state.stage === 'egg') return 'egg';
   if (state.sleeping) return 'sleepy';
   if (state.sick) return 'sick';
+  if (isExhausted()) return 'sad';   // agotada y despierta: se le nota
   if (state.hunger < 25 || state.happiness < 25 || state.hygiene < 25) return 'sad';
   if (state.happiness > 75 && state.hunger > 60) return 'happy';
   return 'normal';
@@ -1074,6 +1118,13 @@ function statColor(v, stat){
     if (v < SICK_LOW_HEALTH_AT) return 'var(--mid)';
     return 'var(--good)';
   }
+  /* La energía tiene sus propios umbrales (ver ENERGY_LOCK_AT y compañía):
+     rojo = agotada (despierta pierde salud), amarillo = ya le da sueño. */
+  if (stat === 'energy'){
+    if (v < EXHAUSTED_AT) return 'var(--bad)';
+    if (v < SLEEPY_THRESHOLD) return 'var(--mid)';
+    return 'var(--good)';
+  }
   if (v < DISTRESS_AT[stat]) return 'var(--bad)';   // encima se vacía más rápido
   if (v < HEALTH_RISK_AT) return 'var(--mid)';      // ya le está costando salud
   return 'var(--good)';
@@ -1084,8 +1135,9 @@ function statColor(v, stat){
 function updateLed(){
   const led = document.getElementById('led');
   led.className = 'led';
-  const enApuro  = CARE_STATS.some(k => state[k] < DISTRESS_AT[k]);
-  const enRiesgo = CARE_STATS.some(k => state[k] < HEALTH_RISK_AT);
+  const otras = CARE_STATS.filter(k => k !== 'energy');
+  const enApuro  = otras.some(k => state[k] < DISTRESS_AT[k]) || isExhausted();
+  const enRiesgo = otras.some(k => state[k] < HEALTH_RISK_AT) || state.energy < SLEEPY_THRESHOLD;
   if (state.sick || enApuro || state.health < 25) led.classList.add('danger');
   else if (enRiesgo) led.classList.add('warn');
 }
@@ -1863,7 +1915,7 @@ function openGamesMenu(aviso){
    se pudo lanzar (cansancio), para que quien llama muestre el aviso donde
    corresponda. */
 function launchGame(id, mega){
-  if (state.energy < 12) return false;
+  if (state.energy < GAME_MIN_ENERGY) return false;
   hideOverlay();
   playLevel = mega ? maxLevelFor(id) : pickedLevel(id);
   megaRun = mega ? id : null;
@@ -2263,6 +2315,7 @@ function finishMinigame(id, { score, merit, energyCost, hygieneCost = 0, message
 
   state.happiness = clamp(state.happiness + happinessGain);
   state.energy = clamp(state.energy - energyCost);
+  collapseIfDrained();   // jugar hasta quedar sin energía la deja dormida
   if (hygieneCost) state.hygiene = clamp(state.hygiene - hygieneCost);
   state.coins += coins;
 

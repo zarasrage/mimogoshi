@@ -345,6 +345,33 @@ panel de prueba, "Día/noche" gira entre hora real → noche forzada → día
 forzado (`debugForcedNight`, que lee `isNightMode()`): cambia también la
 simulación, no solo cómo se ve.
 
+**Sueño y energía.** Umbrales de abajo hacia arriba (todos en `app.js`, junto a
+`ENERGY_LOCK_AT`):
+- **< `ENERGY_LOCK_AT` (7): candado.** Se duerme en el acto aunque esté
+  despierta (`collapseIfDrained()`, también al terminar un minijuego que la
+  dejó sin energía) y nada la despierta, ni de noche. De 0 a 7 recupera en
+  ~15 min reales.
+- **< `EXHAUSTED_AT` (15): agotada.** Se la puede despertar (`tryWake()` avisa
+  que está agotada), pero **despierta** pierde salud a `EXHAUSTED_HEALTH_MULT`
+  (x3) el ritmo de una causa normal (~17 de salud por hora real) y se la ve
+  triste (`isExhausted()` → ánimo `sad`; tampoco va a los muebles). Dormida
+  no cuesta nada: se está recuperando. Por eso la energía ya **no** entra en
+  la regla general de `HEALTH_RISK_AT` (antes, energía bajo 30 costaba salud
+  aunque estuviera durmiendo).
+- **< `SLEEPY_THRESHOLD` (20): se puede dormir sola**, con más probabilidad
+  mientras menos energía le quede. Después de despertarla a mano hay
+  `WAKE_GRACE_MS` (90 s) en que no se vuelve a dormir sola (si no, se la
+  despertaba para jugar y se dormía en el menú).
+- **`WAKE_AT` (90): se despierta sola.**
+- Para lanzar un minijuego hace falta `GAME_MIN_ENERGY` (10).
+
+Antes el candado era 25 y el sueño empezaba en 35: pasaba mucho rato dormida
+sin que se pudiera hacer nada. Ahora el candado es corto y la franja de 7 a 15
+es una decisión de quien juega: despertarla cuesta salud. La barra de energía
+se pinta con estos umbrales (rojo bajo 15, amarillo bajo 20), y el LED también.
+El tiempo hasta la muerte por descuido (arriba) no cambia: la energía despierta
+baja tan lento (~56 h la barra) que en esa simulación nunca llega a 20.
+
 - **Etapas** (`ALL_STAGES`): `egg → child → teen → adult` (`EGG_HOURS = 0.1`,
   ~6 s reales de huevo; `CHILD_HOURS = 24*60` y `TEEN_HOURS = 4*24*60`, 1 día
   real de niño y 3 días más de adolescente, 4 días reales en total hasta
@@ -968,7 +995,7 @@ el mismo menú, una vez y para siempre (`state.unlockedGames`). Atrapa
 estrellas es gratis (`price: 0`) a propósito: las monedas solo se ganan
 jugando, sin un juego abierto no habría cómo juntar la primera. `loadState()`
 deja desbloqueados en saves viejos los juegos que ya tienen récord. El panel de
-prueba se salta el bloqueo. El cansancio (`energy < 12`) se revisa al lanzar,
+prueba se salta el bloqueo. El cansancio (`energy < GAME_MIN_ENERGY`, 10) se revisa al lanzar,
 no al abrir el menú, para poder comprar igual.
 
 **Megajuego** (`state.mega`): una partida por juego desbloqueado cada
