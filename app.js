@@ -1694,9 +1694,12 @@ function openShop(aviso){
   document.getElementById('shopTabUpgrades').addEventListener('click', () => { shopTab = 'upgrades'; openShop(); });
   document.getElementById('shopTabStyle').addEventListener('click', () => { shopTab = 'style'; openShop(); });
 
-  /* En Estilo el fondo va sin desenfoque (.clear): lo que se compra se ve
-     puesto en el aparato de atrás en el mismo momento. */
-  if (shopTab === 'style') document.getElementById('overlay').classList.add('clear');
+  /* Las tres pestañas tienen la misma hoja, a todo el alto: así no salta al
+     cambiar de pestaña y la lista tiene espacio. Antes Estilo iba sin
+     desenfoque y topada al 66% (.clear) para ver lo comprado puesto atrás,
+     pero la lista quedaba en la mitad de alto que las otras (109 px en un
+     teléfono chico). Ponérselo y verlo puesto es en Personalizar. */
+  document.getElementById('overlayCard').classList.add('sheet-full');
 
   /* Re-render que no pierde el scroll: comprar o cambiar algo vuelve a armar
      la hoja entera, y sin esto la lista saltaba arriba a cada toque. */
@@ -5005,7 +5008,9 @@ function finishCombatGame(){
    pantalla de inicio y la de game over no, ahí no hay a dónde volver. */
 function showOverlay(html, onDismiss){
   const overlay = document.getElementById('overlay');
-  document.getElementById('overlayCard').innerHTML = html;
+  const card = document.getElementById('overlayCard');
+  card.innerHTML = html;
+  card.classList.remove('sheet-full');
   overlay.onclick = onDismiss ? (e => { if (e.target === overlay) onDismiss(); }) : null;
   overlay.classList.remove('hidden', 'clear');
 }

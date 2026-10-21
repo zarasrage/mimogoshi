@@ -1256,6 +1256,10 @@ body{
 /* Con el fondo sin desenfoque (resultado, Estilo) la hoja no sube hasta arriba:
    lo de atrás —la mascota celebrando, la carcasa nueva— tiene que verse. */
 .overlay.clear .overlay-card{max-height:66%;}
+/* Hoja a todo el alto disponible (la tienda): la lista se estira y se lleva
+   el scroll, así las pestañas miden lo mismo aunque tengan menos filas. */
+.overlay-card.sheet-full{flex:1 1 auto;}
+.overlay-card.sheet-full > .menu-list{flex:1 1 auto;}
 
 /* Rejilla de 3 columnas, no fila con scroll horizontal: ese scroll horizontal
    competía con el scroll vertical del overlay y las especies fuera del borde

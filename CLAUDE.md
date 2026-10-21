@@ -522,8 +522,13 @@ Comprar algo lo deja puesto de una (si es un mueble y ya hay tres, queda
 guardado), y en la tienda lo ya comprado sale como "Tuyo ✓": tocarlo solo
 avisa que se cambia en Personalizar. Personalizar muestra únicamente lo
 comprado, por sección (`styleRows('mine')`; la tienda usa `styleRows('shop')`),
-y ahí tocar algo lo pone o lo saca. En las dos el overlay va con `.clear` y la
-hoja no pasa del 66% de alto, así el cambio se ve puesto atrás al tiro.
+y ahí tocar algo lo pone o lo saca. En Personalizar el overlay va con
+`.clear` y la hoja no pasa del 66% de alto, así el cambio se ve puesto atrás
+al tiro. La tienda **no**: sus tres pestañas usan la misma hoja a todo el alto
+(`.sheet-full`, la lista se estira y se lleva el scroll), así no salta al
+cambiar de pestaña. Antes la pestaña Estilo también iba con `.clear` y topada
+al 66%, y su lista quedaba en la mitad de alto que las otras (188 px contra
+369 en un teléfono de 390; 109 en uno chico).
 `state.style` = `{owned, shell, screen, hat, deco:{pared, izq, der}}`;
 `loadState()` lo rellena para saves viejos y saca lo que ya no exista en el
 catálogo o no esté comprado.
