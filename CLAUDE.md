@@ -410,10 +410,17 @@ simulación, no solo cómo se ve.
 - **`WAKE_AT` (90): se despierta sola.**
 - Para lanzar un minijuego hace falta `GAME_MIN_ENERGY` (10).
 
-Durmiendo recupera `ENERGY_RECOVER_PER_HOUR` = 100/60 por hora de juego: la
-barra entera en **1 hora real**, y con cama (`FURNI_BED_ENERGY_MULT`, x1.5) en
-40 minutos. Se fue acelerando por pedido: antes 100/212 (~3.5 h) y después
-100/106 (~1 h 45 min).
+Durmiendo recupera `ENERGY_RECOVER_PER_HOUR` = 100/45 por hora de juego: la
+barra entera en **45 minutos reales**, y con cama (`FURNI_BED_ENERGY_MULT`,
+x1.5) en 30. Se fue acelerando por pedido: 100/212 (~3.5 h), 100/106
+(~1 h 45 min), 100/60 (1 h) y ahora esto.
+
+Mientras duerme, la barra de energía **se ve cargando**: `render()` le pone
+`.charging` a su `.stat` (franjas que corren hacia la derecha sobre el
+relleno, un brillo que late en la punta y el ⚡ latiendo). Hacía falta porque
+sube ~0.15 por tick y el ancho solo no se ve moverse. Por eso `render()` pinta
+el color de las barras con `backgroundColor` y no con `background`: el
+atajo inline borraba el `background-image` de las franjas.
 
 Antes el candado era 25 y el sueño empezaba en 35: pasaba mucho rato dormida
 sin que se pudiera hacer nada. Ahora el candado es corto y la franja de 7 a 15

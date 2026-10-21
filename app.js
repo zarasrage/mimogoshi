@@ -664,7 +664,7 @@ const DECAY_PER_HOUR = {
   energy:    100 / 3395,   // 3395 h de juego ≈ 56.6 horas reales
   hygiene:   100 / 212,    // 212 h de juego ≈ 3.5 horas reales, pero solo si hay caca (antes 424)
 };
-const ENERGY_RECOVER_PER_HOUR = 100 / 60;   // durmiendo: barra entera en 1 hora real (60 h de juego); con cama, 40 min
+const ENERGY_RECOVER_PER_HOUR = 100 / 45;   // durmiendo: barra entera en 45 min reales (45 h de juego); con cama, 30 min
 
 /* Probabilidad de que aparezca caca, por hora de juego. Antes daba mediana a
    la hora real; escalada al mismo ~3.54x da mediana a las ~3.5 horas reales
@@ -1193,8 +1193,16 @@ function render(){
   [...CARE_STATS, 'health'].forEach(k => {
     const fill = document.getElementById('fill-'+k);
     fill.style.width = clamp(state[k]) + '%';
-    fill.style.background = statColor(state[k], k);
+    fill.style.backgroundColor = statColor(state[k], k);
   });
+  /* Durmiendo, la barra de energía se ve cargando (franjas que avanzan y
+     una flechita): sube tan poco por tick (~0.15) que el ancho solo no lo
+     muestra. */
+  const charging = !!state.sleeping && !gameOver && state.energy < 100;
+  if (render._charging !== charging){
+    render._charging = charging;
+    document.querySelector('.stat[data-stat="energy"]').classList.toggle('charging', charging);
+  }
 
   updateLed();
 

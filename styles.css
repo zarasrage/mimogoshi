@@ -575,6 +575,25 @@ body{
   transition:width .5s ease, background-color .5s ease;
 }
 
+/* Energía cargando (durmiendo): franjas que corren hacia la derecha sobre el
+   relleno, un brillo que late en la punta (hacia donde crece) y el rayo que
+   late. Todo adentro de la barra, que mide lo mismo que las otras. El color
+   del relleno lo pone render() en background-color; las franjas van en
+   background-image para no pisarlo. */
+.stat.charging .stat-fill{
+  background-image:repeating-linear-gradient(115deg,
+    rgba(255,255,255,0) 0 6px, rgba(255,255,255,.45) 6px 9px);
+  background-size:18px 100%;
+  animation:statCharge .7s linear infinite, statTip 1.2s ease-in-out infinite;
+}
+.stat.charging .stat-icon{animation:statPulse 1.2s ease-in-out infinite;}
+@keyframes statCharge{ from{background-position:0 0;} to{background-position:18px 0;} }
+@keyframes statTip{
+  0%,100%{box-shadow:2px 0 3px 0 rgba(var(--screen-lit-rgb),.25);}
+  50%{box-shadow:9px 0 8px 1px rgba(var(--screen-lit-rgb),.85);}
+}
+@keyframes statPulse{ 0%,100%{transform:scale(1); opacity:.7;} 50%{transform:scale(1.35); opacity:1;} }
+
 /* ---------- menús: hoja que sube desde abajo ----------
    El overlay cubre el aparato entero (no solo la pantalla LCD): metido en los
    ~300px de la pantalla, una tienda mostraba dos filas y media. Como hoja
@@ -1692,6 +1711,6 @@ body{
 }
 
 @media (prefers-reduced-motion: reduce){
-  .device, .led, .overlay, .overlay-card, .gc-mega, .result-score, .result-badge, .night-sky::before, .night-sky::after, .creature-floor.party::before{animation:none;}
+  .device, .led, .overlay, .overlay-card, .gc-mega, .result-score, .result-badge, .night-sky::before, .night-sky::after, .creature-floor.party::before, .stat.charging .stat-fill, .stat.charging .stat-icon{animation:none;}
   .xp-fill{transition:none;}
 }
