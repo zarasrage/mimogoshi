@@ -623,8 +623,13 @@ y los muebles quedan donde estaban.)
 **Arte:** pixel art dibujado con código (`pxPainter()`: `r`, `box` con contorno,
 `disc`, `line`), no emojis: no hay emoji de tocador ni de tobogán que exista en
 teléfonos viejos, y al lado del sprite un emoji se ve de otro estilo. Cada
-mueble tiene `parts` que van como canvas separados: `z:'front'` va delante de la
-mascota (el borde de la bañera), `show` las muestra solo con una bandera de su
+mueble tiene `parts` que van como canvas separados: `z:'front'` es el borde de la
+bañera y de la piscina, que va **detrás** de la mascota como todo el resto y
+solo pasa adelante (a `#furniFront`) mientras alguien está adentro usándolo
+(`furniOccupied()`: actividad en ese mueble, dentro de su ancho y sobre el
+piso, porque todos los guiones dejan al personaje adentro un poco en alto);
+así parece metida en el agua, pero al pasar caminando por delante no la
+tapa. Antes iba siempre adelante. `show` las muestra solo con una bandera de su
 estado (`food` en el plato, `on` en tele y radiocasete), `pivot` gira (el asiento
 del columpio) y la pieza `ball` se traslada. Un píxel del arte mide lo mismo que
 uno de la mascota adulta (`furniDeviceScale()`), así que también va a escala

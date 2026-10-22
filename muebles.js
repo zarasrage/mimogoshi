@@ -315,6 +315,7 @@ function renderFurniture(){
     const art = FURNI_ART[id];
     if (!art) continue;
     const rt = Object.assign(furniRestState(id), { entry, x: entry.x, els: {} });
+    let lastBack = null;
     for (const part of art.parts){
       /* Backing store en píxeles físicos y escala entera, igual que la
          mascota: cada píxel del arte ocupa exactamente s píxeles de pantalla. */
@@ -329,10 +330,15 @@ function renderFurniture(){
       c.style.left = (rt.x * 100) + '%';
       if (part.pivot) c.style.transformOrigin = `${part.pivot[0] * k}px ${part.pivot[1] * k}px`;
       /* Los "libres" (pelota, plato) van en una capa propia, delante de los
-         otros muebles y detrás de la mascota: se pueden encimar. */
-      (part.z === 'front' ? front : art.free ? mid : back).appendChild(c);
+         otros muebles y detrás de la mascota: se pueden encimar. Las piezas
+         `z:'front'` (el borde de la bañera y de la piscina) arrancan atrás
+         como todo lo demás: updateFurniture() las pasa adelante solo
+         mientras alguien está adentro usándolas. `anchor` es la pieza tras
+         la que vuelven a su lugar en la capa de atrás. */
+      (art.free ? mid : back).appendChild(c);
       c.addEventListener('pointerdown', e => startFurniDrag(rt, e));
-      rt.els[part.id] = { el: c, part };
+      rt.els[part.id] = { el: c, part, anchor: part.z === 'front' ? lastBack : null };
+      if (part.z !== 'front') lastBack = c;
     }
     furniRt.push(rt);
   }
@@ -352,8 +358,14 @@ function updateFurniture(now = performance.now()){
   const k = furniK();
   const px = v => Math.round(v * DPR) / DPR;
   let party = false;
+  const front = document.getElementById('furniFront');
   for (const rt of furniRt){
-    for (const { el, part } of Object.values(rt.els)){
+    const inside = furniOccupied(rt, k);
+    for (const { el, part, anchor } of Object.values(rt.els)){
+      if (part.z === 'front'){
+        if (inside && el.parentElement !== front) front.appendChild(el);
+        else if (!inside && el.parentElement === front) anchor ? anchor.after(el) : document.getElementById('furniBack').appendChild(el);
+      }
       let t = 'translateX(-50%)';
       const p = part.pose ? part.pose(rt, now, k, dt) : null;
       if (p){
@@ -372,6 +384,21 @@ function updateFurniture(now = performance.now()){
     updateFurniture._party = party;
     document.getElementById('creatureFloor').classList.toggle('party', party);
   }
+}
+
+/* ¿Hay alguien adentro de este mueble usándolo? Hacen falta tres cosas:
+   que su actividad sea en este mueble (pasar caminando por delante no
+   cuenta), estar dentro de su ancho (parado al lado esperando para entrar,
+   o recién salido, tampoco) y estar sobre el piso: todos los guiones dejan
+   al personaje adentro un poco en alto (f.y(1) a f.y(6)), y sin esto el
+   borde lo tapaba mientras salía caminando desde encima del mueble para
+   ir a tomar impulso. Al entrar o salir de un salto el cambio cae a mitad
+   del salto, con el personaje en el aire por encima del borde. */
+function furniOccupied(rt, k){
+  if (!FURNI_ART[rt.id].parts.some(p => p.z === 'front')) return false;
+  const half = FURNI_ART[rt.id].w * k / 2;
+  return allActors().some(a => a.activity && a.activity.rt === rt && !a.hidden && a.y > 0.5 &&
+    Math.abs(a.x - rt.x) * (a.activity.fw || floorWidth()) < half);
 }
 
 function furniPlaced(id){ return furniRt.find(rt => rt.id === id && !rt.removed); }
