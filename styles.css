@@ -424,6 +424,96 @@ body{
   50%{ transform:translateY(-4px) scale(1.08); }
 }
 
+/* Bitácora: una pestañita pegada al borde izquierdo de la LCD. Al volver
+   después de un rato, si pasó algo, pestañea unos segundos (.blink) y nada
+   más: no abre nada solo. */
+.log-btn{
+  position:absolute;
+  left:-10px;           /* el piso está dentro del relleno de 10px de la pantalla: así toca el borde */
+  top:2px;
+  z-index:4;
+  width:28px; height:30px;
+  padding:0 0 0 4px;
+  border:none;
+  border-radius:0 10px 10px 0;
+  background:rgba(var(--screen-lit-rgb), .14);
+  font-size:14px;
+  line-height:30px;
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  user-select:none;
+  touch-action:manipulation;
+}
+.log-btn.blink{animation:logBlink .6s ease-in-out 6;}
+@keyframes logBlink{
+  0%, 100%{background:rgba(var(--screen-lit-rgb), .14); box-shadow:none;}
+  50%{background:#ffce4b; box-shadow:0 0 12px 3px rgba(255,206,75,.8);}
+}
+.log-panel{
+  position:absolute;
+  left:0;
+  top:34px;
+  z-index:8;            /* encima de la burbuja (5), debajo de los menús (10) */
+  width:min(84%, 300px);
+  max-height:calc(100% - 46px);
+  display:flex;
+  flex-direction:column;
+  border-radius:0 18px 18px 0;
+  background:#fff;
+  color:var(--tile-ink);
+  font-family:var(--font-ui);
+  box-shadow:0 14px 30px -10px rgba(20,0,40,.7);
+  animation:logIn .2s var(--ease-spring);
+  overflow:hidden;
+}
+.log-panel.hidden{display:none;}
+@keyframes logIn{ from{opacity:0; transform:translateX(-14px);} }
+.log-top{display:flex; justify-content:space-between; align-items:center; padding:10px 10px 6px 14px; font-size:13px; font-weight:900;}
+.log-close{border:none; background:#f1eaf6; color:#5a4a68; border-radius:999px; width:26px; height:26px; font-weight:900; cursor:pointer;}
+.log-list{list-style:none; margin:0; padding:0 8px 10px; overflow-y:auto; min-height:0;}
+.log-list li{display:grid; grid-template-columns:22px 1fr auto; align-items:center; gap:6px; padding:6px 6px; border-radius:10px; font-size:12px; font-weight:700;}
+.log-list li.away{background:#fff6e5;}
+.log-list li small{font-size:10.5px; color:#8a7a99; white-space:nowrap;}
+.log-list li.log-head{display:flex; justify-content:space-between; margin-top:6px; background:none; padding:6px 6px 2px; border-top:1px solid #f0e6f5;}
+.log-list li.log-head:first-child{margin-top:0; border-top:none;}
+.log-list li.log-head b{font-size:12px; font-weight:900;}
+.log-e{font-size:15px; text-align:center;}
+.log-empty{margin:0; padding:4px 14px 14px; font-size:12px; color:#8a7a99;}
+
+/* Habitaciones: flechas pegadas a los bordes de la pantalla, a media
+   altura del piso, y puntitos arriba al centro. */
+.room-arrow{
+  position:absolute;
+  top:42%;
+  z-index:4;
+  width:26px; height:46px;
+  margin-top:-23px;
+  border:none;
+  background:rgba(var(--screen-lit-rgb), .16);
+  color:var(--screen-lit);
+  font-family:var(--font-ui);
+  font-size:26px;
+  font-weight:900;
+  line-height:44px;
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  user-select:none;
+  touch-action:manipulation;
+}
+.room-arrow.prev{left:-10px; border-radius:0 12px 12px 0; padding:0 2px 0 0;}
+.room-arrow.next{right:-10px; border-radius:12px 0 0 12px; padding:0 0 0 2px;}
+.room-arrow:active{background:rgba(var(--screen-lit-rgb), .32);}
+.room-arrow.hidden, .room-dots.hidden{display:none;}
+.room-dots{position:absolute; top:4px; left:50%; transform:translateX(-50%); z-index:3; display:flex; gap:5px; pointer-events:none;}
+.room-dots i{width:6px; height:6px; border-radius:50%; background:rgba(var(--screen-lit-rgb), .3);}
+.room-dots i.on{background:var(--screen-lit); box-shadow:0 0 6px rgba(var(--screen-lit-rgb), .7);}
+/* Al cambiar de habitación, muebles y adornos entran deslizándose desde el
+   lado por el que se llega. */
+.room-in-l .furni-layer, .room-in-l .deco-layer{animation:roomInL .4s ease-out;}
+.room-in-r .furni-layer, .room-in-r .deco-layer{animation:roomInR .4s ease-out;}
+@keyframes roomInL{ from{opacity:0; transform:translateX(-36px);} }
+@keyframes roomInR{ from{opacity:0; transform:translateX(36px);} }
+
 /* Adornos comprados en la pestaña Estilo: detrás de la mascota y sin recibir
    toques, así la caca y el regalo (que están más adentro, al 16%) se siguen
    tocando aunque haya un adorno al lado. */
@@ -496,7 +586,7 @@ body{
   border-radius:8px;
   background:rgba(0,0,0,.15);
   /* Sin esto, en el teléfono el navegador se queda esperando a ver si el toque
-     es un scroll y los juegos de tocar (reflejos, tap rítmico) responden tarde. */
+     es un scroll y los juegos de tocar (reflejos, torre) responden tarde. */
   touch-action:none;
 }
 
@@ -828,8 +918,8 @@ body{
 [data-g="stars"]     {--g1:#ffbe4f; --g2:#ff6a88;}
 [data-g="basketball"]{--g1:#ff9a3d; --g2:#e0452a;}
 [data-g="reflex"]    {--g1:#ff5a7a; --g2:#a8208a;}
-[data-g="tap"]       {--g1:#8f7bff; --g2:#c25bff;}
-[data-g="snake"]     {--g1:#3ad987; --g2:#0f9a8c;}
+[data-g="torre"]     {--g1:#e8b57d; --g2:#c0703a;}
+[data-g="cielo"]     {--g1:#8fd3ff; --g2:#8f7bff;}
 [data-g="memory"]    {--g1:#45c8ff; --g2:#4f68ff;}
 [data-g="espejo"]    {--g1:#ff8fb8; --g2:#5a7dff;}
 [data-g="voley"]     {--g1:#ffd04f; --g2:#ff8a3d;}
@@ -1499,16 +1589,18 @@ body{
   background:#f1eaf6;
   cursor:pointer;
 }
-.tray-foods{display:grid; grid-template-columns:repeat(5, 1fr); gap:6px;}
+/* Siete comidas más la medicina: dos filas de cuatro (con cinco por fila
+   quedaban dos filas desparejas y la segunda casi vacía). */
+.tray-foods{display:grid; grid-template-columns:repeat(4, 1fr); gap:5px;}
 .tray-food{
   position:relative;
   display:flex;
   flex-direction:column;
   align-items:center;
   gap:2px;
-  padding:9px 0 7px;
+  padding:5px 0 4px;
   border:none;
-  border-radius:15px;
+  border-radius:13px;
   background:#fff4ec;
   font-family:var(--font-ui);
   color:var(--tile-ink);
@@ -1516,7 +1608,7 @@ body{
   transition:transform .12s var(--ease-spring);
 }
 .tray-food:active{transform:scale(.92);}
-.tray-food .emo{font-size:23px; line-height:1;}
+.tray-food .emo{font-size:20px; line-height:1;}
 .tray-food b{font-size:10.5px; font-weight:900; white-space:nowrap;}
 .tray-food .n{position:absolute; top:3px; right:5px; font-size:10px; font-weight:900; color:#8a5a3a;}
 .tray-food.last{box-shadow:0 0 0 2.5px #ff8a5c;}
@@ -1579,20 +1671,7 @@ body{
   100%{box-shadow:0 0 0 10px transparent, 0 1px 0 #fff inset;}
 }
 
-/* Fila de carriles del tap rítmico */
-.gbtn-row{display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;}
-.gbtn-row .gbtn{font-size:24px; padding:18px 4px;}
-
-/* Cruceta de snake: colocación explícita, si no el autoflow manda las flechas
-   de abajo a la primera fila. */
-.gpad{display:grid; grid-template-columns:repeat(3, 1fr); gap:6px;}
-.gpad .gbtn{font-size:20px; padding:13px 4px;}
-.gpad .up   {grid-column:2; grid-row:1;}
-.gpad .left {grid-column:1; grid-row:2;}
-.gpad .down {grid-column:2; grid-row:2;}
-.gpad .right{grid-column:3; grid-row:2;}
-
-/* Deslizador de la canasta en atrapa estrellas */
+/* Deslizador de atrapa estrellas y salto al cielo */
 .game-slider{
   -webkit-appearance:none; appearance:none;
   width:100%;
@@ -1714,3 +1793,100 @@ body{
   .device, .led, .overlay, .overlay-card, .gc-mega, .result-score, .result-badge, .night-sky::before, .night-sky::after, .creature-floor.party::before, .stat.charging .stat-fill, .stat.charging .stat-icon{animation:none;}
   .xp-fill{transition:none;}
 }
+
+/* ---------- Ruleta y gacha (premios.js) ---------- */
+
+/* La píldora de la ruleta late cuando hay un giro disponible. */
+.pill.ready{background:#ffce4b; color:#3a2a00; animation:pillReady 1.4s ease-in-out infinite;}
+@keyframes pillReady{ 50%{transform:scale(1.08); box-shadow:0 0 14px 2px rgba(255,206,75,.75);} }
+
+.wheel-wrap{
+  position:relative;
+  width:min(250px, 68vw);
+  aspect-ratio:1;
+  margin:6px auto 14px;
+  flex-shrink:0;
+}
+.wheel{
+  position:absolute;
+  inset:0;
+  border-radius:50%;
+  border:6px solid #fff;
+  box-shadow:0 10px 30px -10px rgba(0,0,0,.7), 0 0 0 3px rgba(0,0,0,.15) inset;
+}
+/* Cada emoji va en el centro de su trozo (left/top los calcula wheelHtml). */
+.wheel-label{
+  position:absolute;
+  width:30px; height:30px;
+  margin:-15px 0 0 -15px;
+  display:grid; place-items:center;
+  font-size:21px;
+  line-height:1;
+}
+.wheel-pointer{
+  position:absolute;
+  left:50%; top:-12px;
+  z-index:2;
+  width:0; height:0;
+  margin-left:-12px;
+  border-left:12px solid transparent;
+  border-right:12px solid transparent;
+  border-top:22px solid #ff5d6c;
+  filter:drop-shadow(0 2px 2px rgba(0,0,0,.4));
+}
+.wheel-hub{
+  position:absolute;
+  left:50%; top:50%;
+  width:46px; height:46px;
+  margin:-23px 0 0 -23px;
+  display:grid; place-items:center;
+  border-radius:50%;
+  background:#fff;
+  font-size:22px;
+  box-shadow:0 3px 8px rgba(0,0,0,.35);
+}
+
+.gacha-machine{display:flex; flex-direction:column; align-items:center; gap:8px; padding:4px 2px 2px;}
+.gacha-window{
+  position:relative;
+  width:100%;
+  min-height:150px;
+  padding:22px 8px 12px;   /* arriba, lugar para la tapa de la cápsula al abrirse */
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
+  border-radius:var(--r-md);
+  background:radial-gradient(80% 90% at 50% 20%, rgba(255,255,255,.16), rgba(0,0,0,.25));
+}
+/* Cápsula: dos medias esferas. Quieta, se balancea; al girar se sacude y
+   se abre, y abajo aparece el premio con el color de su rareza. */
+.gacha-capsule{position:relative; width:62px; height:62px;}
+.gacha-capsule .cap-top, .gacha-capsule .cap-bot{
+  position:absolute; left:0; width:62px; height:31px;
+  border:3px solid #2b1b2e;
+}
+.gacha-capsule .cap-top{top:0; border-radius:31px 31px 0 0; background:var(--rar, #ff8fb8); border-bottom-width:1.5px;}
+.gacha-capsule .cap-bot{bottom:0; border-radius:0 0 31px 31px; background:#fff; border-top-width:1.5px;}
+.gacha-capsule.idle{animation:capIdle 2.4s ease-in-out infinite;}
+@keyframes capIdle{ 0%,100%{transform:rotate(-6deg);} 50%{transform:rotate(6deg);} }
+.gacha-capsule.opening{animation:capShake .5s ease-in-out;}
+.gacha-capsule.opening .cap-top{animation:capOpen .5s .45s ease-out forwards;}
+@keyframes capShake{ 0%,100%{transform:rotate(0);} 20%{transform:rotate(-14deg);} 40%{transform:rotate(12deg);} 60%{transform:rotate(-9deg);} 80%{transform:rotate(6deg);} }
+@keyframes capOpen{ to{transform:translateY(-14px) rotate(-28deg);} }
+.gacha-prize{
+  display:flex; flex-direction:column; align-items:center; gap:3px;
+  padding:8px 14px 10px;
+  border-radius:var(--r-md);
+  background:rgba(255,255,255,.08);
+  box-shadow:0 0 0 2px var(--rar) inset, 0 0 22px -4px var(--rar);
+  opacity:0;
+  animation:prizeIn .4s .8s var(--ease-spring) forwards;
+  text-align:center;
+}
+@keyframes prizeIn{ from{opacity:0; transform:scale(.7);} to{opacity:1; transform:none;} }
+.gacha-prize b{font-size:15px; font-weight:900;}
+.gacha-prize small{font-size:11px; color:var(--text-soft); font-weight:700;}
+.gacha-swatch{width:44px; height:44px; border-radius:12px; display:grid; place-items:center; font-size:12px;}
+.gacha-swatch.emoji{font-size:34px; width:auto; height:auto;}
+.gacha-odds{margin:0; font-size:11px; font-weight:800; text-align:center;}
+.gacha-col{margin:0; font-size:11.5px; color:var(--text-soft); text-align:center;}
+.gacha-actions{display:grid; grid-template-columns:1fr; gap:8px; width:100%;}
+.gacha-actions .overlay-btn:disabled{opacity:.4;}

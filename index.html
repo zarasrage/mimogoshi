@@ -51,9 +51,19 @@
           <span class="pet-hat hidden" id="petHat"></span>
           <div class="poop-fx hidden" id="poopFx">💩</div>
           <div class="gift-fx hidden" id="giftFx">🎁</div>
+          <!-- Bitácora: un ícono pegado al borde que pestañea al volver si
+               pasó algo mientras no estabas; tocarlo abre la lista. Va dentro
+               del piso para que se esconda solo durante los minijuegos. -->
+          <button class="log-btn" id="logBtn" title="Bitácora" aria-label="Bitácora">📜</button>
+          <!-- Habitaciones: flechas a los costados y puntitos arriba, solo si
+               hay más de una (ver goRoom en muebles.js). -->
+          <button class="room-arrow prev hidden" id="roomPrev" aria-label="Habitación anterior">‹</button>
+          <button class="room-arrow next hidden" id="roomNext" aria-label="Habitación siguiente">›</button>
+          <div class="room-dots hidden" id="roomDots"></div>
         </div>
 
         <div class="bubble" id="bubble"></div>
+        <div class="log-panel hidden" id="logPanel"></div>
 
         <canvas id="gameCanvas" width="256" height="150" class="hidden"></canvas>
 
@@ -84,7 +94,7 @@
     </div>
 
     <!-- Abajo, dos niveles: los cuatro cuidados de todos los días, grandes, y
-         lo de vez en cuando (tienda, personalizar, reiniciar) en píldoras.
+         lo de vez en cuando (tienda, personalizar, ruleta, reiniciar) en píldoras.
          La bandeja de comidas flota encima de todo esto sin cambiar el alto. -->
     <div class="controls" id="controls">
       <div class="dock">
@@ -104,6 +114,7 @@
       <div class="dock-sec">
         <button class="pill" id="btnShop" title="Tienda">🛒 Tienda</button>
         <button class="pill" id="btnStyle" title="Personalizar">🎨 Personalizar</button>
+        <button class="pill pill-icon" id="btnWheel" title="Ruleta">🎡</button>
         <button class="pill pill-icon" id="btnReset" title="Reiniciar">↺</button>
       </div>
       <div class="food-tray hidden" id="foodTray"></div>
@@ -136,6 +147,8 @@
 </div>
 
 <script src="app.js"></script>
+<script src="juegos.js"></script>
+<script src="premios.js"></script>
 <script src="muebles.js"></script>
 <script src="duo.js"></script>
 <script src="duo-juegos.js"></script>

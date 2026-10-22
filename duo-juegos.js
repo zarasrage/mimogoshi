@@ -111,7 +111,7 @@ function dgDispose(){
   for (const f of dg.cleanup) f();
   dg = null;
 }
-extraMinigameDisposers.push(dgDispose);
+minigameDisposers.push(dgDispose);
 
 function dgFinish(opts){
   const id = dg.id;
@@ -498,7 +498,7 @@ function vbStep(dt){
       g.wait = 1.1;
       dgFx('💥', p.x, g.ground - 10, 18);
       dgPop('¡Se cayó!', p.x, g.ground - 34, '#ff8b8b');
-      trSfxFail();
+      sfxFail();
       gaOnce(g.chars[b.to].ga, 'sad');
       if (g.lives <= 0) g.wait = 0.9;
     }
@@ -620,7 +620,7 @@ function blPerform(d, mi, sound = true){
   if (m.id === 'agacha') gaOnce(d.ga, 'sad');
   if (m.id === 'brilla'){ gaOnce(d.ga, 'celebrate'); dgFx('✨', d.x + (Math.random() * 30 - 15), dg.h - 70); }
   dg.flash = { color: m.color, t: performance.now() };
-  if (sound) tone({ freq: TR_SCALE[m.note], durationMs: 180, type: 'triangle', vol: 0.11 });
+  if (sound) tone({ freq: SFX_SCALE[m.note], durationMs: 180, type: 'triangle', vol: 0.11 });
 }
 
 function blSetHint(text){ if (dg.hintEl && dg.hintEl.textContent !== text) dg.hintEl.textContent = text; }
@@ -643,7 +643,7 @@ function blPress(mi){
   blPerform(g.dancers[0], mi, false);
   g.idle = 0;
   if (mi !== blExpected()){ blFail(); return; }
-  tone({ freq: TR_SCALE[BL_MOVES[mi].note], durationMs: 180, type: 'triangle', vol: 0.11 });
+  tone({ freq: SFX_SCALE[BL_MOVES[mi].note], durationMs: 180, type: 'triangle', vol: 0.11 });
   const mult = g.reverse ? 2 : 1;
   g.score += mult;
   g.moves++;
@@ -659,7 +659,7 @@ function blPress(mi){
 
 function blFail(){
   const g = dg;
-  trSfxFail();
+  sfxFail();
   g.lives--;
   gaOnce(g.main, 'sad');
   dgPop('¡Ese no era!', g.dancers[0].x, g.h - 82, '#ff8b8b');
@@ -929,7 +929,7 @@ function hdStep(dt){
       } else {
         g.streak = 0; g.lives--;
         dgFx('💨', g.pick.x, g.ground - 50, 20);
-        trSfxFail();
+        sfxFail();
         gaOnce(g.main, 'sad');
         g.hidden.open = 1;
         hdHint(`No… estaba acá`);
@@ -1049,7 +1049,7 @@ function sbAdjust(d){
   const g = dg;
   if (!g || g.over) return;
   g.level = Math.min(SB_LEVELS, Math.max(1, g.level + d));
-  tone({ freq: TR_SCALE[[1, 3, 5, 8][g.level - 1]], durationMs: 70, type: 'square', vol: 0.06 });
+  tone({ freq: SFX_SCALE[[1, 3, 5, 8][g.level - 1]], durationMs: 70, type: 'square', vol: 0.06 });
 }
 
 function sbEndY(side){ return dg.pivotY + (side === 0 ? dg.tilt : -dg.tilt) * 9; }
@@ -1113,7 +1113,7 @@ function sbStep(dt){
         g.score += SB_POINTS.bomb;
         dgFx('💥', x, sbItemY(it.lev), 22);
         dgPop('¡Pum!', x, sbItemY(it.lev) - 14, '#ff8b8b');
-        trSfxFail();
+        sfxFail();
         gaOnce(g.chars[g.flyer].ga, 'sad');
       } else {
         g.hitThisFlight++;
@@ -1123,7 +1123,7 @@ function sbStep(dt){
         g.score += pts;
         dgFx(it.kind === 'star' ? '✨' : '💥', x, sbItemY(it.lev), 16);
         dgPop('+' + pts, x + 14, sbItemY(it.lev), it.kind === 'star' ? '#ffe66d' : '#fff');
-        tone({ freq: TR_SCALE[[1, 3, 5, 8][it.lev - 1]], durationMs: 110, type: 'triangle', vol: 0.1 });
+        tone({ freq: SFX_SCALE[[1, 3, 5, 8][it.lev - 1]], durationMs: 110, type: 'triangle', vol: 0.1 });
       }
     }
   }
@@ -1325,7 +1325,7 @@ function dpStep(dt){
           g.lives--; g.combo = 0; c.inv = 1.0;
           dgFx('💥', c.x + 8, g.ground - 30, 18);
           dgPop('¡Ay!', c.x, g.ground - 76, '#ff8b8b');
-          trSfxFail();
+          sfxFail();
           gaOnce(c.ga, 'sad');
         }
       } else if (o.x < c.x - box.half - DP_BODY_HALF){

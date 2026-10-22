@@ -310,7 +310,7 @@ function renderFurniture(){
   const front = document.getElementById('furniFront');
   back.innerHTML = ''; mid.innerHTML = ''; front.innerHTML = '';
   const s = furniDeviceScale(), k = s / DPR;
-  for (const entry of state.style.furniture){
+  for (const entry of curRoom().furniture){
     const id = entry.id;
     const art = FURNI_ART[id];
     if (!art) continue;
@@ -415,7 +415,7 @@ function furniOverlaps(id, x, fw, strict){
   if (FURNI_ART[id].free && !strict) return false;
   const k = furniK();
   const half = FURNI_ART[id].w * k / 2;
-  return state.style.furniture.some(f => {
+  return curRoom().furniture.some(f => {
     if (f.id === id || (FURNI_ART[f.id].free && !strict)) return false;
     const otherHalf = FURNI_ART[f.id].w * k / 2;
     return Math.abs(f.x - x) * fw < half + otherHalf + FURNI_GAP_PX;
@@ -523,6 +523,61 @@ function findFurniSpotFrom(rt, x){
   const spot = findFurniSpot(rt.id, x);
   rt.entry.x = guardado;
   return spot;
+}
+
+/* ---------- habitaciones ----------
+   Con más de una habitación aparecen flechas en los costados de la pantalla
+   y unos puntitos arriba que dicen en cuál estás. Cambiar de habitación
+   vuelve a armar los muebles y adornos, y los personajes entran caminando
+   por el costado del que "vienen" (el acompañante un poco después). Dormida
+   no entra caminando: aparece acostada (y si en la nueva hay cama, se va a
+   ella sola, ver updateWalker). Las habitaciones dan la vuelta: después de
+   la última viene la primera. */
+
+function updateRoomNav(){
+  const n = state.style.rooms.length;
+  const show = n > 1 && displayStage() !== 'egg';
+  document.querySelectorAll('.room-arrow').forEach(el => el.classList.toggle('hidden', !show));
+  const dots = document.getElementById('roomDots');
+  dots.classList.toggle('hidden', !show);
+  if (show) dots.innerHTML = state.style.rooms.map((_, i) => `<i class="${i === state.style.room ? 'on' : ''}"></i>`).join('');
+}
+
+function goRoom(delta){
+  if (!state || gameOver || activeMinigame || displayStage() === 'egg') return;
+  const n = state.style.rooms.length;
+  if (n < 2) return;
+  const fromLeft = delta > 0;   // ir a la derecha = se entra por la izquierda
+  for (const act of allActors()) if (act.activity) endFurniActivity(act, false);
+  state.style.room = (state.style.room + delta + n) % n;
+  saveState();
+  applyStyle();
+  const floor = document.getElementById('creatureFloor');
+  floor.classList.remove('room-in-l', 'room-in-r'); void floor.offsetWidth;
+  floor.classList.add(fromLeft ? 'room-in-l' : 'room-in-r');
+  clearTimeout(goRoom._t);
+  goRoom._t = setTimeout(() => floor.classList.remove('room-in-l', 'room-in-r'), 450);
+  if (!arranging){
+    roomEnter(walker, fromLeft, 0);
+    if (typeof buddyActive === 'function' && buddyActive()) roomEnter(buddy, fromLeft, 0.18);
+  }
+  if (logPanelOpen()) closeLogPanel();
+}
+
+function roomEnter(act, fromLeft, delay){
+  act.y = 0;
+  if (state.sleeping){ act.x = act.isMain ? 0.5 : 0.62; return; }
+  act.x = fromLeft ? -0.15 - delay : 1.15 + delay;
+  const to = fromLeft ? 0.26 + Math.random() * 0.12 : 0.74 - Math.random() * 0.12;
+  startActivity(act, [{ go: to, speed: 0.22, anim: 'walk' }], { kind: 'enter' });
+}
+
+if (typeof window !== 'undefined'){
+  window.addEventListener('DOMContentLoaded', () => {
+    for (const [id, d] of [['roomPrev', -1], ['roomNext', 1]]){
+      document.getElementById(id).addEventListener('click', e => { e.stopPropagation(); goRoom(d); });
+    }
+  });
 }
 
 /* ---------- tocar un mueble: ir a usarlo ----------
@@ -640,7 +695,7 @@ function commandFurniVisit(rt){
 
 function furniTapTarget(e){
   if (!state || gameOver || arranging || activeMinigame || displayStage() === 'egg') return null;
-  if (e.target.closest && e.target.closest('.poop-fx, .gift-fx')) return null;
+  if (e.target.closest && e.target.closest('.poop-fx, .gift-fx, .log-btn, .room-arrow')) return null;
   const x = e.clientX, y = e.clientY;
   /* Tocar el cuerpo de un personaje sigue siendo tocarlo a él. */
   if (spriteHit(document.getElementById('petCanvas'), walker.drawn, x, y)) return null;
@@ -787,6 +842,8 @@ function endFurniActivity(act = walker, cascade = true){
   act.anim = null;
   act.frame = 0;
   act.hidden = false;
+  /* Si se cortó entrando a una habitación, no se queda afuera de la pantalla. */
+  act.x = clampX(act.x);
   if (a.rt){
     a.rt.users.delete(act.key);
     if (!a.rt.users.size) resetFurniRt(a.rt);
@@ -1004,6 +1061,8 @@ function furniActivityBroken(mood, act = walker){
   if (act.isMain){
     if (displayStage() === 'egg' || mood === 'dead' || petAction) return true;
     if (a.kind === 'sleep') return false;
+    /* Entrar a una habitación: aunque esté triste o enferma, termina de entrar. */
+    if (a.kind === 'enter') return !!state.sleeping;
     if (state.sleeping) return true;
     if (a.kind === 'eat' || a.kind === 'clean') return false;
     return mood === 'sleepy' || mood === 'sad' || mood === 'sick';

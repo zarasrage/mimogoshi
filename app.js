@@ -304,6 +304,15 @@ const FOODS = [
   { id:'rica',     name:'Comida rica',      emoji:'🍗', restore:30, price: 12 },
   { id:'especial', name:'Comida especial',  emoji:'🍰', restore:50, price: 25 },
   { id:'redbull',  name:'Red Bull',         emoji:'⚡', restore: 2, energy: 20, price: 20 },
+  /* El banquete llena la barra entera, sea cual sea: restore 100 alcanza
+     porque clamp() la topa. Cuesta más que dos especiales a propósito: es la
+     forma cómoda, no la barata. */
+  { id:'banquete', name:'Banquete',         emoji:'🍱', restore:100, price: 55 },
+  /* Solo energía (restore 0): para cuando está cansada y no se la quiere
+     acostar. Ninguna llega a la de una siesta: la cama sigue siendo lo que
+     llena la barra. */
+  { id:'cafe',     name:'Café',             emoji:'☕', restore: 0, energy: 15, price: 10 },
+  { id:'jugo',     name:'Jugo energético',  emoji:'🧃', restore: 0, energy: 35, price: 22 },
 ];
 
 const FOOD_START_STOCK = 5;
@@ -322,7 +331,9 @@ function foodById(id){ return FOODS.find(f => f.id === id) || FOODS[0]; }
 const FOOD_ENERGY_DEFAULT = 4;
 function foodDesc(f){
   const energy = f.energy ?? FOOD_ENERGY_DEFAULT;
-  return `+${f.restore} de hambre` + (energy !== FOOD_ENERGY_DEFAULT ? ` · +${energy} de energía` : '');
+  if (!f.restore) return `Solo energía: +${energy}`;
+  const hambre = f.restore >= 100 ? 'Llena el hambre' : `+${f.restore} de hambre`;
+  return hambre + (energy !== FOOD_ENERGY_DEFAULT ? ` · +${energy} de energía` : '');
 }
 
 /* Cuántas porciones quedan. Todas las comidas, incluido el bocadillo simple,
@@ -415,11 +426,36 @@ const DECO_SLOT_NAMES = { pared:'pared', izq:'suelo izq.', der:'suelo der.' };
 
 function styleItemById(id){ return STYLE_ITEMS.find(it => it.id === id); }
 
+/* Habitaciones: la primera viene con la mascota y se pueden comprar más
+   (pestaña Mejoras), hasta ROOM_MAX. Cada una tiene sus propios muebles y
+   adornos; carcasa, pantalla y accesorio son del aparato y de la mascota, no
+   de la pieza. Un mueble o adorno está en UNA habitación a la vez: ponerlo
+   en otra lo cambia de lugar. Se cambia de habitación con las flechas de los
+   costados de la pantalla (goRoom, muebles.js). */
+const ROOM_MAX = 4;
+const ROOM_PRICES = [0, 150, 250, 400];
+
+function freshRoom(){
+  return { deco: { pared:null, izq:null, der:null },
+    furniture: [] };   // muebles puestos: [{ id, x }], x = centro como fracción del piso
+}
+
 function freshStyle(){
   const owned = {};
   for (const it of STYLE_ITEMS) if (it.price === 0) owned[it.id] = true;
-  return { owned, shell:'rosa', screen:'verde', hat:null, deco:{ pared:null, izq:null, der:null },
-    furniture:[] };   // muebles puestos: [{ id, x }], x = centro como fracción del piso
+  return { owned, shell:'rosa', screen:'verde', hat:null, rooms:[freshRoom()], room:0 };
+}
+
+/* La habitación que se está viendo. */
+function curRoom(){
+  const st = state.style;
+  return st.rooms[st.room] || st.rooms[0];
+}
+
+/* En qué habitación está puesto un mueble o adorno (-1 si en ninguna). */
+function roomOf(it){
+  return state.style.rooms.findIndex(r => it.kind === 'furni'
+    ? r.furniture.some(f => f.id === it.id) : r.deco[it.slot] === it.id);
 }
 
 function isStyleEquipped(it){
@@ -427,160 +463,38 @@ function isStyleEquipped(it){
   if (it.kind === 'shell') return st.shell === it.id;
   if (it.kind === 'screen') return st.screen === it.id;
   if (it.kind === 'hat') return st.hat === it.id;
-  if (it.kind === 'furni') return st.furniture.some(f => f.id === it.id);
-  return st.deco[it.slot] === it.id;
+  return roomOf(it) === st.room;
 }
 
 /* Carcasa y pantalla no se pueden sacar (siempre hay una); accesorio, adorno
    y mueble sí: tocar el que ya está puesto lo saca. Un mueble nuevo va al
    lugar libre del piso más cerca del centro (findFurniSpot). Devuelve true si
    se pudo, o el aviso de por qué no (ya hay FURNI_MAX, o no cabe). */
+/* Si está en otra habitación, se trae a esta (y se saca de aquella). */
 function toggleStyleItem(it){
   const st = state.style;
+  const room = curRoom();
   if (it.kind === 'shell') st.shell = it.id;
   else if (it.kind === 'screen') st.screen = it.id;
   else if (it.kind === 'hat') st.hat = st.hat === it.id ? null : it.id;
   else if (it.kind === 'furni'){
-    const i = st.furniture.findIndex(f => f.id === it.id);
-    if (i >= 0){ st.furniture.splice(i, 1); return true; }
-    if (st.furniture.length >= FURNI_MAX) return `Ya hay ${FURNI_MAX} muebles puestos: toca uno de los puestos para sacarlo`;
+    const i = room.furniture.findIndex(f => f.id === it.id);
+    if (i >= 0){ room.furniture.splice(i, 1); return true; }
+    if (room.furniture.length >= FURNI_MAX) return `Ya hay ${FURNI_MAX} muebles en esta habitación: toca uno de los puestos para sacarlo`;
     const x = findFurniSpot(it.id, 0.5, true) ?? findFurniSpot(it.id, 0.5);
     if (x === null) return 'No cabe en el piso: acomoda los muebles o saca uno';
-    st.furniture.push({ id: it.id, x });
+    const otra = roomOf(it);
+    if (otra >= 0){ const r = st.rooms[otra]; r.furniture = r.furniture.filter(f => f.id !== it.id); }
+    room.furniture.push({ id: it.id, x });
   }
-  else st.deco[it.slot] = st.deco[it.slot] === it.id ? null : it.id;
+  else {
+    if (room.deco[it.slot] === it.id){ room.deco[it.slot] = null; return true; }
+    const otra = roomOf(it);
+    if (otra >= 0) st.rooms[otra].deco[it.slot] = null;
+    room.deco[it.slot] = it.id;
+  }
   return true;
 }
-
-/* Minijuegos del menú de Jugar. Se desbloquean con monedas, una sola vez y para
-   siempre; Atrapa estrellas viene gratis de inicio porque las monedas solo se
-   ganan jugando (ver finishMinigame): sin un juego abierto no habría forma de
-   juntar la primera. Precios sin calibrar, un primer intento: una partida buena
-   da ~7 monedas. Combate y Tap prueba no van acá — son prototipos que solo
-   lanza el panel de prueba, que además se salta el bloqueo. */
-const GAMES = [
-  { id:'stars',      name:'Atrapa estrellas', emoji:'⭐', desc:'Esquiva la caca',          price:  0, start: () => startStarsGame() },
-  { id:'basketball', name:'Baloncesto',       emoji:'🏀', desc:'Tira en el momento justo', price: 15, start: () => startBasketballGame() },
-  { id:'reflex',     name:'Reflejos',         emoji:'🎯', desc:'Todo menos las bombas',    price: 25, start: () => startReflexGame() },
-  { id:'tap',        name:'Tap rítmico',      emoji:'🎵', desc:'Toca al cruzar la línea',  price: 35, start: () => startTapGame() },
-  { id:'snake',      name:'Snake',            emoji:'🐍', desc:'Desliza para girar',       price: 45, start: () => startSnakeGame() },
-  { id:'memory',     name:'Memorice',         emoji:'💡', desc:'Repite la secuencia',      price: 55, start: () => startMemoryGame() },
-];
-
-function gameById(id){ return GAMES.find(g => g.id === id); }
-
-function isGameUnlocked(id){
-  const g = gameById(id);
-  return !!g && (g.price === 0 || (state.unlockedGames || []).includes(id));
-}
-
-function unlockedGames(){ return GAMES.filter(g => isGameUnlocked(g.id)); }
-
-/* Niveles por juego: cada partida suma su mérito como experiencia
-   (state.gameXp[id]) y la experiencia desbloquea niveles, hasta GAME_MAX_LEVEL.
-   El nivel no sube solo: se elige en el menú entre los ya desbloqueados, para
-   que nadie quede atascado en uno que le queda grande. Los umbrales están en
-   "partidas buenas" (mérito ~45, ver finishMinigame) y son acumulados: 10
-   para el nivel 2, 30 en total para el 3, 50 para el 4, 150 para el 5.
-
-   Más nivel es más difícil, así que tiene que pagar más: si no, subir sería un
-   castigo (menos puntaje, menos monedas). LEVEL_COIN_MULT multiplica solo las
-   monedas, y se suma al x3 del Megajuego. Cada juego lee la dificultad con
-   levelT(), que va de 0 (nivel 1) a 1 (nivel máximo). */
-const GAME_MAX_LEVEL = 5;
-const GOOD_GAME_MERIT = 45;
-const LEVEL_XP = [0, 10, 30, 50, 150].map(n => n * GOOD_GAME_MERIT);
-const LEVEL_COIN_MULT = [1, 1.25, 1.5, 1.75, 2];
-
-let playLevel = 1;   // nivel de la partida en curso; el panel de prueba juega en 1
-
-function levelT(){ return (playLevel - 1) / (GAME_MAX_LEVEL - 1); }
-
-function gameXp(id){ return (state.gameXp && state.gameXp[id]) || 0; }
-
-function maxLevelFor(id){
-  const xp = gameXp(id);
-  let lvl = 1;
-  while (lvl < GAME_MAX_LEVEL && xp >= LEVEL_XP[lvl]) lvl++;
-  return lvl;
-}
-
-/* Nivel elegido en el menú, recortado al máximo desbloqueado. */
-function pickedLevel(id){
-  const p = (state.gameLevelPick && state.gameLevelPick[id]) || maxLevelFor(id);
-  return Math.min(Math.max(1, p), maxLevelFor(id));
-}
-
-/* El récord es por nivel: un puntaje en nivel 1 y otro en nivel 5 no se pueden
-   comparar. El nivel 1 usa la clave de siempre, así los récords de antes de los
-   niveles quedan como récord de nivel 1. */
-function recordKey(id, level){ return level > 1 ? `${id}:${level}` : id; }
-
-/* Megajuego: una partida por juego desbloqueado cada MEGA_CYCLE_MS de tiempo
-   REAL (Date.now(), no ageHours: es un ritmo para quien juega, igual que el
-   modo nocturno). Paga MEGA_COIN_MULT veces las monedas — solo las monedas, la
-   felicidad queda igual para no tapar el descuido. Jugar el Megajuego de todos
-   los desbloqueados da de una MEGA_BONUS_PER_GAME por juego, una vez por ciclo.
-
-   El ciclo arranca con el primer Megajuego jugado y se renueva entero 12 horas
-   después, no por juego: así hay una sola cuenta regresiva que mostrar y el
-   bonus de "completarlos todos" tiene un plazo claro. Un juego desbloqueado a
-   mitad de ciclo entra en la cuenta de ese mismo ciclo. */
-const MEGA_CYCLE_MS = 12 * 60 * 60 * 1000;
-const MEGA_COIN_MULT = 3;
-const MEGA_BONUS_PER_GAME = 10;
-
-let megaRun = null;   // id del juego que se está jugando en versión Megajuego
-
-function freshMega(){ return { cycleStart: null, played: {}, bonusPaid: false }; }
-
-/* Devuelve el ciclo vigente, renovándolo si ya venció. Un reloj que vuelve
-   atrás (cycleStart en el futuro) también lo renueva: si no, quedaría bloqueado
-   hasta que el reloj alcance la fecha vieja. */
-function megaState(){
-  if (!state.mega || typeof state.mega !== 'object') state.mega = freshMega();
-  const m = state.mega;
-  if (m.cycleStart !== null){
-    const elapsed = Date.now() - m.cycleStart;
-    if (elapsed >= MEGA_CYCLE_MS || elapsed < 0) state.mega = freshMega();
-  }
-  return state.mega;
-}
-
-function megaAvailable(id){ return isGameUnlocked(id) && !megaState().played[id]; }
-
-/* Milisegundos hasta que se renueve el ciclo; null si todavía no arrancó. */
-function megaMsLeft(){
-  const m = megaState();
-  if (m.cycleStart === null) return null;
-  return Math.max(0, m.cycleStart + MEGA_CYCLE_MS - Date.now());
-}
-
-/* "05:12:33" (o "05:12" con corto=true, para la etiqueta chica de la tarjeta). */
-function megaClockLabel(ms, corto){
-  const s = Math.ceil(ms / 1000);
-  const hh = String(Math.floor(s / 3600)).padStart(2, '0');
-  const mm = String(Math.floor(s / 60) % 60).padStart(2, '0');
-  const ss = String(s % 60).padStart(2, '0');
-  return corto ? `${hh}:${mm}` : `${hh}:${mm}:${ss}`;
-}
-
-/* Los relojes del Megajuego en pantalla ([data-mega-clock], y su barra en
-   [data-mega-bar]) se refrescan solos cada segundo mientras haya alguno a la
-   vista: sin esto, la cuenta regresiva quedaba congelada en lo que decía al
-   abrir el menú. Un solo intervalo global, que no hace nada si no hay
-   relojes; así ninguna hoja tiene que acordarse de arrancarlo ni pararlo. */
-function tickMegaClocks(){
-  const clocks = document.querySelectorAll('[data-mega-clock]');
-  const bars = document.querySelectorAll('[data-mega-bar]');
-  if (!clocks.length && !bars.length) return;
-  const ms = megaMsLeft();
-  clocks.forEach(el => {
-    el.textContent = ms === null || ms <= 0 ? '¡listo!' : megaClockLabel(ms, el.dataset.megaClock === 'short');
-  });
-  bars.forEach(el => { el.style.width = ms === null ? '0%' : (ms / MEGA_CYCLE_MS * 100).toFixed(2) + '%'; });
-}
-if (typeof window !== 'undefined') setInterval(tickMegaClocks, 1000);
 
 /* ===================== Estado del juego ===================== */
 
@@ -700,11 +614,9 @@ const SICK_LOW_HEALTH_AT = 60;
 /* Modo nocturno: de 00:00 a 06:00 hora REAL del dispositivo (no de juego —
    es "de noche" para quien está jugando, no para la mascota), todo decae
    50% más lento y la mascota tiende a estar dormida ~75% del tiempo.
-   Limitación conocida: catchUp() puede entregar de una un rango de horas
-   que cruza medianoche; como applyDecay() solo mira la hora ACTUAL al
-   aplicarlas (no hora por hora), un tramo nocturno adentro de un catchUp
-   largo no se trata distinto del resto — el mismo compromiso que ya hace
-   sleepFactor con horas acumuladas. */
+   catchUp() simula la ausencia de a un tick y con la hora de cada paso
+   (simNowMs), así un tramo de noche con la app cerrada también cuenta como
+   noche. */
 const NIGHT_START_HOUR = 0;
 const NIGHT_END_HOUR = 6;
 const NIGHT_DECAY_FACTOR = 0.5;
@@ -719,9 +631,14 @@ const NIGHT_SLEEP_EXIT_CHANCE = 0.01;
    se ve sin esperar a medianoche; null = la hora real. */
 let debugForcedNight = null;
 
+/* Mientras catchUp() simula el tiempo que la app estuvo cerrada, la hora de
+   cada paso (así un tramo de noche adentro de la ausencia se trata como
+   noche); null = la hora de verdad. */
+let simNowMs = null;
+
 function isNightMode(){
   if (debugForcedNight !== null) return debugForcedNight;
-  const h = new Date().getHours();
+  const h = new Date(simNowMs ?? Date.now()).getHours();
   return h >= NIGHT_START_HOUR && h < NIGHT_END_HOUR;
 }
 
@@ -729,7 +646,7 @@ let state = null;
 let tickTimer = null;
 let animFrame = null;
 let gameOver = false;
-let activeMinigame = null; // null | 'stars' | 'basketball'
+let activeMinigame = null; // null o el id del minijuego en curso ('stars', 'torre', ...)
 
 /* Modo prueba: no se guarda, vive solo en memoria de la sesión */
 let debugMode = false;
@@ -783,6 +700,9 @@ function freshState(name, species){
     gameLevelPick: {},   // nivel elegido en el menú por juego
     style: freshStyle(), // carcasa, pantalla, accesorio y adornos (pestaña Estilo)
     companion: null,     // segundo personaje en pantalla (hijo o visita), ver duo.js
+    log: [],             // bitácora: lo que pasó solo (ver logEvent)
+    wheel: { last: null, angle: 0 },   // ruleta (premios.js): último giro y dónde quedó la rueda
+    gachaTickets: 0,     // fichas de la ruleta para el gacha
   };
 }
 
@@ -813,9 +733,19 @@ function loadState(){
     if (!Array.isArray(s.unlockedGames)){
       s.unlockedGames = GAMES.filter(g => g.price > 0 && s.records[g.id] > 0).map(g => g.id);
     }
-    if (!s.mega || typeof s.mega !== 'object' || !s.mega.played) s.mega = freshMega();
     if (!s.gameXp || typeof s.gameXp !== 'object') s.gameXp = {};               // saves anteriores a los niveles
     if (!s.gameLevelPick || typeof s.gameLevelPick !== 'object') s.gameLevelPick = {};
+    /* Juegos que se sacaron (Snake y Tap rítmico): lo pagado pasa al juego
+       que ocupó su lugar en el menú, y sus récords, xp y Megajuego se borran. */
+    for (const [viejo, nuevo] of Object.entries(REMOVED_GAMES)){
+      if (s.unlockedGames.includes(viejo)) s.unlockedGames = s.unlockedGames.filter(id => id !== viejo).concat(nuevo);
+      for (const tabla of [s.records, s.gameXp, s.gameLevelPick, s.mega && s.mega.played]){
+        if (!tabla) continue;
+        for (const k of Object.keys(tabla)) if (k === viejo || k.startsWith(viejo + ':')) delete tabla[k];
+      }
+    }
+    s.unlockedGames = [...new Set(s.unlockedGames)].filter(id => gameById(id));
+    if (!s.mega || typeof s.mega !== 'object' || !s.mega.played) s.mega = freshMega();
     // saves de antes de las mejoras, o de después de sumar una mejora nueva
     if (!s.upgrades || typeof s.upgrades !== 'object') s.upgrades = {};
     for (const up of UPGRADES){
@@ -826,32 +756,50 @@ function loadState(){
     if (!s.style || typeof s.style !== 'object') s.style = base;
     if (!s.style.owned || typeof s.style.owned !== 'object') s.style.owned = {};
     Object.assign(s.style.owned, base.owned);
-    if (!s.style.deco || typeof s.style.deco !== 'object') s.style.deco = { ...base.deco };
     const vale = (id, kind) => { const it = styleItemById(id); return it && it.kind === kind && s.style.owned[id]; };
     if (!vale(s.style.shell, 'shell')) s.style.shell = base.shell;
     if (!vale(s.style.screen, 'screen')) s.style.screen = base.screen;
     if (s.style.hat && !vale(s.style.hat, 'hat')) s.style.hat = null;
-    for (const slot of Object.keys(base.deco)){
-      const id = s.style.deco[slot];
-      if (!id || !vale(id, 'deco') || styleItemById(id).slot !== slot) s.style.deco[slot] = null;
+    /* Saves de antes de las habitaciones: los muebles y adornos que tenía
+       pasan a ser los de la primera. */
+    if (!Array.isArray(s.style.rooms) || !s.style.rooms.length){
+      s.style.rooms = [{ deco: s.style.deco, furniture: s.style.furniture }];
     }
-    /* Antes los muebles iban en tres lugares fijos ({izq, centro, der}); ahora
-       cada uno guarda su posición libre. Los de antes quedan donde estaban. */
-    let muebles = s.style.furniture;
-    if (muebles && !Array.isArray(muebles) && typeof muebles === 'object'){
-      muebles = Object.entries(LEGACY_FURNI_SLOTS).filter(([slot]) => muebles[slot]).map(([slot, x]) => ({ id: muebles[slot], x }));
-    }
-    if (!Array.isArray(muebles)) muebles = [];
+    delete s.style.deco;
+    delete s.style.furniture;
+    s.style.rooms = s.style.rooms.slice(0, ROOM_MAX).map(r => (r && typeof r === 'object') ? r : freshRoom());
+    if (!Number.isInteger(s.style.room) || s.style.room < 0 || s.style.room >= s.style.rooms.length) s.style.room = 0;
+    /* Cada mueble y adorno, en una sola habitación (el primero que aparece). */
     const vistos = new Set();
-    s.style.furniture = muebles.filter(f => f && vale(f.id, 'furni') && FURNI_ART[f.id] && !vistos.has(f.id) && vistos.add(f.id))
-      .slice(0, FURNI_MAX)
-      .map(f => ({ id: f.id, x: (typeof f.x === 'number' && isFinite(f.x)) ? Math.min(0.95, Math.max(0.05, f.x)) : 0.5 }));
+    for (const room of s.style.rooms){
+      if (!room.deco || typeof room.deco !== 'object') room.deco = freshRoom().deco;
+      for (const slot of Object.keys(freshRoom().deco)){
+        const id = room.deco[slot];
+        if (!id || !vale(id, 'deco') || styleItemById(id).slot !== slot || vistos.has(id)) room.deco[slot] = null;
+        else vistos.add(id);
+      }
+      /* Antes los muebles iban en tres lugares fijos ({izq, centro, der});
+         ahora cada uno guarda su posición libre. Los de antes quedan donde
+         estaban. */
+      let muebles = room.furniture;
+      if (muebles && !Array.isArray(muebles) && typeof muebles === 'object'){
+        muebles = Object.entries(LEGACY_FURNI_SLOTS).filter(([slot]) => muebles[slot]).map(([slot, x]) => ({ id: muebles[slot], x }));
+      }
+      if (!Array.isArray(muebles)) muebles = [];
+      room.furniture = muebles.filter(f => f && vale(f.id, 'furni') && FURNI_ART[f.id] && !vistos.has(f.id) && vistos.add(f.id))
+        .slice(0, FURNI_MAX)
+        .map(f => ({ id: f.id, x: (typeof f.x === 'number' && isFinite(f.x)) ? Math.min(0.95, Math.max(0.05, f.x)) : 0.5 }));
+    }
     // acompañante: de antes no existía; uno con especie o etapa que ya no existen se descarta
     if (!s.companion || typeof s.companion !== 'object' || !SPECIES[s.companion.species]) s.companion = null;
     else {
       if (!['child', 'teen', 'adult'].includes(s.companion.stage)) s.companion.stage = 'child';
       if (typeof s.companion.name !== 'string' || !s.companion.name) s.companion.name = SPECIES_RAW[s.companion.species].name;
     }
+    if (!Array.isArray(s.log)) s.log = [];   // saves de antes de la bitácora
+    // ruleta y gacha (premios.js): de antes no existían
+    if (!s.wheel || typeof s.wheel !== 'object') s.wheel = { last: null, angle: 0 };
+    if (typeof s.gachaTickets !== 'number' || !isFinite(s.gachaTickets)) s.gachaTickets = 0;
     // saves con 'grown' (antes de la escalera de tamaños) o con una etapa fantasma
     if (!ALL_STAGES.includes(s.stage)) s.stage = 'adult';
     return s;
@@ -864,6 +812,12 @@ function saveState(){
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(state));
   } catch (e) { /* algunos visores bloquean localStorage; ignorar */ }
+}
+
+/* Borrar el save también va en try/catch: en un visor que bloquea
+   localStorage, "Reiniciar" tiraba un error y no hacía nada. */
+function clearSave(){
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* bloqueado: se recarga igual */ }
 }
 
 function clamp(v, min=0, max=100){ return Math.max(min, Math.min(max, v)); }
@@ -913,7 +867,9 @@ function applyDecay(hours){
   state.happiness= clamp(state.happiness- hours * decayRate('happiness', state.happiness) * sleepFactor * nightFactor);
   /* Con cama puesta recupera un poco más rápido (ver "Muebles"). Se mira el
      save y no si está acostada en este momento: así vale igual en catchUp(). */
-  const bedMult = state.style && Array.isArray(state.style.furniture) && state.style.furniture.some(f => f.id === 'cama') ? FURNI_BED_ENERGY_MULT : 1;
+  /* La cama cuenta esté en la habitación que esté: es su casa. */
+  const bedMult = state.style && Array.isArray(state.style.rooms) &&
+    state.style.rooms.some(r => r.furniture.some(f => f.id === 'cama')) ? FURNI_BED_ENERGY_MULT : 1;
   state.energy   = clamp(state.energy   + (state.sleeping
     ? hours * ENERGY_RECOVER_PER_HOUR * bedMult
     : -hours * decayRate('energy', state.energy) * nightFactor));
@@ -979,13 +935,38 @@ function applyDecay(hours){
   }
 }
 
+/* El tiempo que pasó con la app cerrada se simula de a un tick (TICK_MS),
+   igual que si hubiera estado abierta: antes se aplicaba de una sola vez y
+   eso cambiaba las reglas (el riesgo para la salud se medía con las barras
+   ya vaciadas, se quedaba dormida o despierta todo el rato, la noche se
+   decidía con la hora de ahora). De paso, cada paso deja en la bitácora lo
+   que pasó y a qué hora. Tope: tres días de juego (72 minutos reales), como
+   siempre; pasado eso la mascota queda "en pausa" hasta que vuelvas. */
+const CATCHUP_CAP_MS = MS_PER_GAME_HOUR * 24 * 3;
+
 function catchUp(){
   const now = Date.now();
-  const elapsedMs = Math.max(0, now - state.lastUpdate);
-  const cappedMs = Math.min(elapsedMs, MS_PER_GAME_HOUR * 24 * 3);
-  const hours = cappedMs / MS_PER_GAME_HOUR;
-  applyDecay(hours);
+  const t0 = state.lastUpdate;
+  const elapsedMs = Math.max(0, now - t0);
+  const away = elapsedMs >= AWAY_MIN_MS;
+  const cappedMs = Math.min(elapsedMs, CATCHUP_CAP_MS);
+  const visita = away ? { slept: 0, n: 0 } : null;
+  let done = 0;
+  while (done < cappedMs && !gameOver){
+    const step = Math.min(TICK_MS, cappedMs - done);
+    simNowMs = t0 + done;
+    const antes = logSnapshot();
+    applyDecay(step / MS_PER_GAME_HOUR);
+    /* Con la app abierta esto lo hace tick(); cerrada, cada paso. */
+    if (away && !gameOver) maybeAutoSleep();
+    done += step;
+    if (visita && state.sleeping) visita.slept += step;
+    const n = logChanges(antes, t0 + done, away);
+    if (visita) visita.n += n;
+  }
+  simNowMs = null;
   state.lastUpdate = now;
+  if (visita) logAway(elapsedMs, visita);
 }
 
 /* Bajo ENERGY_LOCK_AT se duerme en el acto, de día o de noche. */
@@ -1029,6 +1010,126 @@ function tick(){
   saveState();
 }
 
+/* ===================== Bitácora =====================
+   Lo que pasó solo (caca, enfermarse, un regalo, que le diera hambre...),
+   con la hora. Sobre todo lo que pasó con la app cerrada: al volver, el
+   ícono del borde de la pantalla (#logBtn) pestañea unos segundos y nada
+   más — no abre nada ni obliga a leer; quien quiera, lo toca y ve la lista.
+   Lo que hace quien juega (darle de comer, dormirla) no se anota: ya lo vio. */
+
+const LOG_MAX = 40;
+const AWAY_MIN_MS = 2 * 60 * 1000;   // menos que esto no cuenta como "no estabas"
+const LOG_BLINK_MS = 3600;
+
+function logEvent(e, m, t = Date.now(), away = false){
+  if (!Array.isArray(state.log)) state.log = [];
+  state.log.push({ t, e, m, away });
+  if (state.log.length > LOG_MAX) state.log.splice(0, state.log.length - LOG_MAX);
+}
+
+function logSnapshot(){
+  return {
+    poop: state.poop, sick: state.sick, gift: state.gift, stage: state.stage,
+    hunger: state.hunger, happiness: state.happiness, hygiene: state.hygiene,
+    energy: state.energy, health: state.health, sleeping: state.sleeping,
+    clean: upgradeState('autoClean').timesUsed || 0, med: upgradeState('autoMed').timesUsed || 0,
+  };
+}
+
+const LOG_LOW = [
+  ['hunger',    HEALTH_RISK_AT,   '🍖', 'Le dio hambre'],
+  ['happiness', HEALTH_RISK_AT,   '😞', 'Se aburrió: quiere jugar'],
+  ['hygiene',   HEALTH_RISK_AT,   '🧼', 'Se ensució'],
+  ['energy',    SLEEPY_THRESHOLD, '🥱', 'Se cansó'],
+  ['health',    SICK_LOW_HEALTH_AT, '❤️', 'Su salud empezó a bajar'],
+  ['health',    25,               '🚑', '¡Su salud está muy baja!'],
+];
+
+/* Compara antes y después de un paso y anota lo nuevo. Devuelve cuántas
+   cosas anotó. Las barras se anotan al cruzar el umbral hacia abajo, una
+   vez, no mientras siguen bajas. */
+function logChanges(a, t, away){
+  const n0 = (state.log || []).length;
+  const b = logSnapshot();
+  if (!a.poop && b.poop) logEvent('💩', 'Hizo caca', t, away);
+  if (b.clean > a.clean) logEvent('🧹', 'El seguro de limpieza limpió la caca', t, away);
+  if (!a.sick && b.sick) logEvent('🤒', 'Se enfermó', t, away);
+  if (b.med > a.med) logEvent('💉', 'Se enfermó, pero el seguro médico lo resolvió', t, away);
+  if (!a.gift && b.gift) logEvent('🎁', 'Apareció un regalo', t, away);
+  if (ALL_STAGES.indexOf(b.stage) > ALL_STAGES.indexOf(a.stage)){
+    const nombres = { child: 'Nació', teen: 'Creció: ya es adolescente', adult: 'Creció: ya es adulto' };
+    if (nombres[b.stage]) logEvent(b.stage === 'child' ? '🐣' : '🌱', nombres[b.stage], t, away);
+  }
+  for (const [k, umbral, e, m] of LOG_LOW){
+    if (a[k] >= umbral && b[k] < umbral && !(k === 'energy' && b.sleeping)) logEvent(e, m, t, away);
+  }
+  return Math.max(0, (state.log || []).length - n0);
+}
+
+/* Cierre de una ausencia: una línea de encabezado con cuánto faltaste (y
+   cuánto durmió, que si no se anota cada vez que se duerme y se despierta
+   y de noche son muchas), y el ícono pestañea si hay algo que ver. */
+function logAway(ms, visita){
+  const durmio = visita.slept >= 10 * 60 * 1000;
+  if (!visita.n && !durmio) return;   // no pasó nada: ni encabezado ni pestañeo
+  if (durmio) logEvent('😴', `Durmió ${durationLabel(visita.slept)}`, Date.now(), true);
+  /* El encabezado va DESPUÉS de lo que pasó en la ausencia: la lista se
+     muestra al revés (lo nuevo arriba), así queda encima de su grupo. */
+  if (!Array.isArray(state.log)) state.log = [];
+  state.log.push({ t: Date.now() - ms, e: '🚪', m: 'Te fuiste', away: true, head: true, ms });
+  if (state.log.length > LOG_MAX) state.log.splice(0, state.log.length - LOG_MAX);
+  blinkLogBtn();
+}
+
+function durationLabel(ms){
+  const min = Math.round(ms / 60000);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60), m = min % 60;
+  if (h < 24) return m ? `${h} h ${m} min` : `${h} h`;
+  const d = Math.floor(h / 24);
+  return d === 1 ? '1 día' : `${d} días`;
+}
+
+function relTimeLabel(t){
+  const ms = Date.now() - t;
+  if (ms < 60000) return 'recién';
+  if (ms < 24 * 3600000) return 'hace ' + durationLabel(ms).replace(/ \d+ min$/, '');
+  const d = new Date(t);
+  return `${d.getDate()}/${d.getMonth() + 1} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function blinkLogBtn(){
+  const btn = document.getElementById('logBtn');
+  if (!btn) return;
+  btn.classList.remove('blink'); void btn.offsetWidth; btn.classList.add('blink');
+  clearTimeout(blinkLogBtn._t);
+  blinkLogBtn._t = setTimeout(() => btn.classList.remove('blink'), LOG_BLINK_MS);
+}
+
+function logPanelOpen(){ return !document.getElementById('logPanel').classList.contains('hidden'); }
+
+function closeLogPanel(){ document.getElementById('logPanel').classList.add('hidden'); }
+
+function toggleLogPanel(){
+  if (logPanelOpen()){ closeLogPanel(); return; }
+  renderLogPanel();
+  document.getElementById('logPanel').classList.remove('hidden');
+  document.getElementById('logBtn').classList.remove('blink');
+}
+
+/* Lo más nuevo arriba. Una ausencia sale como un encabezado ("Mientras no
+   estabas · 8 h") con lo que pasó en ese rato debajo. */
+function renderLogPanel(){
+  const log = (state.log || []).slice().reverse();
+  const filas = log.map(ev => ev.head
+    ? `<li class="log-head"><b>Mientras no estabas</b><small>${durationLabel(ev.ms)} fuera · ${relTimeLabel(ev.t)}</small></li>`
+    : `<li class="${ev.away ? 'away' : ''}"><span class="log-e">${ev.e}</span><span class="log-m">${escapeHtml(ev.m)}</span><small>${relTimeLabel(ev.t)}</small></li>`).join('');
+  document.getElementById('logPanel').innerHTML = `
+    <div class="log-top"><b>📜 Bitácora</b><button class="log-close" id="logClose" aria-label="Cerrar">✕</button></div>
+    ${filas ? `<ul class="log-list">${filas}</ul>` : '<p class="log-empty">Todavía no pasa nada que contar.</p>'}`;
+  document.getElementById('logClose').addEventListener('click', closeLogPanel);
+}
+
 function triggerGameOver(){
   gameOver = true;
   exitArrange();
@@ -1040,34 +1141,19 @@ function triggerGameOver(){
     <button class="overlay-btn" id="btnNewEgg">Empezar de nuevo</button>
   `);
   document.getElementById('btnNewEgg').addEventListener('click', () => {
-    localStorage.removeItem(SAVE_KEY);
+    clearSave();
     location.reload();
   });
 }
 
-/* Cierra cualquier minijuego en curso a la fuerza (ej. si la mascota muere a mitad de partida) */
-/* Los minijuegos de otros archivos (duo.js) registran acá su limpieza, así
-   forceCloseMinigames() los cubre sin saber de ellos. */
-const extraMinigameDisposers = [];
+/* Cierra cualquier minijuego en curso a la fuerza (ej. si la mascota muere a
+   mitad de partida). Cada minijuego (juegos.js, duo-juegos.js) registra acá
+   su limpieza —sacar listeners, cancelar el requestAnimationFrame y soltar
+   su estado—, así esto los cubre a todos sin saber de ninguno. */
+const minigameDisposers = [];
 
 function forceCloseMinigames(){
-  for (const dispose of extraMinigameDisposers) dispose();
-  sgDispose();
-  rxDispose();
-  trDispose();
-  tpDispose();
-  snDispose();
-  mmDispose();
-  if (bb && bb.raf) cancelAnimationFrame(bb.raf);
-  if (cb && cb.raf) cancelAnimationFrame(cb.raf);
-  sg = null;
-  bb = null;
-  rx = null;
-  tr = null;
-  tp = null;
-  sn = null;
-  mm = null;
-  cb = null;
+  for (const dispose of minigameDisposers) dispose();
   activeMinigame = null;
   megaRun = null;   // una partida cortada no gasta el Megajuego
   playLevel = 1;
@@ -1235,6 +1321,10 @@ function render(){
 
   /* Los botones de abajo avisan lo que hace falta (enferma, caca, sueño). */
   updateDock();
+  if (typeof updateWheelPill === 'function') updateWheelPill();
+  /* Las flechas de habitación no salen mientras es huevo: al nacer aparecen. */
+  const roomKey = state.style.rooms.length + ':' + state.style.room + ':' + displayStage();
+  if (render._roomKey !== roomKey){ render._roomKey = roomKey; updateRoomNav(); }
 
   document.getElementById('poopFx').classList.toggle('hidden', !state.poop);
   document.getElementById('giftFx').classList.toggle('hidden', !state.gift);
@@ -1278,11 +1368,12 @@ function applyStyle(){
   device.style.setProperty('--screen-edge', edge);
 
   const room = document.getElementById('decoLayer');
-  room.innerHTML = Object.entries(st.deco)
+  room.innerHTML = Object.entries(curRoom().deco)
     .filter(([, id]) => id && styleItemById(id))
     .map(([slot, id]) => `<span class="deco deco-${slot}">${styleItemById(id).emoji}</span>`)
     .join('');
   renderFurniture();
+  updateRoomNav();
 }
 
 /* Dónde está la cabeza dentro de cada frame (fila más alta con píxeles opacos
@@ -1404,7 +1495,7 @@ function feedFood(id){
   state.energy = clamp(state.energy + (food.energy ?? FOOD_ENERGY_DEFAULT));
   state.selectedFood = food.id;
   floatFx(food.emoji);
-  say('¡Ñam ñam!');
+  say(food.restore ? '¡Ñam ñam!' : '¡Con pilas! ⚡');
   triggerPetAction('eat');
   saveState(); render();
   return true;
@@ -1540,7 +1631,8 @@ function renderFoodTray(aviso){
       <button class="tray-food ${cls}" data-tray="${id}">
         <span class="n">x${n}</span><span class="emo">${emoji}</span><b>${label}</b>
       </button>`;
-  const short = { simple: 'Simple', rica: 'Rica', especial: 'Especial', redbull: 'Red Bull' };
+  const short = { simple: 'Simple', rica: 'Rica', especial: 'Especial', redbull: 'Red Bull',
+    banquete: 'Banquete', cafe: 'Café', jugo: 'Jugo' };
   const foods = FOODS.map(f => {
     const n = foodStock(f.id);
     return tile(f.id, f.emoji, short[f.id] || f.name, n,
@@ -1615,6 +1707,27 @@ function upgradeRow(u){
     </div>`;
 }
 
+/* La próxima habitación que se puede comprar (una sola fila: la siguiente),
+   o el aviso de que ya están todas. */
+function roomUpgradeRow(){
+  const n = state.style.rooms.length;
+  if (n >= ROOM_MAX){
+    return `
+      <div class="menu-item locked">
+        <span class="emoji">🏠</span>
+        <div class="info"><b>Habitaciones</b><small>Tienes las ${ROOM_MAX}: cámbiate con las flechas de la pantalla</small></div>
+        <span class="menu-record">Todas</span>
+      </div>`;
+  }
+  const price = ROOM_PRICES[n];
+  return `
+    <div class="menu-item ${state.coins >= price ? '' : 'locked'}" data-buy-room>
+      <span class="emoji">🏠</span>
+      <div class="info"><b>Habitación ${n + 1}</b><small>Una pieza más, con sus propios muebles y adornos</small></div>
+      <span class="menu-record">${coinsLabel(price)}</span>
+    </div>`;
+}
+
 /* Una casilla de la pestaña Estilo. La muestra es el color mismo (carcasa y
    pantalla) o el emoji (accesorio y adorno); abajo, el precio o el estado. */
 /* mode 'shop': la tienda (precio o "Tuyo"). mode 'mine': Personalizar, solo
@@ -1636,9 +1749,13 @@ function styleTile(it, mode){
   } else {
     swatch = `<span class="swatch emoji">${it.emoji}</span>`;
   }
-  const estado = puesto ? 'En uso' : mode === 'mine' ? 'Usar' : owned ? 'Tuyo ✓' : coinsLabel(it.price);
+  /* Puesto en otra habitación: tocarlo lo trae a esta. */
+  const otra = mode === 'mine' && owned && !puesto && (it.kind === 'furni' || it.kind === 'deco') ? roomOf(it) : -1;
+  const estado = puesto ? 'En uso' : otra >= 0 ? `En hab. ${otra + 1}` : mode === 'mine' ? 'Usar' : owned ? 'Tuyo ✓' : coinsLabel(it.price);
   const alcanza = owned || state.coins >= it.price;
-  const lugar = it.kind === 'deco' ? `<small class="tile-slot">${DECO_SLOT_NAMES[it.slot]}</small>`
+  const rareza = it.gacha && typeof rarityById === 'function' ? rarityById(it.gacha) : null;
+  const lugar = rareza ? `<small class="tile-slot" style="color:${rareza.color}">★ ${rareza.name}</small>`
+    : it.kind === 'deco' ? `<small class="tile-slot">${DECO_SLOT_NAMES[it.slot]}</small>`
     : it.kind === 'furni' ? `<small class="tile-slot">${it.use}</small>` : '';
   return `
     <button class="style-tile ${puesto ? 'on' : ''} ${owned ? 'owned' : ''} ${alcanza ? '' : 'locked'}" data-style="${it.id}">
@@ -1650,7 +1767,9 @@ function styleTile(it, mode){
 
 function styleRows(mode){
   return STYLE_SECTIONS.map(sec => {
-    const items = STYLE_ITEMS.filter(it => it.kind === sec.kind && (mode === 'shop' || state.style.owned[it.id]));
+    /* Lo del gacha (premios.js) no se vende: en la tienda no sale. */
+    const items = STYLE_ITEMS.filter(it => it.kind === sec.kind &&
+      (mode === 'shop' ? !it.gacha : state.style.owned[it.id]));
     const grid = items.length
       ? `<div class="style-grid">${items.map(it => styleTile(it, mode)).join('')}</div>`
       : `<p class="style-empty">Nada todavía: se compra en la tienda, pestaña Estilo.</p>`;
@@ -1660,7 +1779,7 @@ function styleRows(mode){
 
 /* El aviso va dentro de la tarjeta y no con say(): la burbuja tiene z-index 5 y
    el overlay 10, así que un mensaje por say() con la tienda abierta queda tapado. */
-function openShop(aviso){
+function openShop(aviso, gachaRes){
   const foodRows = FOODS.map(f => {
     const alcanza = state.coins >= f.price;
     return `
@@ -1683,7 +1802,7 @@ function openShop(aviso){
         </div>
         <span class="menu-record">${coinsLabel(MEDICINE.price)}</span>
       </div>`;
-  const upgradeRows = UPGRADES.map(upgradeRow).join('');
+  const upgradeRows = roomUpgradeRow() + UPGRADES.map(upgradeRow).join('');
 
   showOverlay(`
     <h3>🛒 Tienda</h3>
@@ -1692,15 +1811,19 @@ function openShop(aviso){
       <button class="shop-tab ${shopTab === 'food' ? 'active' : ''}" id="shopTabFood">Comida</button>
       <button class="shop-tab ${shopTab === 'upgrades' ? 'active' : ''}" id="shopTabUpgrades">Mejoras</button>
       <button class="shop-tab ${shopTab === 'style' ? 'active' : ''}" id="shopTabStyle">Estilo</button>
+      <button class="shop-tab ${shopTab === 'gacha' ? 'active' : ''}" id="shopTabGacha">Gacha</button>
     </div>
     <div class="menu-list ${shopTab === 'style' ? 'style-list' : ''}">${
-      shopTab === 'food' ? foodRows + medShopRow : shopTab === 'upgrades' ? upgradeRows : styleRows('shop')}</div>
+      shopTab === 'food' ? foodRows + medShopRow : shopTab === 'upgrades' ? upgradeRows
+        : shopTab === 'gacha' ? gachaTabHtml(gachaRes) : styleRows('shop')}</div>
     <button class="overlay-btn secondary" id="btnCloseShop">Cerrar</button>
   `, hideOverlay);
 
   document.getElementById('shopTabFood').addEventListener('click', () => { shopTab = 'food'; openShop(); });
   document.getElementById('shopTabUpgrades').addEventListener('click', () => { shopTab = 'upgrades'; openShop(); });
   document.getElementById('shopTabStyle').addEventListener('click', () => { shopTab = 'style'; openShop(); });
+  document.getElementById('shopTabGacha').addEventListener('click', () => { shopTab = 'gacha'; openShop(); });
+  if (shopTab === 'gacha') wireGachaTab((msg, res) => openShop(msg, res));
 
   /* Las tres pestañas tienen la misma hoja, a todo el alto: así no salta al
      cambiar de pestaña y la lista tiene espacio. Antes Estilo iba sin
@@ -1782,6 +1905,17 @@ function openShop(aviso){
     });
   });
 
+  const buyRoom = document.querySelector('[data-buy-room]');
+  if (buyRoom) buyRoom.addEventListener('click', () => {
+    const n = state.style.rooms.length;
+    const price = ROOM_PRICES[n];
+    if (state.coins < price){ openShop(`Te faltan ${coinsLabel(price - state.coins)} para la habitación ${n + 1}`); return; }
+    state.coins -= price;
+    state.style.rooms.push(freshRoom());
+    saveState(); applyStyle(); render();
+    openShop(`¡Habitación ${n + 1} comprada! Usa las flechas de los costados de la pantalla para ir`);
+  });
+
   document.querySelectorAll('[data-toggle-upgrade]').forEach(el => {
     el.addEventListener('click', () => {
       const st = upgradeState(el.dataset.toggleUpgrade);
@@ -1799,12 +1933,15 @@ function openShop(aviso){
    sacárselo. La tienda queda solo para comprar. Como en la pestaña Estilo, el
    fondo va sin desenfoque (.clear) para ver el cambio al tiro. */
 function openPersonalize(aviso){
+  const varias = state.style.rooms.length > 1;
+  const ayuda = varias ? `Muebles y adornos van en la habitación ${state.style.room + 1}, la que estás viendo.`
+    : 'Toca algo para ponérselo o sacárselo.';
   showOverlay(`
-    <h3>🎨 Personalizar</h3>
-    <p class="${aviso ? 'sheet-note warn' : ''}">${aviso ? escapeHtml(aviso) : 'Toca algo para ponérselo o sacárselo.'}</p>
+    <h3>🎨 Personalizar${varias ? ` · Hab. ${state.style.room + 1}` : ''}</h3>
+    <p class="${aviso ? 'sheet-note warn' : ''}">${aviso ? escapeHtml(aviso) : ayuda}</p>
     <div class="menu-list style-list">${styleRows('mine')}</div>
     <div class="overlay-actions">
-      ${state.style.furniture.length ? '<button class="overlay-btn" id="btnArrange">Acomodar muebles</button>' : ''}
+      ${curRoom().furniture.length ? '<button class="overlay-btn" id="btnArrange">Acomodar muebles</button>' : ''}
       <button class="overlay-btn secondary" id="btnClosePersonalize">Cerrar</button>
     </div>
   `, hideOverlay);
@@ -1828,3197 +1965,6 @@ function openPersonalize(aviso){
     });
   });
   document.getElementById('btnClosePersonalize').addEventListener('click', hideOverlay);
-}
-
-/* ===================== Menú de minijuegos =====================
-   Dos pantallas, como la tienda de una app: la grilla de juegos y la ficha de
-   cada uno. El nivel, el récord por nivel, la experiencia y el Megajuego viven
-   en la ficha y no en la fila de la lista: amontonados en la fila (Nv 1/3 +
-   ★ récord + MEGA apilados a la derecha) no se entendía qué era cada cosa, y
-   el nivel se elegía tocando un botón chico que giraba 1→2→3→1 sin mostrar
-   a dónde iba. En la ficha los cinco niveles están a la vista, con su nombre,
-   cuánto pagan y qué falta para los bloqueados.
-
-   Un juego bloqueado se compra tocándolo, ahí mismo en la grilla (no en la
-   tienda: es donde uno va a buscar a qué jugar). El aviso va dentro de la
-   hoja y no con say(), por lo mismo que en la tienda. El cansancio se chequea
-   recién al lanzar una partida, no al abrir el menú, para poder comprar igual. */
-
-const LEVEL_NAMES = ['Fácil', 'Normal', 'Difícil', 'Experto', 'Leyenda'];
-
-/* Progreso hacia el próximo nivel, 0..1, y cuánto falta. En el máximo es 1. */
-function levelProgress(id){
-  const xp = gameXp(id);
-  const max = maxLevelFor(id);
-  if (max >= GAME_MAX_LEVEL) return { frac: 1, falta: 0, max };
-  const desde = LEVEL_XP[max - 1], hasta = LEVEL_XP[max];
-  return { frac: clamp((xp - desde) / (hasta - desde) * 100) / 100, falta: hasta - xp, max };
-}
-
-/* Cinco puntos, uno por nivel: lleno = desbloqueado, con anillo = el elegido. */
-function levelDots(id){
-  const max = maxLevelFor(id), pick = pickedLevel(id);
-  let html = '';
-  for (let l = 1; l <= GAME_MAX_LEVEL; l++){
-    html += `<i class="${l <= max ? 'on' : ''} ${l === pick ? 'pick' : ''}"></i>`;
-  }
-  return `<span class="lvl-dots">${html}</span>`;
-}
-
-/* El banner lleva la cuenta regresiva del ciclo: es el mismo plazo para
-   "volver a tener Megajuegos" y para "completarlos todos y cobrar el bonus". */
-function megaBanner(){
-  const m = megaState();
-  const abiertos = unlockedGames();
-  const jugados = abiertos.filter(g => m.played[g.id]).length;
-  const ms = megaMsLeft();
-  const reloj = ms === null ? '' : `
-      <span class="mega-clock">⏳ <span data-mega-clock>${megaClockLabel(ms)}</span></span>
-      <div class="mega-track"><div data-mega-bar style="width:${(ms / MEGA_CYCLE_MS * 100).toFixed(2)}%"></div></div>`;
-  if (m.bonusPaid){
-    return `<div class="mega-banner done"><b>MEGA</b><span>Completos · vuelven en</span>${reloj}</div>`;
-  }
-  const pips = abiertos.map(g => `<i class="${m.played[g.id] ? 'on' : ''}"></i>`).join('');
-  return `
-    <div class="mega-banner">
-      <b>MEGA x${MEGA_COIN_MULT}</b>
-      <span class="mega-pips">${pips}</span>
-      <span>${jugados}/${abiertos.length} · todos ${coinsLabel('+' + MEGA_BONUS_PER_GAME * abiertos.length)}</span>
-      ${reloj}
-    </div>`;
-}
-
-function openGamesMenu(aviso){
-  if (state.stage === 'egg'){ say('Todavía es un huevo…'); return; }
-  if (!tryWake()) return;
-
-  const card = g => {
-    if (!isGameUnlocked(g.id)){
-      const alcanza = state.coins >= g.price;
-      return `
-      <button class="game-card locked ${alcanza ? 'can-buy' : ''}" data-g="${g.id}" data-buy-game="${g.id}">
-        <span class="gc-emoji">${g.emoji}</span>
-        <span class="gc-lock">🔒</span>
-        <b class="gc-name">${escapeHtml(g.name)}</b>
-        <span class="gc-price">${coinsLabel(g.price)}</span>
-      </button>`;
-    }
-    const best = bestScore(recordKey(g.id, pickedLevel(g.id)));
-    return `
-      <button class="game-card" data-g="${g.id}" data-open-game="${g.id}">
-        ${megaAvailable(g.id) ? '<span class="gc-mega">MEGA</span>'
-          : megaMsLeft() !== null ? `<span class="gc-mega used">⏳ <span data-mega-clock="short">${megaClockLabel(megaMsLeft(), true)}</span></span>` : ''}
-        <span class="gc-emoji">${g.emoji}</span>
-        <b class="gc-name">${escapeHtml(g.name)}</b>
-        <span class="gc-meta">${levelDots(g.id)}${best > 0 ? `<span class="gc-best">★ ${best}</span>` : ''}</span>
-      </button>`;
-  };
-  /* Los de a dos (duo-juegos.js) van en su propia sección, debajo. */
-  const solos = GAMES.filter(g => !g.duo).map(card).join('');
-  const duos = GAMES.filter(g => g.duo).map(card).join('');
-  const conQuien = state.companion ? `con ${escapeHtml(state.companion.name)}` : 'viene una visita a jugar';
-
-  showOverlay(`
-    <h3>Juegos</h3>
-    ${aviso ? `<p class="sheet-note">${escapeHtml(aviso)}</p>` : megaBanner()}
-    <div class="menu-list">
-      <div class="game-grid">${solos}</div>
-      ${duos ? `<div class="game-grid-head"><span class="ggh-icon">👯</span><span>De a dos<br><small>${conQuien}</small></span></div>
-      <div class="game-grid">${duos}</div>` : ''}
-    </div>
-    <button class="overlay-btn secondary" id="btnCloseGames">Cerrar</button>
-  `, hideOverlay);
-
-  document.querySelectorAll('[data-open-game]').forEach(el => {
-    el.addEventListener('click', () => openGameDetail(el.dataset.openGame));
-  });
-  document.querySelectorAll('[data-buy-game]').forEach(el => {
-    el.addEventListener('click', () => {
-      const g = gameById(el.dataset.buyGame);
-      if (state.coins < g.price){
-        openGamesMenu(`Te faltan ${coinsLabel(g.price - state.coins)} para ${g.name}`);
-        return;
-      }
-      state.coins -= g.price;
-      if (!state.unlockedGames) state.unlockedGames = [];
-      state.unlockedGames.push(g.id);
-      saveState(); render();
-      openGameDetail(g.id, `¡Desbloqueado! Te quedan ${coinsLabel(state.coins)}`);
-    });
-  });
-  document.getElementById('btnCloseGames').addEventListener('click', hideOverlay);
-}
-
-/* playLevel va antes de start(): varios juegos leen la dificultad al armar
-   su estado inicial (Snake, el chart del Tap rítmico). El Megajuego se juega
-   siempre en el nivel más difícil desbloqueado, no en el elegido: es la
-   partida especial del ciclo y paga x3, así que va con todo (y el x3 se suma
-   al multiplicador de ese nivel). Devuelve false si no
-   se pudo lanzar (cansancio), para que quien llama muestre el aviso donde
-   corresponda. */
-function launchGame(id, mega){
-  if (state.energy < GAME_MIN_ENERGY) return false;
-  hideOverlay();
-  playLevel = mega ? maxLevelFor(id) : pickedLevel(id);
-  megaRun = mega ? id : null;
-  gameById(id).start();
-  return true;
-}
-
-/* Ficha de un juego: los cinco niveles a la vista. Tocar uno desbloqueado lo
-   elige (y queda guardado, como antes con el botón que giraba); tocar uno
-   bloqueado solo cuenta cuánta experiencia le falta. */
-function openGameDetail(id, aviso){
-  const g = gameById(id);
-  const max = maxLevelFor(id);
-  const pick = pickedLevel(id);
-  const prog = levelProgress(id);
-
-  const niveles = LEVEL_NAMES.map((nombre, i) => {
-    const l = i + 1;
-    const abierto = l <= max;
-    return `
-      <button class="lvl-step ${abierto ? '' : 'locked'} ${l === pick ? 'active' : ''}" data-lvl="${l}">
-        <span class="lvl-num">${abierto ? l : '🔒'}</span>
-        <span class="lvl-name">${nombre}</span>
-      </button>`;
-  }).join('');
-
-  const best = bestScore(recordKey(id, pick));
-  const mult = LEVEL_COIN_MULT[pick - 1];
-  const xpLine = prog.max >= GAME_MAX_LEVEL
-    ? `${gameXp(id)} xp · todos los niveles abiertos`
-    : `${gameXp(id)} / ${LEVEL_XP[prog.max]} xp para ${LEVEL_NAMES[prog.max]}`;
-  const mega = megaAvailable(id);
-
-  showOverlay(`
-    <div class="detail-head">
-      <button class="back-btn" id="btnBackGames" aria-label="Volver">‹</button>
-      <span>Juegos</span>
-    </div>
-    <div class="game-hero" data-g="${id}">
-      <span class="hero-emoji">${g.emoji}</span>
-      <div class="hero-info">
-        <h3>${escapeHtml(g.name)}</h3>
-        <small>${escapeHtml(g.desc)}</small>
-      </div>
-    </div>
-    <div class="menu-list detail-body">
-      <div class="section-label">Nivel</div>
-      <div class="lvl-picker">${niveles}</div>
-      <p class="sheet-note" id="lvlNote">${aviso ? escapeHtml(aviso) : ''}</p>
-      <div class="stat-tiles">
-        <div class="stat-tile"><b>${best > 0 ? best : '—'}</b><span>Récord ${LEVEL_NAMES[pick - 1].toLowerCase()}</span></div>
-        <div class="stat-tile"><b>x${mult}</b><span>Monedas</span></div>
-      </div>
-      <div class="xp-row">
-        <div class="xp-bar"><div class="xp-fill" style="width:${Math.round(prog.frac * 100)}%"></div></div>
-        <small>${xpLine}</small>
-      </div>
-    </div>
-    <div class="overlay-actions">
-      ${mega ? `<button class="overlay-btn mega" id="btnPlayMega"><span>Jugar MEGA · ${LEVEL_NAMES[max - 1]}</span><small>Tu nivel más difícil · x${MEGA_COIN_MULT} monedas · 1 vez cada 12 h</small></button>`
-        : megaMsLeft() !== null ? `
-        <div class="mega-wait">
-          <div class="mega-wait-row"><b>MEGA usado</b><span>vuelve en ⏳ <span data-mega-clock>${megaClockLabel(megaMsLeft())}</span></span></div>
-          <div class="mega-track"><div data-mega-bar style="width:${(megaMsLeft() / MEGA_CYCLE_MS * 100).toFixed(2)}%"></div></div>
-        </div>` : ''}
-      <button class="overlay-btn ${mega ? 'secondary' : ''}" id="btnPlayGame">Jugar · ${LEVEL_NAMES[pick - 1]}</button>
-    </div>
-  `, hideOverlay);
-
-  const note = document.getElementById('lvlNote');
-  const cansado = () => { note.textContent = 'Está muy cansado para jugar'; note.classList.add('warn'); };
-
-  document.querySelectorAll('[data-lvl]').forEach(el => {
-    el.addEventListener('click', () => {
-      const l = +el.dataset.lvl;
-      if (l > max){
-        note.textContent = `${LEVEL_NAMES[l - 1]}: faltan ${LEVEL_XP[l - 1] - gameXp(id)} xp. Juega bien para abrirlo.`;
-        note.classList.remove('warn');
-        return;
-      }
-      state.gameLevelPick[id] = l;
-      saveState();
-      openGameDetail(id);
-    });
-  });
-  document.getElementById('btnBackGames').addEventListener('click', () => openGamesMenu());
-  document.getElementById('btnPlayGame').addEventListener('click', () => { if (!launchGame(id, false)) cansado(); });
-  if (mega) document.getElementById('btnPlayMega').addEventListener('click', () => { if (!launchGame(id, true)) cansado(); });
-}
-
-/* Hoja de resultado al terminar una partida. Antes era un say() de una línea
-   ("¡RÉCORD! 75 pts (combo 12) · +15 felicidad · 💰 +10 · ¡Nivel 2
-   desbloqueado!") que duraba 3 segundos: lo más satisfactorio del juego se
-   leía de pasada o no se leía. El overlay va sin desenfoque (.clear) para que
-   se vea a la mascota celebrando arriba. La barra de experiencia arranca donde
-   estaba antes de la partida y se llena hasta donde quedó. */
-function showGameResult(r){
-  const g = gameById(r.id);
-  const chips = [
-    r.happinessGain > 0 ? `<span class="chip">⭐ +${r.happinessGain}</span>` : '',
-    r.coins > 0 ? `<span class="chip gold">${coinsLabel('+' + r.coins)}${r.mega ? ' · MEGA' : ''}</span>` : '',
-    r.bonus > 0 ? `<span class="chip gold">Megajuegos completos ${coinsLabel('+' + r.bonus)}</span>` : '',
-  ].join('');
-  const xp = g ? `
-    <div class="xp-row">
-      <div class="xp-bar"><div class="xp-fill" id="resXp" style="width:${Math.round(r.xpFrom * 100)}%"></div></div>
-      <small>${r.levelUp ? `¡Nivel ${LEVEL_NAMES[r.levelUp - 1]} desbloqueado!` : r.xpGain > 0 ? `+${r.xpGain} xp` : 'Sin experiencia esta vez'}</small>
-    </div>` : '';
-
-  showOverlay(`
-    <div class="result-head ${r.record ? 'record' : ''}">
-      ${r.record ? '<span class="result-badge">¡RÉCORD!</span>' : ''}
-      <div class="result-score">${r.score}</div>
-      <p>${escapeHtml(r.message)}</p>
-      ${g ? `<small class="result-level">${escapeHtml(g.name)} · ${LEVEL_NAMES[r.level - 1]}</small>` : ''}
-    </div>
-    ${chips ? `<div class="result-chips">${chips}</div>` : ''}
-    ${xp}
-    <div class="overlay-actions row">
-      ${g ? `<button class="overlay-btn" id="btnAgain">${r.levelUp ? `Probar ${LEVEL_NAMES[r.levelUp - 1]}` : 'Otra vez'}</button>` : ''}
-      <button class="overlay-btn secondary" id="btnResultDone">Listo</button>
-    </div>
-  `, hideOverlay);
-  document.getElementById('overlay').classList.add('clear');
-
-  const fill = document.getElementById('resXp');
-  if (fill) requestAnimationFrame(() => requestAnimationFrame(() => {
-    fill.style.width = Math.round(r.xpTo * 100) + '%';
-  }));
-  document.getElementById('btnResultDone').addEventListener('click', hideOverlay);
-  if (g) document.getElementById('btnAgain').addEventListener('click', () => {
-    if (!launchGame(r.id, false)) openGameDetail(r.id, 'Está muy cansado para jugar');
-  });
-}
-
-/* Ajusta la resolución interna del canvas del minijuego a su tamaño real en
-   pantalla (el contenedor es flexible), para que nada salga estirado/deforme. */
-function fitGameCanvas(gc){
-  const rect = gc.getBoundingClientRect();
-  gc.width = Math.max(200, Math.round(rect.width));
-  gc.height = Math.max(90, Math.round(rect.height));
-}
-
-/* ===================== Utilidades compartidas de minijuegos ===================== */
-
-/* Dibujar un emoji con fillText es caro: el navegador rasteriza el glifo a color
-   en cada llamada, y en una partida hay decenas por frame. Se rasteriza una sola
-   vez a un canvas chico y de ahí en adelante solo se copia con drawImage. */
-const emojiCache = new Map();
-
-function emojiSprite(char, size){
-  const key = char + '@' + size;
-  const cached = emojiCache.get(key);
-  if (cached) return cached;
-  const c = document.createElement('canvas');
-  c.width = c.height = size;
-  const cx = c.getContext('2d');
-  cx.font = Math.round(size * 0.78) + 'px sans-serif';
-  cx.textAlign = 'center';
-  cx.textBaseline = 'middle';
-  cx.fillText(char, size/2, size/2);
-  emojiCache.set(key, c);
-  return c;
-}
-
-function drawEmoji(ctx, char, size, x, y){
-  ctx.drawImage(emojiSprite(char, size), Math.round(x - size/2), Math.round(y - size/2));
-}
-
-/* Sonido sintetizado con Web Audio, sin archivos: encaja con que todo el resto
-   del juego ya es procedural (animaciones, huevo) y no depende de conseguir ni
-   licenciar ningún asset. El AudioContext se crea recién al primer beep() —
-   los navegadores lo bloquean si se crea antes de un gesto del usuario, y acá
-   el primer beep siempre llega después de tocar algo (empezar un minijuego). */
-let audioCtx = null;
-let audioBroken = false;   // el navegador no deja: se deja de reintentar
-
-/* Ojo: esto se llama desde el loop de un minijuego, o sea cada frame. Tiene que
-   ser barato y no puede tirar nunca — si revienta acá, se lleva puesto el
-   requestAnimationFrame y el juego se congela. */
-function getAudioCtx(){
-  if (audioBroken) return null;
-  try {
-    if (!audioCtx){
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC){ audioBroken = true; return null; }
-      audioCtx = new AC();
-    }
-    if (audioCtx.state === 'suspended'){
-      const p = audioCtx.resume();
-      if (p && p.catch) p.catch(() => {});
-    }
-    return audioCtx;
-  } catch (e) {
-    audioBroken = true;
-    return null;
-  }
-}
-
-/* Reloj del audio, o null si todavía no arrancó (recién creado, o el navegador
-   lo dejó suspendido esperando un gesto). Sirve para agendar sonidos con
-   precisión de sample en vez de "cuando toque el próximo frame". */
-function audioNow(){
-  const ctx = getAudioCtx();
-  return (ctx && ctx.state === 'running') ? ctx.currentTime : null;
-}
-
-/* Un tono con envolvente: ataque opcional y caída exponencial (así no
-   "clickea" al cortar de golpe). `at` es un instante ABSOLUTO del reloj de
-   audio: con eso se puede agendar por adelantado —un metrónomo agendado frame
-   a frame suena tembleque, agendado en el reloj de audio no—. Envuelto en
-   try/catch como el resto de las cosas que pueden fallar por políticas del
-   navegador: un sonido que no suena no puede romper el juego. */
-function tone({ freq, durationMs, type = 'sine', vol = 0.15, at = 0, attackMs = 0 }){
-  try {
-    const ctx = getAudioCtx();
-    if (!ctx) return;
-    const start = Math.max(at || 0, ctx.currentTime);
-    const dur = durationMs / 1000;
-    const atk = Math.min(attackMs / 1000, dur * 0.5);
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = type;
-    osc.frequency.value = freq;
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    /* El ataque va en rampa LINEAL y la caída en exponencial, a propósito. Una
-       rampa exponencial de subida arranca pegada a cero y recién despega
-       cerca del final: con 110ms de ataque el sonido se percibe entrando
-       ~80ms tarde, que a 150 BPM es un cuarto de pulso — se escucha
-       claramente fuera de tiempo. La lineal llega a la mitad del volumen a
-       la mitad del ataque, o sea que el golpe se percibe donde corresponde. */
-    if (atk > 0){
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.linearRampToValueAtTime(vol, start + atk);
-    } else {
-      gain.gain.setValueAtTime(vol, start);
-    }
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
-    osc.start(start);
-    osc.stop(start + dur + 0.02);
-  } catch (e) { /* audio bloqueado o no soportado: no pasa nada, sigue mudo */ }
-}
-
-/* Atajo para el caso más común: un tono corto que suena ya mismo. */
-function beep(freq, durationMs, type = 'sine', vol = 0.15){
-  tone({ freq, durationMs, type, vol });
-}
-
-/* getBoundingClientRect() obliga al navegador a recalcular el layout. Llamarlo en
-   cada pointermove es un recálculo por frame, así que se cachea al empezar la
-   partida y solo se refresca si la ventana cambia de tamaño. */
-function makeCanvasPointer(gc){
-  const p = {
-    rect: gc.getBoundingClientRect(),
-    refresh(){ p.rect = gc.getBoundingClientRect(); },
-    at(e){
-      const r = p.rect;
-      return {
-        x: (e.clientX - r.left) / r.width * gc.width,
-        y: (e.clientY - r.top) / r.height * gc.height,
-      };
-    },
-    dispose(){ window.removeEventListener('resize', p.refresh); },
-  };
-  window.addEventListener('resize', p.refresh);
-  return p;
-}
-
-/* Récord por minijuego: es lo que hace que valga la pena repetir una partida.
-   Vive dentro del save, así que se guarda y migra junto con todo lo demás. */
-function bestScore(id){
-  return (state.records && state.records[id]) || 0;
-}
-
-function saveBestScore(id, score){
-  if (!state.records) state.records = {};
-  if (score <= (state.records[id] || 0)) return false;
-  state.records[id] = score;
-  return true;
-}
-
-/* Mientras dura una partida, los mandos del juego reemplazan a los botones de
-   cuidado de abajo. Así la pantalla queda libre para el juego en vez de tener
-   controles encima, y de paso los botones quedan donde está el pulgar. Reflejos
-   y memorice no usan esto: se juegan tocando la pantalla sí o sí. */
-/* En el teléfono la pantalla se estira hasta llenar el aparato, así que si
-   los mandos del juego son más bajos que los de siempre la pantalla crece
-   justo después de que el juego midió su canvas (enterMinigame va antes), y
-   el canvas queda estirado. Se les suma a los mandos lo que habría crecido
-   la pantalla: la pantalla queda del mismo alto con que se midió. */
-function showGameControls(html){
-  closeFoodTray();
-  const screen = document.getElementById('screen');
-  const before = screen.getBoundingClientRect().height;
-  const cont = document.getElementById('gameControls');
-  cont.innerHTML = html;
-  cont.style.minHeight = '';
-  cont.classList.remove('hidden');
-  document.getElementById('controls').classList.add('hidden');
-  const grow = screen.getBoundingClientRect().height - before;
-  if (grow > 0.5) cont.style.minHeight = (cont.getBoundingClientRect().height + grow) + 'px';
-  return cont;
-}
-
-function hideGameControls(){
-  const cont = document.getElementById('gameControls');
-  cont.innerHTML = '';   // se lleva los listeners junto con los nodos
-  cont.style.minHeight = '';
-  cont.classList.add('hidden');
-  document.getElementById('controls').classList.remove('hidden');
-}
-
-/* Ata una acción a un botón de mando. Va en pointerdown y no en click: en el
-   teléfono el click llega bastante después del toque y en estos juegos se nota. */
-function wireGameButton(el, fn){
-  el.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); });
-}
-
-/* Alta y baja del canvas de minijuego: las dos mitades que todos repiten igual. */
-function enterMinigame(id){
-  /* Una rutina con un mueble no sigue detrás del minijuego: se corta y la
-     mascota queda en el piso para cuando vuelva. */
-  if (walker.activity) endFurniActivity(walker);
-  walker.y = 0;
-  if (typeof buddy !== 'undefined'){ if (buddy.activity) endFurniActivity(buddy); buddy.y = 0; }
-  catchUp();
-  activeMinigame = id;
-  document.getElementById('creatureFloor').classList.add('hidden');
-  const gc = document.getElementById('gameCanvas');
-  gc.classList.remove('hidden');
-  fitGameCanvas(gc);
-  const ctx = gc.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
-  return { gc, ctx };
-}
-
-function exitMinigame(){
-  document.getElementById('gameCanvas').classList.add('hidden');
-  document.getElementById('creatureFloor').classList.remove('hidden');
-  hideGameControls();
-  activeMinigame = null;
-  megaRun = null;
-  playLevel = 1;
-}
-
-/* Dibuja a la mascota dentro de otro canvas, apoyada en (x, suelo). `escala`
-   tiene que ser entera igual que en pixelScale(): con 2 el sprite mide 64px, que
-   es lo que calza en el canvas de un minijuego sin comerse media pantalla. */
-function drawPetAt(ctx, x, suelo, mood, escala){
-  ctx.save();
-  ctx.translate(Math.round(x - CANVAS_W/2), Math.round(suelo - CANVAS_H));
-  drawSprite(ctx, displayStage(), mood, 0, true, escala);
-  ctx.restore();
-}
-
-/* El "mérito" es el puntaje del juego llevado a una escala común: ~45 para una
-   partida muy buena. Existe porque los cuatro puntajes viven en escalas que no
-   se pueden comparar (9 en baloncesto contra ~500 en tap rítmico), y así hay una
-   sola fórmula de premio en vez de cuatro.
-
-   Las dos recompensas salen del mérito pero con reglas distintas a propósito:
-   - La felicidad tiene tope. Jugar no puede ser la forma de tapar el descuido:
-     sube la barra un buen tramo, no la llena de una partida.
-   - Las monedas no lo tienen. Es lo que hace que jugar excelente pague más que
-     jugar bien; con tope, 75 y 96 puntos en estrellas daban exactamente lo mismo. */
-const HAPPINESS_PER_MERIT = 1/3;
-const HAPPINESS_MAX_GAIN = 15;
-const HAPPINESS_MIN_GAIN = -3;   // solo estrellas puede dar negativo (comer caca)
-const COINS_PER_MERIT = 1/6;
-
-/* Cierre común: aplica el premio, paga, avisa el récord y deja todo guardado. */
-function finishMinigame(id, { score, merit, energyCost, hygieneCost = 0, message }){
-  const record = saveBestScore(recordKey(id, playLevel), score);
-  const happinessGain = clamp(Math.round(merit * HAPPINESS_PER_MERIT), HAPPINESS_MIN_GAIN, HAPPINESS_MAX_GAIN);
-  const mega = megaRun === id;
-  const baseCoins = Math.max(0, Math.round(merit * COINS_PER_MERIT * LEVEL_COIN_MULT[playLevel - 1]));
-  let coins = mega ? baseCoins * MEGA_COIN_MULT : baseCoins;
-  /* El Megajuego se gasta al terminar la partida, no al empezarla: si la
-     mascota se muere a mitad (forceCloseMinigames), no se pierde. */
-  let bonus = 0;
-  if (mega){
-    const m = megaState();
-    if (m.cycleStart === null) m.cycleStart = Date.now();
-    m.played[id] = true;
-    const todos = unlockedGames();
-    if (!m.bonusPaid && todos.every(g => m.played[g.id])){
-      bonus = MEGA_BONUS_PER_GAME * todos.length;
-      m.bonusPaid = true;
-    }
-  }
-  coins += bonus;
-
-  /* La experiencia es el mérito tal cual, sin multiplicar por nivel ni por
-     Megajuego: mide cuánto jugaste bien, no cuánto pagó. Solo los juegos del
-     menú tienen niveles (no los prototipos del panel de prueba). */
-  let subio = 0;
-  const xpFrom = gameById(id) ? levelProgress(id).frac : 0;
-  const xpAntes = gameXp(id);
-  if (gameById(id) && merit > 0){
-    const antes = maxLevelFor(id);
-    state.gameXp[id] = gameXp(id) + Math.round(merit);
-    const despues = maxLevelFor(id);
-    if (despues > antes){
-      subio = despues;
-      state.gameLevelPick[id] = despues;   // queda elegido el nivel nuevo, se puede bajar en el menú
-    }
-  }
-
-  state.happiness = clamp(state.happiness + happinessGain);
-  state.energy = clamp(state.energy - energyCost);
-  collapseIfDrained();   // jugar hasta quedar sin energía la deja dormida
-  if (hygieneCost) state.hygiene = clamp(state.hygiene - hygieneCost);
-  state.coins += coins;
-
-  const level = playLevel;
-  if (happinessGain > 0) triggerPetAction('celebrate');
-  exitMinigame();
-  saveState(); render();
-  showGameResult({
-    id, score, message, record, level, mega, bonus,
-    happinessGain, coins: coins - bonus,
-    xpGain: gameXp(id) - xpAntes, levelUp: subio,
-    /* Si subió de nivel la barra arranca de 0 en el tramo nuevo: llenarla
-       hasta el tope del tramo viejo y saltar se lee como un error. */
-    xpFrom: subio ? 0 : xpFrom,
-    xpTo: gameById(id) ? levelProgress(id).frac : 0,
-  });
-}
-
-/* ===================== Minijuego 1: atrapar estrellas =====================
-   20 segundos con dificultad creciente: arranca lento y casi todo son estrellas,
-   termina rápido y con mucha más caca. El combo (estrellas seguidas, sin comer
-   caca ni dejar caer ninguna) multiplica hasta x4, así que lo que decide el
-   puntaje no es atrapar mucho sino no romper la racha. */
-
-const SG_DURATION = 20;
-/* Media anchura de la zona que atrapa. Está ajustada al ancho del cuerpo de la
-   mascota dibujada a escala 2 (~44px): si fuera más angosta que lo que se ve,
-   las atrapadas de borde se sentirían robadas. */
-const SG_BASKET_HALF = 22;
-const SG_PET_SCALE = 2;   // entero, igual que pixelScale()
-const SG_CHAR = { star:'⭐', gold:'🌟', poop:'💩' };
-
-let sg = null;
-
-/* La grilla de fondo es fija: se dibuja una vez a un canvas aparte y después se
-   copia con un solo drawImage, en vez de repetir ~16 fillRect por frame. */
-function sgBackground(w, h){
-  const c = document.createElement('canvas');
-  c.width = w; c.height = h;
-  const cx = c.getContext('2d');
-  cx.fillStyle = 'rgba(255,255,255,.06)';
-  for (let i = 0; i < w; i += 16) cx.fillRect(i, 0, 1, h);
-  return c;
-}
-
-function startStarsGame(){
-  const { gc, ctx } = enterMinigame('stars');
-
-  sg = {
-    ctx, gc,
-    basketX: gc.width/2,
-    items: [],
-    fx: [],
-    score: 0,
-    combo: 0,
-    bestCombo: 0,
-    timeLeft: SG_DURATION,
-    spawnIn: 0.4,
-    keys: { left:false, right:false },
-    bg: sgBackground(gc.width, gc.height),
-    raf: null,
-    lastT: 0,
-  };
-
-  const onKey = (down) => (e) => {
-    if (e.key === 'ArrowLeft'  || e.key === 'a') sg.keys.left = down;
-    if (e.key === 'ArrowRight' || e.key === 'd') sg.keys.right = down;
-  };
-  sg.onKeyDown = onKey(true);
-  sg.onKeyUp = onKey(false);
-  window.addEventListener('keydown', sg.onKeyDown);
-  window.addEventListener('keyup', sg.onKeyUp);
-
-  /* El deslizador vive abajo, con los botones, no encima de la pantalla. */
-  const cont = showGameControls(`
-    <div class="game-hint">Mueve a tu mascota para atrapar las estrellas</div>
-    <input type="range" class="game-slider" id="sgSlider" min="0" max="1000" value="500">
-  `);
-  sg.slider = cont.querySelector('#sgSlider');
-  sg.onSlide = () => { sg.basketX = sgSliderToX(+sg.slider.value); };
-  sg.slider.addEventListener('input', sg.onSlide);
-  sg.onSlide();
-
-  say('¡Atrapa las estrellas!');
-  sg.raf = requestAnimationFrame(sgLoop);
-}
-
-function sgSliderToX(v){
-  const min = SG_BASKET_HALF, max = sg.gc.width - SG_BASKET_HALF;
-  return min + (max - min) * (v / 1000);
-}
-
-/* Al mover con el teclado hay que devolverle la posición al deslizador, si no
-   el próximo toque en él pega un salto desde donde quedó la perilla. */
-function sgSyncSlider(){
-  if (!sg.slider) return;
-  const min = SG_BASKET_HALF, max = sg.gc.width - SG_BASKET_HALF;
-  sg.slider.value = Math.round((sg.basketX - min) / (max - min) * 1000);
-}
-
-function sgMultiplier(){
-  return Math.min(4, 1 + Math.floor(sg.combo / 4));
-}
-
-/* Partículas dentro del canvas. Antes cada atrapada creaba un <div> con floatFx()
-   que vivía 1s: con el ritmo de spawn de ahora eso es un chorro de nodos y de
-   reflows por partida, y el canvas ya está dibujándose igual. */
-function sgSpawnFx(char, x, y){
-  sg.fx.push({ char, x, y, vy: -46, life: 0.6 });
-}
-
-function sgCatch(it){
-  if (it.kind === 'poop'){
-    sg.score -= 2;
-    sg.combo = 0;
-    sgSpawnFx('💩', it.x, it.y);
-    return;
-  }
-  sg.combo += 1;
-  if (sg.combo > sg.bestCombo) sg.bestCombo = sg.combo;
-  sg.score += (it.kind === 'gold' ? 3 : 1) * sgMultiplier();
-  sgSpawnFx(SG_CHAR[it.kind], it.x, it.y);
-}
-
-function sgLoop(t){
-  if (activeMinigame !== 'stars' || !sg) return;
-  const dt = Math.min(0.05, (t - (sg.lastT || t)) / 1000);
-  sg.lastT = t;
-  sg.timeLeft -= dt;
-
-  const gc = sg.gc, ctx = sg.ctx;
-  const progress = 1 - Math.max(0, sg.timeLeft) / SG_DURATION; // 0 al empezar, 1 al final
-
-  if (sg.keys.left || sg.keys.right){
-    if (sg.keys.left)  sg.basketX = Math.max(SG_BASKET_HALF, sg.basketX - 260*dt);
-    if (sg.keys.right) sg.basketX = Math.min(gc.width - SG_BASKET_HALF, sg.basketX + 260*dt);
-    sgSyncSlider();
-  }
-
-  sg.spawnIn -= dt;
-  if (sg.spawnIn <= 0){
-    sg.spawnIn = (0.50 - 0.32*progress) * (1 - 0.3*levelT());   // 0.50s → 0.18s entre caídas; -30% en nivel 5
-    const roll = Math.random();
-    const poopChance = 0.24 + 0.36*progress + 0.15*levelT();    // 24% → 60% de caca; +15 puntos en nivel 5
-    const kind = roll < poopChance ? 'poop' : (roll > 0.95 ? 'gold' : 'star');
-    sg.items.push({
-      x: 16 + Math.random()*(gc.width - 32),
-      y: -12,
-      vy: (110 + 160*progress) * (1 + 0.5*levelT()) * (0.85 + Math.random()*0.4),
-      kind,
-    });
-  }
-
-  ctx.clearRect(0, 0, gc.width, gc.height);
-  ctx.drawImage(sg.bg, 0, 0);
-
-  /* Una sola pasada por los items: mover, chequear atrapada/salida y dibujar. */
-  const catchY = gc.height - 26;
-  for (let i = sg.items.length - 1; i >= 0; i--){
-    const it = sg.items[i];
-    it.y += it.vy * dt;
-
-    if (it.y > catchY && it.y < gc.height && Math.abs(it.x - sg.basketX) < SG_BASKET_HALF + 4){
-      sgCatch(it);
-      sg.items.splice(i, 1);
-      continue;
-    }
-    if (it.y > gc.height + 14){
-      if (it.kind !== 'poop') sg.combo = 0; // dejar caer una estrella corta la racha
-      sg.items.splice(i, 1);
-      continue;
-    }
-    drawEmoji(ctx, SG_CHAR[it.kind], 20, it.x, it.y);
-  }
-
-  for (let i = sg.fx.length - 1; i >= 0; i--){
-    const f = sg.fx[i];
-    f.life -= dt;
-    if (f.life <= 0){ sg.fx.splice(i, 1); continue; }
-    f.y += f.vy * dt;
-    ctx.globalAlpha = Math.min(1, f.life * 2);
-    drawEmoji(ctx, f.char, 15, f.x, f.y);
-  }
-  ctx.globalAlpha = 1;
-
-  drawPetAt(ctx, sg.basketX, gc.height, sg.combo >= 4 ? 'happy' : 'normal', SG_PET_SCALE);
-
-  ctx.font = '11px monospace';
-  ctx.textBaseline = 'alphabetic';
-  ctx.textAlign = 'left';
-  ctx.fillStyle = '#fff';
-  ctx.fillText('⭐ ' + sg.score, 8, 16);
-  ctx.textAlign = 'right';
-  ctx.fillText(Math.max(0, sg.timeLeft).toFixed(1) + 's', gc.width - 8, 16);
-
-  if (sg.combo >= 2){
-    ctx.textAlign = 'center';
-    ctx.fillStyle = sgMultiplier() > 1 ? '#ffe66d' : 'rgba(255,255,255,.7)';
-    ctx.fillText(`combo ${sg.combo}  x${sgMultiplier()}`, gc.width/2, 16);
-  }
-
-  if (sg.timeLeft <= 0){ endStarsGame(); return; }
-  sg.raf = requestAnimationFrame(sgLoop);
-}
-
-function sgDispose(){
-  if (!sg) return;
-  window.removeEventListener('keydown', sg.onKeyDown);
-  window.removeEventListener('keyup', sg.onKeyUp);
-  if (sg.raf) cancelAnimationFrame(sg.raf);
-}
-
-function endStarsGame(){
-  const score = sg ? sg.score : 0;
-  const bestCombo = sg ? sg.bestCombo : 0;
-  sgDispose();
-  sg = null;
-
-  /* Un bot que no falla nada saca ~96 puntos; 75 ya es una partida muy buena. */
-  const message = score > 0 ? `${score} pts (combo ${bestCombo})` : 'Mmm, la próxima será';
-
-  finishMinigame('stars', { score, merit: score * 0.6, energyCost: 18, hygieneCost: 5, message });
-}
-
-/* ===================== Minijuego 2: baloncesto (timing) ===================== */
-
-const BB_TOTAL_SHOTS = 3;
-/* La pelota sube y baja junto a la mascota. El acierto depende de qué tan cerca del punto
-   más alto se aprieta Bandeja — las zonas de acierto no se muestran, solo están codificadas
-   como umbrales de altura (0 = abajo, 1 = arriba del todo). Se endurece por tiro. */
-const BB_DIFFICULTY = [
-  { peak: 0.90, near: 0.80, speed: 1.5 },
-  { peak: 0.95, near: 0.85, speed: 1.875 },
-  { peak: 0.98, near: 0.90, speed: 2.25 },
-];
-
-/* Probabilidad, por tiro, de que un acierto NO se quede así de fácil:
-   - un switch (h >= peak) tiene esta chance de rebotar igual y pasar a Bandeja
-   - una Bandeja ya conseguida tiene esta MISMA chance de rebotar y pasar a Slam
-     Dunk (no la pidieron por separado, se reusa el mismo número: es una sola
-     perilla fácil de tocar en vez de cuatro sueltas). */
-const BB_REBOUND_CHANCE = [0.30, 0.50, 0.70];
-
-/* Tocar el aro (near <= h < peak) ya no es "0 puntos": ahora SIEMPRE manda a
-   Bandeja. Antes ese umbral decidía un resultado muerto; ahora decide el inicio
-   de una cadena, así que el nombre importa: "near" pasa a ser el piso de "algo
-   pasa", no el piso de encestar. */
-
-/* Puntos según de qué encadenamiento vengan. El dunk que viene de un switch vale
-   más (4) porque ya evitó rebotar dos veces seguidas; el que viene de tocar el
-   aro vale lo mismo que un switch limpio (3), como consuelo por la mala suerte
-   inicial. */
-const BB_POINTS = {
-  swish: 3,
-  layup: { swish: 3, rim: 2 },
-  dunk:  { swish: 4, rim: 3 },
-};
-
-/* "No alcanza" normalmente no hace nada — pero hay una chance rara de que la
-   pelota se pinche ahí mismo y termine la partida de golpe, con lo acumulado
-   hasta ese momento. Es la única forma de perder tiros sin haberlos jugado. */
-const BB_POP_CHANCE = 0.02;
-
-/* Bandeja y Slam Dunk ya no son un oscilador que sube y baja sin parar: son un
-   solo salto de una pasada (una parábola real, como bbArcPos pero para la
-   mascota) con UNA ventana de tiempo para apretar. Si el salto termina y no se
-   apretó dentro de la ventana — apretar antes o después tampoco cuenta — se
-   acabó ahí, sin repetir el ciclo. */
-const BB_LAYUP_JUMP_MS = 650;    // dura el salto completo, de despegue a caer
-/* Recalibrada a mano contra una captura marcada: el arranque (0.38) ya
-   calzaba justo con el punto más alto, pero el tramo bueno seguía un poco
-   más allá de lo que marcaba — se extiende hasta 0.70. */
-const BB_LAYUP_WINDOW = [0.38, 0.70];
-/* La forma del salto (alto/ancho) sale de esa misma captura, midiéndola contra
-   el aro —que ya se sabe dónde cae, BB_HOOP_X_FRAC/Y_FRAC, así que sirve para
-   calibrar la escala real del dibujo—: un salto bastante más ancho y apenas
-   más alto que el de antes, "largo y bajo" en vez de parejo.
-
-   Van como FRACCIÓN del canvas (de `bb.w`/`bb.h`), no en píxeles fijos, igual
-   que ya hacían las posiciones X_FRAC/Y_FRAC: en píxeles fijos, la altura
-   "correcta" en el canvas chico de prueba se queda corta en un canvas real de
-   teléfono (bastante más alto), que es justo el bug que ya evitaba `drawEgg()`
-   dibujando sus radios como fracción del canvas y no en píxeles. */
-const BB_LAYUP_ARC_FRAC = 0.195;   // alto del salto, fracción de bb.h
-const BB_LAYUP_DX_FRAC = 0.16;     // "salta en una parábola hacia la derecha", fracción de bb.w
-const BB_LAYUP_X_FRAC = 0.62;      // se acerca al aro, pero no queda debajo:
-                                    // 0.62 + 0.16 = 0.78, todavía corto de BB_HOOP_X_FRAC=0.80
-
-const BB_DUNK_JUMP_MS = 700;
-/* Recalibrada a mano contra una captura marcada: ahí el tramo bueno arrancaba
-   prácticamente en el punto más alto (t=0.5) y terminaba cuando el personaje
-   cruza, ya bajando, la altura del aro — no bien más abajo como estaba antes
-   (0.60-0.82). */
-const BB_DUNK_WINDOW = [0.50, 0.72];
-/* La captura marcada mostraba el salto llegando casi al borde de arriba de la
-   pantalla — mucho más alto que antes. Con BB_DUNK_ARC_FRAC = 0.85 el pico
-   queda bien arriba del aro (BB_HOOP_Y_FRAC = 0.24, con margen de sobra) sin
-   pegarse del todo al borde superior, donde ya dibuja el HUD ("Tiro X/3"). */
-const BB_DUNK_ARC_FRAC = 0.85;     // alto del salto, fracción de bb.h
-const BB_DUNK_X_FRAC = 0.90;       // prácticamente debajo del aro, salta derecho hacia arriba
-
-const BB_APPROACH_MS = 320;      // lo que tarda en correr hacia el aro antes de saltar
-
-/* Posiciones como fracción del tamaño real del canvas (se recalculan al empezar
-   cada partida con fitGameCanvas, así nunca queda estirado ni con huecos). */
-const BB_BALL_TOP_FRAC = 0.20;
-const BB_BALL_BOTTOM_FRAC = 0.58;
-const BB_HOOP_X_FRAC = 0.80;
-const BB_HOOP_Y_FRAC = 0.24;
-const BB_MONO_X_FRAC = 0.15;
-const BB_BALL_X_FRAC = 0.23;
-const BB_FLIGHT_MS = 480;
-const BB_SETTLE_MS = 220;
-const BB_RESULT_MS = 800;
-
-let bb = null;
-
-function bbBallHeight(phase){
-  return (Math.sin(phase - Math.PI/2) + 1) / 2; // 0 abajo, 1 arriba
-}
-
-function startBasketballGame(){
-  const { gc, ctx } = enterMinigame('basketball');
-
-  const w = gc.width, h = gc.height;
-  bb = {
-    ctx,
-    gc, w, h,
-    groundY: h - 4, // mismo margen que el piso normal (petCanvas usa bottom:4px)
-    ballTopY: h*BB_BALL_TOP_FRAC,
-    ballBottomY: h*BB_BALL_BOTTOM_FRAC,
-    hoopX: w*BB_HOOP_X_FRAC,
-    hoopY: h*BB_HOOP_Y_FRAC,
-    monoX: w*BB_MONO_X_FRAC,
-    ballX: w*BB_BALL_X_FRAC,
-    layupX: w*BB_LAYUP_X_FRAC,
-    dunkX: w*BB_DUNK_X_FRAC,
-    shot: 0,
-    score: 0,
-    phase: 0,
-    state: 'aim',       // 'aim' | 'approach' | 'jump_aim' | 'flight' | 'settle' | 'result'
-    chain: null,        // null | 'swish' | 'rim' — de dónde viene la cadena actual
-    jumpKind: null,     // null | 'layup' | 'dunk' — qué mini-juego de salto está activo
-    jumpStart: 0,
-    jumpFromX: 0,       // de dónde a dónde se mueve horizontalmente durante el salto
-    jumpToX: 0,
-    approachFrom: 0,
-    approachTo: 0,
-    approachStart: 0,
-    popped: false,      // true si se acabó por la pelota pinchada, no por agotar tiros
-    flightStart: 0,
-    flightFrom: null,
-    flightTo: null,
-    settleFrom: null,
-    settleTo: null,
-    resultText: '',
-    resultUntil: 0,
-    raf: null,
-    lastT: 0,
-  };
-  /* Los botones vivían flotando sobre la pantalla, con su posición calculada a
-     mano desde getBoundingClientRect() una sola vez: si el layout cambiaba,
-     quedaban descolocados. Ahora son botones normales abajo, con los demás
-     mandos, y los tres quedan visibles todo el partido — solo el que sirve en
-     el momento está habilitado, así nunca hay duda de cuál apretar. Son tres
-     botones distintos (Tiro / Bandeja / Slam Dunk) y no dos: el tiro inicial
-     ya no comparte gesto con la bandeja, aunque las dos sean "lanzar". */
-  const cont = showGameControls(`
-    <div class="game-hint" id="bbHint">¡Encesta en el momento justo!</div>
-    <div class="gbtn-row3">
-      <button class="gbtn gbtn-lg" id="btnShoot">🏀 Tiro</button>
-      <button class="gbtn gbtn-lg" id="btnLayup">🏀 Bandeja</button>
-      <button class="gbtn gbtn-lg" id="btnDunk">🔥 Slam Dunk</button>
-    </div>
-  `);
-  bb.hintEl = cont.querySelector('#bbHint');
-  wireGameButton(cont.querySelector('#btnShoot'), () => bbPress('shot'));
-  wireGameButton(cont.querySelector('#btnLayup'), () => bbPress('layup'));
-  wireGameButton(cont.querySelector('#btnDunk'), () => bbPress('dunk'));
-  bbSyncButtons();
-
-  bb.raf = requestAnimationFrame(bbLoop);
-}
-
-/* Cada botón solo responde en su propia etapa: Tiro en 'aim', Bandeja/Slam Dunk
-   en 'jump_aim' con el jumpKind que corresponda. El disabled del HTML ya
-   bloquea el pointerdown del que no toca, esto es la segunda capa de
-   seguridad. */
-function bbPress(which){
-  if (!bb) return;
-  if (bb.state === 'aim' && which === 'shot'){ resolveShot(); return; }
-  if (bb.state === 'jump_aim' && bb.jumpKind === which){ resolveJumpShot(true); return; }
-}
-
-function bbSyncButtons(){
-  if (!bb) return;
-  const cont = document.getElementById('gameControls');
-  const shootBtn = cont.querySelector('#btnShoot');
-  const layupBtn = cont.querySelector('#btnLayup');
-  const dunkBtn = cont.querySelector('#btnDunk');
-  if (!shootBtn || !layupBtn || !dunkBtn) return;
-  const shootOn = bb.state === 'aim';
-  const layupOn = bb.state === 'jump_aim' && bb.jumpKind === 'layup';
-  const dunkOn = bb.state === 'jump_aim' && bb.jumpKind === 'dunk';
-  shootBtn.disabled = !shootOn;
-  layupBtn.disabled = !layupOn;
-  dunkBtn.disabled = !dunkOn;
-  if (bb.hintEl){
-    bb.hintEl.textContent =
-      shootOn ? '¡Encesta en el momento justo!' :
-      layupOn ? '¡Suéltala arriba de la parábola!' :
-      dunkOn ? '¡Clávala al caer!' :
-      '';
-  }
-}
-
-function resolveShot(){
-  if (!bb || bb.state !== 'aim' || activeMinigame !== 'basketball') return;
-  const diff = BB_DIFFICULTY[bb.shot];
-  const h = bbBallHeight(bb.phase);
-  const aim = { x: bb.ballX, y: bb.ballBottomY - h*(bb.ballBottomY-bb.ballTopY) };
-
-  if (h < diff.near){
-    // "No alcanza": normalmente no pasa nada, pero hay una chance de que la
-    // pelota se pinche ahí mismo y listo, se acabó la partida.
-    bb.popped = Math.random() < BB_POP_CHANCE;
-    const shortX = bb.monoX + (bb.hoopX-bb.monoX) * (0.35 + h*0.25);
-    bbGoToFlight(aim, { x: shortX, y: bb.groundY-30 }, { x: shortX+10, y: bb.groundY },
-      bb.popped ? '¡Se pinchó la pelota!' : 'No alcanza', bb.popped ? '💥' : '💨', 0);
-    return;
-  }
-
-  if (h >= diff.peak){
-    // Switch: casi siempre entra derecho. La chance de rebotar igual es la
-    // que lo hace interesante — ni un tiro perfecto es 100% seguro.
-    if (Math.random() < BB_REBOUND_CHANCE[bb.shot]){
-      bbGoToRebound(aim, 'swish');
-      return;
-    }
-    bbGoToFlight(aim, { x: bb.hoopX, y: bb.hoopY-4 }, { x: bb.hoopX, y: bb.hoopY+18 },
-      '¡SWISH!', '🏀', BB_POINTS.swish);
-    return;
-  }
-
-  // Toca el aro (near <= h < peak): ya no es "0 puntos" — siempre pasa a Bandeja.
-  bbGoToRebound(aim, 'rim');
-}
-
-/* Comparte la animación de "toca el aro y sale disparada" con lo que antes era
-   el resultado final de esa zona; ahora en vez de terminar en 'result' arranca
-   la cadena de Bandeja al llegar al 'settle'. */
-function bbGoToRebound(aim, chain){
-  bb.chain = chain;
-  bb.pendingJump = 'layup';
-  bbGoToFlight(aim, { x: bb.hoopX, y: bb.hoopY-2 }, { x: bb.hoopX-30, y: bb.hoopY+26 },
-    'Rebota…', '〰️', null);
-}
-
-function bbGoToFlight(from, flightTo, settleTo, text, fx, points){
-  if (points !== null){
-    bb.score += points;
-    bb.resultText = points > 0 ? `${text} (+${points})` : text;
-  } else {
-    bb.resultText = text;   // resultado provisorio, todavía no hay puntos definidos
-  }
-  bb.state = 'flight';
-  bb.flightStart = performance.now();
-  bb.flightFrom = from;
-  bb.flightTo = flightTo;
-  bb.settleFrom = flightTo;
-  bb.settleTo = settleTo;
-  floatFx(fx);
-}
-
-/* Arranca la aproximación hacia el aro antes de saltar. Se llama al terminar el
-   'settle' de un rebote (ver bbLoop) o al terminar el de un salto fallido que
-   igual sigue la cadena (no aplica hoy, pero deja el gancho listo). */
-function bbStartApproach(kind){
-  bb.jumpKind = kind;
-  bb.approachFrom = bb.monoAtX ?? bb.monoX;
-  bb.approachTo = kind === 'layup' ? bb.layupX : bb.dunkX;
-  bb.approachStart = performance.now();
-  bb.state = 'approach';
-}
-
-/* Configuración del salto activo: bandeja o slam dunk. Una sola función para
-   no repetir el if/else en cada lugar que necesita duración/ventana/altura. */
-function bbJumpCfg(){
-  return bb.jumpKind === 'layup'
-    ? { durationMs: BB_LAYUP_JUMP_MS, window: BB_LAYUP_WINDOW, arcPx: bb.h * BB_LAYUP_ARC_FRAC }
-    : { durationMs: BB_DUNK_JUMP_MS, window: BB_DUNK_WINDOW, arcPx: bb.h * BB_DUNK_ARC_FRAC };
-}
-
-/* Posición del monito durante el salto: una parábola real (misma forma que
-   bbArcPos), de una sola pasada — no un oscilador que sube y baja sin fin. La
-   bandeja además avanza en x (BB_LAYUP_DX_FRAC): "salta en una parábola hacia
-   la derecha". El slam dunk salta derecho hacia arriba (jumpToX === jumpFromX). */
-function bbJumpPos(t){
-  const cfg = bbJumpCfg();
-  const x = bb.jumpFromX + (bb.jumpToX - bb.jumpFromX) * t;
-  const y = bb.groundY - cfg.arcPx * 4 * t * (1-t);
-  return { x, y };
-}
-
-function bbStartJumpAim(){
-  bb.jumpFromX = bb.approachTo;
-  bb.jumpToX = bb.jumpKind === 'layup' ? bb.approachTo + bb.w * BB_LAYUP_DX_FRAC : bb.approachTo;
-  bb.jumpStart = performance.now();
-  bb.state = 'jump_aim';
-  bbSyncButtons();
-}
-
-/* pressed=true cuando lo llama bbPress (el jugador apretó el botón).
-   pressed=false cuando lo llama bbLoop porque el salto terminó y nadie
-   apretó a tiempo: "pasado ese tiempo se cancela". Apretar fuera de la
-   ventana falla igual que no apretar — solo cuenta un toque dentro de ella. */
-function resolveJumpShot(pressed){
-  if (!bb || bb.state !== 'jump_aim') return;
-  const cfg = bbJumpCfg();
-  const t = Math.min(1, (performance.now() - bb.jumpStart) / cfg.durationMs);
-  const pos = bbJumpPos(t);
-  const handPos = { x: pos.x, y: pos.y - 34 };
-  const hit = pressed && t >= cfg.window[0] && t <= cfg.window[1];
-
-  if (!hit){
-    // Falló el salto: nada de vuelo vistoso, solo un rebote cortito hacia abajo.
-    bbGoToFlight(handPos, { x: pos.x+8, y: bb.groundY-6 }, { x: pos.x+8, y: bb.groundY },
-      bb.jumpKind === 'layup' ? 'No alcanzó la bandeja' : 'Falló el slam dunk', '💨', 0);
-    bb.jumpKind = null;
-    return;
-  }
-
-  if (bb.jumpKind === 'layup' && Math.random() < BB_REBOUND_CHANCE[bb.shot]){
-    // La bandeja también rebota: sube la apuesta al slam dunk.
-    bbGoToFlight(handPos, { x: bb.hoopX, y: bb.hoopY-2 }, { x: bb.hoopX-24, y: bb.hoopY+20 },
-      'Rebota…', '〰️', null);
-    bb.pendingJump = 'dunk';
-    return;
-  }
-
-  const points = BB_POINTS[bb.jumpKind][bb.chain];
-  const text = bb.jumpKind === 'layup' ? '¡BANDEJA!' : '¡SLAM DUNK!';
-  bbGoToFlight(handPos, { x: bb.hoopX, y: bb.hoopY-4 }, { x: bb.hoopX, y: bb.hoopY+18 },
-    text, bb.jumpKind === 'dunk' ? '🔥' : '🏀', points);
-  bb.jumpKind = null;
-}
-
-/* Arco parabólico real: interpola en línea recta entre p0 y p1, y le resta una
-   "joroba" que sube en el medio del recorrido y vuelve a 0 en los extremos. */
-function bbArcPos(p0, p1, t, arcHeight){
-  const x = p0.x + (p1.x-p0.x)*t;
-  const straightY = p0.y + (p1.y-p0.y)*t;
-  return { x, y: straightY - arcHeight*4*t*(1-t) };
-}
-
-function bbLoop(t){
-  if (activeMinigame !== 'basketball' || !bb) return;
-  const dt = Math.min(0.05, (t - (bb.lastT || t)) / 1000);
-  bb.lastT = t;
-  const now = performance.now();
-
-  if (bb.state === 'aim'){
-    const diff = BB_DIFFICULTY[bb.shot];
-    bb.phase += dt * 2.6 * diff.speed * (1 + 0.5*levelT());   // solo la velocidad sube por nivel: el azar ya es bastante
-  } else if (bb.state === 'approach'){
-    const t2 = Math.min(1, (now - bb.approachStart) / BB_APPROACH_MS);
-    bb.monoAtX = bb.approachFrom + (bb.approachTo - bb.approachFrom) * t2;
-    if (t2 >= 1) bbStartJumpAim();
-  } else if (bb.state === 'jump_aim'){
-    // Salto de una sola pasada: si se acaba el tiempo y nadie apretó, se
-    // cancela solo — no sigue rebotando a la espera de un botón.
-    if (now - bb.jumpStart >= bbJumpCfg().durationMs){
-      resolveJumpShot(false);
-    }
-  } else if (bb.state === 'flight'){
-    if (now - bb.flightStart >= BB_FLIGHT_MS){
-      bb.state = 'settle';
-      bb.settleStart = now;
-    }
-  } else if (bb.state === 'settle'){
-    if (now - bb.settleStart >= BB_SETTLE_MS){
-      if (bb.pendingJump){
-        // El rebote terminó de animarse: ahí arranca la cadena de verdad.
-        const kind = bb.pendingJump;
-        bb.pendingJump = null;
-        bbStartApproach(kind);
-      } else {
-        bb.state = 'result';
-        bb.resultUntil = now + BB_RESULT_MS;
-      }
-    }
-  } else if (bb.state === 'result'){
-    if (now > bb.resultUntil){
-      if (bb.popped){
-        endBasketballGame();
-        return;
-      }
-      bb.shot += 1;
-      bb.chain = null;
-      if (bb.shot >= BB_TOTAL_SHOTS){
-        endBasketballGame();
-        return;
-      }
-      bb.state = 'aim';
-      bb.phase = 0;
-    }
-  }
-
-  bbSyncButtons();
-  drawBasketball();
-  bb.raf = requestAnimationFrame(bbLoop);
-}
-
-function bbBallPos(){
-  if (bb.state === 'aim'){
-    const h = bbBallHeight(bb.phase);
-    return { x: bb.ballX, y: bb.ballBottomY - h*(bb.ballBottomY-bb.ballTopY) };
-  }
-  if (bb.state === 'jump_aim'){
-    const t = Math.min(1, (performance.now()-bb.jumpStart)/bbJumpCfg().durationMs);
-    const pos = bbJumpPos(t);
-    return { x: pos.x, y: pos.y - 34 };
-  }
-  if (bb.state === 'flight'){
-    const t = Math.min(1, (performance.now()-bb.flightStart)/BB_FLIGHT_MS);
-    const dist = Math.abs(bb.flightTo.x - bb.flightFrom.x);
-    const arcHeight = Math.max(24, dist*0.42); // puede salirse por arriba del canvas, no pasa nada
-    return bbArcPos(bb.flightFrom, bb.flightTo, t, arcHeight);
-  }
-  if (bb.state === 'settle'){
-    const t = Math.min(1, (performance.now()-bb.settleStart)/BB_SETTLE_MS);
-    return {
-      x: bb.settleFrom.x + (bb.settleTo.x-bb.settleFrom.x)*t,
-      y: bb.settleFrom.y + (bb.settleTo.y-bb.settleFrom.y)*t,
-    };
-  }
-  return bb.settleTo;
-}
-
-function drawBasketball(){
-  const { ctx, gc } = bb;
-  ctx.clearRect(0,0,gc.width,gc.height);
-
-  ctx.fillStyle = 'rgba(255,255,255,.85)';
-  ctx.font = '12px monospace';
-  ctx.textAlign = 'left';
-  ctx.fillText(`Tiro ${Math.min(bb.shot+1, BB_TOTAL_SHOTS)}/${BB_TOTAL_SHOTS}`, 8, 16);
-  ctx.textAlign = 'right';
-  ctx.fillText(`🏀 ${bb.score}`, gc.width-8, 16);
-
-  ctx.strokeStyle = 'rgba(200,242,194,.25)';
-  ctx.beginPath();
-  ctx.moveTo(0, bb.groundY+2);
-  ctx.lineTo(gc.width, bb.groundY+2);
-  ctx.stroke();
-
-  drawHoop(ctx);
-
-  /* A escala 2 (64px) y no al tamaño de la vista normal (96px): en la cancha, con
-     el aro al otro extremo, la mascota a 96 se come el cuadro. Sigue siendo una
-     escala entera, que es lo que importa. El salto es procedural, no hay sprites
-     nuevos: se sube el "suelo" que usa drawPetAt() unos píxeles con la misma
-     curva que ya anima la pelota. */
-  const mood = debugForcedMood || (state.sick ? 'sick' : 'happy');
-  if (bb.state === 'jump_aim'){
-    const t = Math.min(1, (performance.now()-bb.jumpStart)/bbJumpCfg().durationMs);
-    const pos = bbJumpPos(t);
-    drawPetAt(ctx, pos.x, pos.y, mood, 2);
-  } else if (bb.state === 'approach'){
-    drawPetAt(ctx, bb.monoAtX ?? bb.monoX, bb.groundY, mood, 2);
-  } else {
-    drawPetAt(ctx, bb.monoX, bb.groundY, mood, 2);
-  }
-
-  const ballPos = bbBallPos();
-  ctx.font = '16px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('🏀', ballPos.x, ballPos.y);
-
-  if (bb.state === 'result' || (bb.state === 'settle' && bb.resultText)){
-    ctx.font = '13px monospace';
-    ctx.fillStyle = '#fff';
-    ctx.fillText(bb.resultText, gc.width/2, bb.hoopY + (bb.groundY-bb.hoopY)*0.55);
-  }
-}
-
-function drawHoop(ctx){
-  const x = bb.hoopX, y = bb.hoopY;
-  ctx.fillStyle = '#d8d8e0';
-  ctx.fillRect(x+16, y-20, 6, 34);
-  ctx.strokeStyle = '#ff8a3d';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.ellipse(x, y, 16, 5, 0, 0, Math.PI*2);
-  ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,255,255,.35)';
-  ctx.lineWidth = 1;
-  for (let i=-1;i<=1;i++){
-    ctx.beginPath();
-    ctx.moveTo(x+i*10, y+2);
-    ctx.lineTo(x+i*6, y+16);
-    ctx.stroke();
-  }
-}
-
-function endBasketballGame(){
-  const score = bb ? bb.score : 0;
-  const popped = bb ? bb.popped : false;
-  if (bb && bb.raf) cancelAnimationFrame(bb.raf);
-  bb = null;
-
-  const message = popped
-    ? `¡Se pinchó la pelota! ${score} puntos`
-    : score > 0 ? `${score} puntos en baloncesto` : 'Ni una… la próxima';
-
-  finishMinigame('basketball', { score, merit: score * 8, energyCost: 16, message });
-}
-
-/* ===================== Minijuego 3: reflejos =====================
-   Aparecen blancos que duran cada vez menos. Hay que tocar los buenos y NO tocar
-   las bombas. Tres cosas empujan la dificultad a la vez: salen más seguido, duran
-   menos y crece la proporción de bombas. Tocar el vacío corta el combo, así que
-   martillar la pantalla al azar es peor que mirar y elegir. */
-
-const RX_DURATION = 25;
-const RX_LIVES = 3;
-const RX_RADIUS = 17;
-const RX_CHAR = { good:'🎯', gold:'💎', bomb:'💣' };
-
-let rx = null;
-
-function startReflexGame(){
-  const { gc, ctx } = enterMinigame('reflex');
-
-  rx = {
-    ctx, gc,
-    targets: [],
-    fx: [],
-    score: 0,
-    combo: 0,
-    bestCombo: 0,
-    lives: RX_LIVES,
-    timeLeft: RX_DURATION,
-    spawnIn: 0.6,
-    flash: 0,            // destello rojo al tocar una bomba
-    pointer: makeCanvasPointer(gc),
-    raf: null,
-    lastT: 0,
-  };
-
-  rx.onDown = (e) => {
-    e.preventDefault();
-    rxTap(rx.pointer.at(e));
-  };
-  gc.addEventListener('pointerdown', rx.onDown);
-
-  say('¡Toca los blancos, esquiva las bombas!');
-  rx.raf = requestAnimationFrame(rxLoop);
-}
-
-function rxMultiplier(){
-  return Math.min(4, 1 + Math.floor(rx.combo / 5));
-}
-
-function rxSpawnFx(char, x, y){
-  rx.fx.push({ char, x, y, vy: -50, life: 0.55 });
-}
-
-/* Busca un hueco donde el blanco nuevo no quede encima de otro: si no encuentra
-   uno limpio en unos intentos, igual lo pone (mejor eso que saltarse el spawn). */
-function rxPlaceTarget(){
-  const gc = rx.gc;
-  const minX = RX_RADIUS + 4, maxX = gc.width - RX_RADIUS - 4;
-  const minY = RX_RADIUS + 22, maxY = gc.height - RX_RADIUS - 6; // 22 deja libre el HUD
-  let x = 0, y = 0;
-  for (let intento = 0; intento < 8; intento++){
-    x = minX + Math.random()*(maxX - minX);
-    y = minY + Math.random()*Math.max(1, maxY - minY);
-    const chocado = rx.targets.some(o => Math.hypot(o.x - x, o.y - y) < RX_RADIUS*2.1);
-    if (!chocado) break;
-  }
-  return { x, y };
-}
-
-function rxTap(pos){
-  if (!rx) return;
-  /* De atrás para adelante: el último dibujado es el que se ve arriba. */
-  for (let i = rx.targets.length - 1; i >= 0; i--){
-    const tg = rx.targets[i];
-    if (Math.hypot(tg.x - pos.x, tg.y - pos.y) > RX_RADIUS + 4) continue;
-
-    rx.targets.splice(i, 1);
-    if (tg.kind === 'bomb'){
-      rx.lives -= 1;
-      rx.combo = 0;
-      rx.flash = 0.3;
-      rxSpawnFx('💥', tg.x, tg.y);
-      if (rx.lives <= 0) endReflexGame();
-      return;
-    }
-    rx.combo += 1;
-    if (rx.combo > rx.bestCombo) rx.bestCombo = rx.combo;
-    rx.score += (tg.kind === 'gold' ? 3 : 1) * rxMultiplier();
-    rxSpawnFx(RX_CHAR[tg.kind], tg.x, tg.y);
-    return;
-  }
-  rx.combo = 0; // tocar el vacío corta la racha
-}
-
-function rxLoop(t){
-  if (activeMinigame !== 'reflex' || !rx) return;
-  const dt = Math.min(0.05, (t - (rx.lastT || t)) / 1000);
-  rx.lastT = t;
-  rx.timeLeft -= dt;
-  if (rx.flash > 0) rx.flash -= dt;
-
-  const gc = rx.gc, ctx = rx.ctx;
-  const progress = 1 - Math.max(0, rx.timeLeft) / RX_DURATION;
-
-  rx.spawnIn -= dt;
-  if (rx.spawnIn <= 0){
-    rx.spawnIn = (0.78 - 0.44*progress) * (1 - 0.3*levelT());   // 0.78s → 0.34s entre blancos; -30% en nivel 5
-    const ttl = (1.55 - 0.75*progress) * (1 - 0.3*levelT());    // 1.55s → 0.80s de vida; -30% en nivel 5
-    const roll = Math.random();
-    const bombChance = 0.18 + 0.22*progress + 0.12*levelT();    // 18% → 40% bombas; +12 puntos en nivel 5
-    const kind = roll < bombChance ? 'bomb' : (roll > 0.96 ? 'gold' : 'good');
-    const { x, y } = rxPlaceTarget();
-    rx.targets.push({ x, y, kind, ttl, life: ttl });
-  }
-
-  ctx.clearRect(0, 0, gc.width, gc.height);
-  if (rx.flash > 0){
-    ctx.fillStyle = `rgba(255,70,70,${(rx.flash/0.3)*0.35})`;
-    ctx.fillRect(0, 0, gc.width, gc.height);
-  }
-
-  for (let i = rx.targets.length - 1; i >= 0; i--){
-    const tg = rx.targets[i];
-    tg.life -= dt;
-    if (tg.life <= 0){
-      rx.targets.splice(i, 1);
-      if (tg.kind !== 'bomb') rx.combo = 0; // dejar escapar un blanco corta la racha
-      continue;
-    }
-
-    const restante = tg.life / tg.ttl;
-    /* Entra creciendo en los primeros 120ms: da el pulso de "apareció acá". */
-    const aparicion = Math.min(1, (tg.ttl - tg.life) / 0.12);
-    const r = RX_RADIUS * (0.55 + 0.45*aparicion);
-
-    ctx.beginPath();
-    ctx.arc(tg.x, tg.y, r, 0, Math.PI*2);
-    ctx.fillStyle = tg.kind === 'bomb' ? 'rgba(255,90,90,.20)' : 'rgba(255,230,109,.18)';
-    ctx.fill();
-
-    /* Anillo que se vacía: cuánto queda antes de que desaparezca. */
-    ctx.beginPath();
-    ctx.arc(tg.x, tg.y, r + 3, -Math.PI/2, -Math.PI/2 + Math.PI*2*restante);
-    ctx.strokeStyle = tg.kind === 'bomb' ? '#ff6b6b' : '#ffe66d';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    drawEmoji(ctx, RX_CHAR[tg.kind], Math.round(r * 1.35), tg.x, tg.y);
-  }
-
-  for (let i = rx.fx.length - 1; i >= 0; i--){
-    const f = rx.fx[i];
-    f.life -= dt;
-    if (f.life <= 0){ rx.fx.splice(i, 1); continue; }
-    f.y += f.vy * dt;
-    ctx.globalAlpha = Math.min(1, f.life * 2);
-    drawEmoji(ctx, f.char, 16, f.x, f.y);
-  }
-  ctx.globalAlpha = 1;
-
-  ctx.font = '11px monospace';
-  ctx.textBaseline = 'alphabetic';
-  ctx.textAlign = 'left';
-  ctx.fillStyle = '#fff';
-  ctx.fillText('🎯 ' + rx.score, 8, 16);
-  ctx.textAlign = 'center';
-  if (rx.combo >= 2){
-    ctx.fillStyle = rxMultiplier() > 1 ? '#ffe66d' : 'rgba(255,255,255,.7)';
-    ctx.fillText(`combo ${rx.combo}  x${rxMultiplier()}`, gc.width/2, 16);
-  }
-  ctx.textAlign = 'right';
-  ctx.fillStyle = '#fff';
-  ctx.fillText('❤️'.repeat(Math.max(0, rx.lives)) + '  ' + Math.max(0, rx.timeLeft).toFixed(0) + 's', gc.width - 8, 16);
-
-  if (rx.timeLeft <= 0){ endReflexGame(); return; }
-  rx.raf = requestAnimationFrame(rxLoop);
-}
-
-function rxDispose(){
-  if (!rx) return;
-  rx.gc.removeEventListener('pointerdown', rx.onDown);
-  rx.pointer.dispose();
-  if (rx.raf) cancelAnimationFrame(rx.raf);
-}
-
-function endReflexGame(){
-  const score = rx ? rx.score : 0;
-  const bestCombo = rx ? rx.bestCombo : 0;
-  const sinVidas = rx ? rx.lives <= 0 : false;
-  rxDispose();
-  rx = null;
-
-  const message = sinVidas
-    ? `¡Boom! ${score} pts (combo ${bestCombo})`
-    : `${score} pts (combo ${bestCombo})`;
-
-  finishMinigame('reflex', { score, merit: score * 0.5, energyCost: 20, message });
-}
-
-/* ===================== Minijuego 4: tap rítmico =====================
-   Tres carriles, notas que bajan hasta la línea y hay que tocarlas justo cuando
-   la cruzan. Como tocar de más también corta el combo, no sirve tapear a lo
-   loco: hay que seguir el ritmo.
-
-   El tempo es FIJO (TR_BPM) y todo se mide en pulsos, no en segundos sueltos:
-   la negra dura TR_BEAT_SEC y una nota solo puede caer en una negra o en la
-   corchea exacta del medio — nunca en un instante intermedio. Antes el chart
-   aceleraba solo, y eso era lo único que subía la intensidad, pero con la
-   pista acelerando no hay forma de que suene a canción. Ahora la dificultad
-   escala por densidad sobre la misma grilla, que es como escalan los juegos de
-   ritmo de verdad.
-
-   De fondo suena un metrónomo (una vez por negra, con acento en el primer
-   tiempo de cada compás) y el acorde de Si menor en redonda, uno por compás.
-   Los dos se agendan por adelantado en el reloj de Web Audio, no frame a
-   frame; y para que la pista no se despegue nunca de las notas, el tiempo del
-   juego (tr.time) también sale de ese mismo reloj — ver trAdvanceClock().
-
-   Dos tipos de nota además de la simple: dobles (dos carriles al mismo tiempo,
-   hay que tocar los dos) y sostenidas (hay que mantener apretado el carril hasta
-   que se completa, soltar antes corta el combo). Por eso el input dejó de ser
-   solo "pointerdown dispara el golpe" (trHit) y pasó a trPress/trRelease con
-   estado por carril (tr.laneDown[]) — necesario para saber si seguís
-   sosteniendo, no solo si tocaste. */
-
-const TR_LANES = 3;
-const TR_LANE_CHAR = ['🍬','🎮','🧼'];
-const TR_PERFECT = 0.09;      // ventana de acierto perfecto, en segundos (simétrica)
-/* La ventana de acierto normal es ASIMÉTRICA a propósito. Un toque adelantado
-   ahora suena cuantizado al pulso (trSfxHit recibe el `at` de la nota, no el
-   del toque) así que sonar antes de tiempo no tiene costo de audio — eso deja
-   margen para tolerar bastante adelanto. Uno atrasado no se puede cuantizar
-   hacia atrás (tone() ya pasó ese instante): siempre suena "ya", tarde de
-   verdad respecto de la pista. Por eso el lado tarde es apenas un cuarto del
-   adelantado: sigue sonando, pero solo si cae bastante cerca del pulso.
-   Como queda por debajo de TR_PERFECT, cualquier toque tarde aceptado ya
-   cae también dentro de la ventana perfecta — del lado tarde no existe un
-   "bien", o es perfecto o es fallo. */
-const TR_GOOD_EARLY = 0.19;              // cuánto se puede tocar antes de la nota
-const TR_GOOD_LATE = TR_GOOD_EARLY / 4;  // después: un cuarto de eso (0.0475s)
-
-/* La grilla musical. Todo lo demás se deriva de acá: si se cambia el tempo,
-   las sostenidas, la anticipación y el largo del chart se acomodan solos. */
-const TR_BPM = 150;
-const TR_BEAT_SEC = 60 / TR_BPM;        // la negra
-const TR_EIGHTH_SEC = TR_BEAT_SEC / 2;  // la corchea: el único subdividido permitido
-const TR_BEATS_PER_BAR = 4;
-const TR_LEAD_IN_BEATS = 4;             // un compás de metrónomo antes de la primera nota
-const TR_CHART_BARS = 16;
-const TR_CHART_BEATS = TR_CHART_BARS * TR_BEATS_PER_BAR;
-
-const TR_APPROACH = TR_BEAT_SEC * 3;    // una nota se ve venir tres pulsos antes
-const TR_HOLD_SEC = TR_BEAT_SEC * 2;    // una sostenida dura una blanca (dos pulsos)
-/* Dos notas más juntas que esto no pueden compartir carril: dos corcheas
-   seguidas quedan a media negra (0.19s) y el lado más ancho de la ventana de
-   acierto (TR_GOOD_EARLY, 0.19s) mide lo mismo, así que en el mismo carril
-   serían indistinguibles. Tres cuartos de negra deja pasar el caso de negra a
-   negra y bloquea el de corchea. */
-const TR_MIN_SAME_LANE_GAP = TR_BEAT_SEC * 0.75;
-
-/* Rampas de densidad {al empezar, al terminar}: esto es lo que reemplaza a la
-   aceleración de la pista. */
-const TR_OFFBEAT_CHANCE = [0.05, 0.55];  // corchea extra entre dos negras
-const TR_DOUBLE_CHANCE  = [0.06, 0.28];  // pareja en otro carril, mismo instante
-const TR_HOLD_CHANCE    = [0.05, 0.16];  // nota sostenida
-/* Lo que suma cada rampa en el nivel máximo: la dificultad por nivel también es
-   densidad sobre la misma grilla, nunca tempo. Los resguardos de
-   trBuildChart() siguen valiendo igual. */
-const TR_LEVEL_BONUS = { offbeat: 0.25, double: 0.12, hold: 0.06 };
-
-function trRamp(rango, progress){ return rango[0] + (rango[1] - rango[0]) * progress; }
-
-/* Instante exacto de un pulso, contando desde que arranca la partida. Se
-   multiplica en vez de ir acumulando: sumar 0.379 sesenta veces arrastra error
-   y deja las notas fuera de la grilla del metrónomo. */
-function trBeatTime(beat){ return beat * TR_BEAT_SEC; }
-
-/* Pista de fondo. El metrónomo son dos clicks bien cortos y agudos (fuera del
-   registro de la melodía, para que no se confundan con una nota) y el acorde
-   es un Si menor abierto —fundamental, quinta y tercera repartidas— bien
-   despacito y con ataque lento, para que se sienta debajo sin tapar nada. */
-const TR_CLICK_ACCENT = 1975.53;  // B6, el primer tiempo del compás
-const TR_CLICK_BEAT   = 1479.98;  // F#6, los otros tres
-const TR_PAD_CHORD    = [246.94, 369.99, 587.33];  // B3, F#4, D5
-/* "Despacito" es de volumen, no de ataque: el acorde entra justo con el click
-   del primer tiempo y se queda sonando bajito. Con un ataque largo el oído lo
-   escucha llegar tarde aunque esté agendado en el instante exacto. */
-const TR_PAD_VOL = 0.032;
-const TR_PAD_ATTACK_MS = 12;
-const TR_SCHEDULE_AHEAD = 0.25;   // segundos de pista que se agendan por adelantado
-/* Se arranca la pista unos milisegundos en el futuro para que el pulso 0 caiga
-   siempre por delante del reloj de audio: si se agendara en el instante exacto
-   en que empieza la partida, el primer frame ya lo dejaría en el pasado. */
-const TR_START_DELAY = 0.08;
-
-/* Escala de Si menor natural (B, C♯, D, E, F♯, G, A) recorrida desde el 7º
-   grado: A, B, C♯, D, E, F♯, G, A, B. Nueve notas, una octava y dos, todas en
-   un registro que el parlante de un teléfono reproduce bien (440-988 Hz; abajo
-   de ~400 Hz un celular casi no suena). Cada carril se queda con tres notas
-   seguidas: izquierda las graves, medio las del medio, derecha las agudas, así
-   la altura del sonido coincide con la posición en pantalla.
-
-   Los cuatro índices de arriba (9..12) no los toca ninguna nota del chart:
-   existen solo para que el acorde de "perfecto" (grados i, i+2, i+4 — la nota
-   con su 3ª y su 5ª) también cierre bien en las notas más altas. Sin ellos
-   habría que dar la vuelta al arreglo y las tríadas de arriba quedaban en
-   octavas dobladas en vez de acordes completos. */
-const TR_SCALE = [
-  440.00,   // 0  A4  ┐
-  493.88,   // 1  B4  ├ carril izquierdo
-  554.37,   // 2  C#5 ┘
-  587.33,   // 3  D5  ┐
-  659.25,   // 4  E5  ├ carril del medio
-  739.99,   // 5  F#5 ┘
-  783.99,   // 6  G5  ┐
-  880.00,   // 7  A5  ├ carril derecho
-  987.77,   // 8  B5  ┘
-  1108.73,  // 9  C#6 ┐
-  1174.66,  // 10 D6  ├ solo para completar las tríadas de las notas de arriba
-  1318.51,  // 11 E6  │
-  1479.98,  // 12 F#6 ┘
-];
-const TR_NOTES_PER_LANE = 3;
-
-/* `at` es el instante de LA NOTA en la grilla (tr.audioStart + mejor.t), no el
-   instante del toque: si sonara cuando tocás, un acierto adelantado (dentro
-   de la ventana pero antes del pulso) se escucharía desalineado del
-   metrónomo aunque el juego lo cuente como bueno. tone() ya recorta `at` al
-   presente si quedó en el pasado (tocaste tarde: ahí sí suena "ya", no hay
-   forma de sonar hacia atrás), así que solo esto arregla el caso adelantado,
-   que es el que se nota más. */
-function trSfxHit(pitch, perfecto, at){
-  if (perfecto){
-    /* Tríada de la escala: la nota con su 3ª y su 5ª, las tres a la vez. Cada
-       voz va más bajita que un tono suelto (tres osciladores al volumen de uno
-       saturan) y en triangular en vez de cuadrada, que apiladas embarran. */
-    tone({ freq: TR_SCALE[pitch],     durationMs: 220, type: 'triangle', vol: 0.09, at });
-    tone({ freq: TR_SCALE[pitch + 2], durationMs: 220, type: 'triangle', vol: 0.07, at });
-    tone({ freq: TR_SCALE[pitch + 4], durationMs: 220, type: 'triangle', vol: 0.06, at });
-    return;
-  }
-  tone({ freq: TR_SCALE[pitch], durationMs: 90, type: 'square', vol: 0.10, at });
-}
-
-/* Fallo: el tritono contra la tónica (Fa natural con Si), la única cosa acá
-   adentro que está fuera de escala a propósito — no hay forma de confundirlo
-   con un acierto ni de que suene "bien por casualidad". */
-function trSfxFail(){
-  beep(349.23, 140, 'sawtooth', 0.10);  // F4
-  beep(493.88, 140, 'sawtooth', 0.07);  // B4
-}
-
-let tr = null;
-
-/* Chart generado, no fijo: la grilla rítmica es siempre la misma (tempo
-   constante) pero los carriles, los tonos y qué posiciones se rellenan cambian
-   en cada partida, así no se memoriza la secuencia en dos vueltas.
-
-   Dos resguardos para que ningún fallo sea culpa del generador y no del
-   jugador:
-   - `busyUntil[carril]`: hasta cuándo sigue tomado un carril por una sostenida
-     en curso. Ninguna nota nueva —ni la pareja de una doble— se agenda ahí
-     mientras dure, porque con el dedo todavía puesto sería imposible de tocar.
-   - `TR_MIN_SAME_LANE_GAP`: dos notas muy seguidas nunca comparten carril, o
-     sus ventanas de acierto se pisarían.
-   Verificado por simulación pura: 0 solapamientos y 0 pares del mismo carril
-   demasiado juntos en 3000 charts generados. */
-function trBuildChart(){
-  const notes = [];
-  const busyUntil = [0, 0, 0];
-  let recentLanes = [];   // carriles de la última emisión...
-  let recentT = -99;      // ...y cuándo fue, para no repetir carril si quedan muy juntas
-
-  /* Devuelve null si no hay ningún carril donde la nota sea justa. El que
-     llama simplemente no la agenda: un silencio en la grilla es preferible a
-     una nota imposible. `excluir` lo usa la pareja de una doble para no caer
-     sobre su propia compañera. */
-  const pickLane = (t, excluir = []) => {
-    const libres = [0, 1, 2].filter(l => busyUntil[l] <= t && !excluir.includes(l));
-    if (!libres.length) return null;
-    const sinRepetir = libres.filter(l => !recentLanes.includes(l));
-    let pool = libres;
-    if (t - recentT < TR_MIN_SAME_LANE_GAP){
-      if (!sinRepetir.length) return null;   // muy junta y sin carril libre distinto
-      pool = sinRepetir;                     // muy juntas: obligado a cambiar
-    } else if (sinRepetir.length && Math.random() < 0.78){
-      pool = sinRepetir;                     // separadas: casi siempre cambia igual
-    }
-    return pool[Math.floor(Math.random() * pool.length)];
-  };
-
-  /* El tono sale de las tres notas del carril, sorteado cada vez: puede repetir
-     el de la nota anterior sin problema, todas son de la misma escala.
-     Una sostenida deja el carril tomado hasta un poco DESPUÉS de terminar, no
-     justo al terminar: si no, la nota siguiente caería en el mismo instante en
-     que hay que soltar, y habría que soltar y volver a apretar sin margen. */
-  const push = (t, lane, holdSec) => {
-    const pitch = lane * TR_NOTES_PER_LANE + Math.floor(Math.random() * TR_NOTES_PER_LANE);
-    notes.push({ t, lane, pitch, judged: false, hold: holdSec > 0, holding: false, holdSec });
-    if (holdSec > 0) busyUntil[lane] = t + holdSec + TR_MIN_SAME_LANE_GAP;
-    return lane;
-  };
-
-  /* Se recorre por número de pulso, no acumulando segundos: cada nota cae en
-     una negra (trBeatTime(b)) o en la corchea exacta del medio (b + 0.5), y
-     nunca en un instante intermedio. */
-  for (let b = 0; b < TR_CHART_BEATS; b++){
-    const progress = b / TR_CHART_BEATS;
-    const t = trBeatTime(TR_LEAD_IN_BEATS + b);
-
-    const lane = pickLane(t);
-    if (lane === null) continue;             // grilla ocupada: queda un silencio
-
-    const esHold = Math.random() < trRamp(TR_HOLD_CHANCE, progress) + TR_LEVEL_BONUS.hold*levelT();
-    push(t, lane, esHold ? TR_HOLD_SEC : 0);
-    const usados = [lane];
-
-    if (!esHold && Math.random() < trRamp(TR_DOUBLE_CHANCE, progress) + TR_LEVEL_BONUS.double*levelT()){
-      const pareja = pickLane(t, [lane]);
-      if (pareja !== null) usados.push(push(t, pareja, 0));
-    }
-    recentLanes = usados;
-    recentT = t;
-
-    /* Contratiempo: la corchea justo al medio de las dos negras. Siempre nota
-       simple — si además pudiera ser doble o sostenida, la parte densa del
-       final se vuelve ilegible. */
-    if (Math.random() < trRamp(TR_OFFBEAT_CHANCE, progress) + TR_LEVEL_BONUS.offbeat*levelT()){
-      const tOff = trBeatTime(TR_LEAD_IN_BEATS + b + 0.5);
-      const laneOff = pickLane(tOff);
-      if (laneOff !== null){
-        recentLanes = [push(tOff, laneOff, 0)];
-        recentT = tOff;
-      }
-    }
-  }
-  return notes;
-}
-
-function startTapGame(){
-  const { gc, ctx } = enterMinigame('tap');
-
-  /* Se prende el audio ACÁ y no en el loop: esto corre dentro del gesto del
-     usuario (el toque que abrió el minijuego), que es cuando el navegador deja
-     arrancar un AudioContext. Si se esperara al primer frame, el contexto
-     podría quedar suspendido y perderse el primer compás del metrónomo. */
-  const audioT0 = audioNow();
-
-  tr = {
-    ctx, gc,
-    notes: trBuildChart(),
-    fx: [],
-    score: 0,
-    combo: 0,
-    bestCombo: 0,
-    perfects: 0,
-    hits: 0,
-    laneW: gc.width / TR_LANES,
-    hitY: gc.height - 26,
-    time: 0,
-    cursor: 0,          // primera nota del chart todavía sin resolver
-    endAt: 0,
-    judgeText: '',
-    judgeColor: '#fff',
-    judgeUntil: 0,
-    lanePulse: [0, 0, 0],
-    laneDown: [false, false, false],   // qué carriles están apretados ahora mismo (para las sostenidas)
-    canvasPointers: new Map(),          // pointerId -> carril, para soltar el que corresponde al tocar la pantalla
-    /* El pulso visual late en cada negra, igual que el metrónomo: es el mismo
-       compás, una vez visto y otra escuchado. Late aunque el jugador no toque
-       nada — es metrónomo, no feedback de puntería. */
-    pulse: 0,
-    nextPulseBeat: 0,
-    /* Agenda de la pista de fondo: `nextBeat` es el próximo pulso todavía sin
-       agendar, `audioStart` el instante del reloj de audio en que empezó la
-       partida (null hasta que el navegador deja arrancar el AudioContext). */
-    nextBeat: 0,
-    audioStart: audioT0 === null ? null : audioT0 + TR_START_DELAY,
-    totalBeats: TR_LEAD_IN_BEATS + TR_CHART_BEATS,
-    pointer: makeCanvasPointer(gc),
-    raf: null,
-    lastT: 0,
-  };
-  tr.speed = (tr.hitY + 26) / TR_APPROACH; // px/s para que la nota tarde TR_APPROACH
-
-  /* Un botón por carril, abajo. Tocar la pantalla sigue funcionando para quien
-     prefiera apuntar al carril directamente — con dos carriles al mismo tiempo
-     (dobles) hace falta que ambos, botones y canvas, soporten multitouch, por
-     eso el canvas trackea pointerId->carril en vez de un solo puntero. */
-  tr.onDown = (e) => {
-    e.preventDefault();
-    const { x } = tr.pointer.at(e);
-    const lane = Math.max(0, Math.min(TR_LANES-1, Math.floor(x / tr.laneW)));
-    tr.canvasPointers.set(e.pointerId, lane);
-    trPress(lane);
-  };
-  tr.onUp = (e) => {
-    const lane = tr.canvasPointers.get(e.pointerId);
-    if (lane === undefined) return;
-    tr.canvasPointers.delete(e.pointerId);
-    trRelease(lane);
-  };
-  gc.addEventListener('pointerdown', tr.onDown);
-  gc.addEventListener('pointerup', tr.onUp);
-  gc.addEventListener('pointercancel', tr.onUp);
-
-  const cont = showGameControls(`
-    <div class="gbtn-row">
-      ${TR_LANE_CHAR.map((c, i) => `<button class="gbtn" data-lane="${i}">${c}</button>`).join('')}
-    </div>
-  `);
-  /* No usa wireGameButton: ese helper solo ata pointerdown, y las sostenidas
-     necesitan también el soltar. pointerleave cubre el dedo que se arrastra
-     fuera del botón sin pasar por un pointerup prolijo. */
-  cont.querySelectorAll('[data-lane]').forEach(el => {
-    const lane = +el.dataset.lane;
-    el.addEventListener('pointerdown', (e) => { e.preventDefault(); trPress(lane); });
-    el.addEventListener('pointerup', () => trRelease(lane));
-    el.addEventListener('pointercancel', () => trRelease(lane));
-    el.addEventListener('pointerleave', () => trRelease(lane));
-  });
-
-  const KEY_LANE = { '1':0, '2':1, '3':2, a:0, s:1, d:2, ArrowLeft:0, ArrowDown:1, ArrowRight:2 };
-  tr.onKeyDown = (e) => {
-    const idx = KEY_LANE[e.key];
-    if (idx !== undefined){ e.preventDefault(); trPress(idx); }
-  };
-  tr.onKeyUp = (e) => {
-    const idx = KEY_LANE[e.key];
-    if (idx !== undefined) trRelease(idx);
-  };
-  window.addEventListener('keydown', tr.onKeyDown);
-  window.addEventListener('keyup', tr.onKeyUp);
-
-  say('¡Toca al ritmo! Las celestes hay que mantenerlas apretadas');
-  tr.raf = requestAnimationFrame(trLoop);
-}
-
-function trMultiplier(){
-  return Math.min(4, 1 + Math.floor(tr.combo / 10));
-}
-
-function trJudge(text, color){
-  tr.judgeText = text;
-  tr.judgeColor = color;
-  tr.judgeUntil = tr.time + 0.5;
-}
-
-/* pointerdown/keydown de un carril. Si ya estaba apretado no hace nada — el
-   auto-repeat del teclado dispara keydown a repetición mientras se mantiene
-   una tecla, y sin este freno cada repetición se juzgaba como un toque sin
-   nota (fallo) apenas se resolvía la nota original. */
-function trPress(lane){
-  if (!tr || tr.laneDown[lane]) return;
-  tr.laneDown[lane] = true;
-  tr.lanePulse[lane] = 0.18;
-
-  /* La nota sin juzgar más cercana en el tiempo, dentro de ese carril. Una
-     sostenida ya empezada (n.holding) no cuenta: se resuelve sola en trLoop
-     con el soltar, no con un segundo toque. */
-  let mejor = null, mejorDist = Infinity;
-  for (const n of tr.notes){
-    if (n.judged || n.holding || n.lane !== lane) continue;
-    const dist = Math.abs(n.t - tr.time);
-    if (dist < mejorDist){ mejorDist = dist; mejor = n; }
-  }
-
-  /* mejorDist ya encontró la nota más cercana en cualquier dirección; ahora
-     hay que aceptarla o no según de qué lado quedó el toque. Positivo =
-     tocaste tarde (dist > 0), negativo = temprano. */
-  const dist = mejor ? tr.time - mejor.t : 0;
-  if (!mejor || dist > TR_GOOD_LATE || dist < -TR_GOOD_EARLY){
-    tr.combo = 0;                    // tocar cuando no hay nota corta la racha
-    trJudge('fallo', '#ff8f8f');
-    trSfxFail();
-    return;
-  }
-
-  // el sonido va SIEMPRE en el pulso de la nota, no en el instante del toque
-  const at = tr.audioStart === null ? 0 : tr.audioStart + mejor.t;
-
-  if (mejor.hold){
-    // arranca la sostenida: se completa o falla en trLoop, no acá
-    mejor.holding = true;
-    trJudge('¡mantené!', '#8fd0ff');
-    tr.fx.push({ char: TR_LANE_CHAR[lane], x: (lane + 0.5) * tr.laneW, y: tr.hitY, vy: -40, life: 0.4 });
-    trSfxHit(mejor.pitch, false, at);
-    return;
-  }
-
-  mejor.judged = true;
-  tr.combo += 1;
-  if (tr.combo > tr.bestCombo) tr.bestCombo = tr.combo;
-  tr.hits += 1;
-
-  const perfecto = mejorDist <= TR_PERFECT;
-  if (perfecto) tr.perfects += 1;
-  tr.score += (perfecto ? 3 : 1) * trMultiplier();
-  trJudge(perfecto ? '¡PERFECTO!' : 'bien', perfecto ? '#ffe66d' : '#c8f2c2');
-  tr.fx.push({ char: TR_LANE_CHAR[lane], x: (lane + 0.5) * tr.laneW, y: tr.hitY, vy: -55, life: 0.5 });
-  trSfxHit(mejor.pitch, perfecto, at);
-}
-
-/* Soltar un carril. Si había una sostenida en curso ahí, trLoop se entera por
-   tr.laneDown y la corta la próxima vez que la chequea — no hace falta buscar
-   la nota acá también. */
-function trRelease(lane){
-  if (!tr) return;
-  tr.laneDown[lane] = false;
-}
-
-/* El reloj del juego sale del AudioContext, no de sumar el dt de cada frame:
-   la pista se agenda en el reloj de audio, así que si las notas corrieran por
-   otro reloj se despegarían apenas el navegador saltee un frame (y el dt viene
-   con tope de 0.05s, o sea que con la pestaña trabada se atrasa a propósito).
-   Mientras el AudioContext no arranque —los navegadores lo dejan suspendido
-   hasta que hay un gesto del usuario— se usa el dt acumulado, y al enganchar
-   se descuenta lo ya transcurrido para que no pegue un salto. */
-function trAdvanceClock(dt){
-  const now = audioNow();
-  if (now === null){ tr.time += dt; return; }
-  if (tr.audioStart === null) tr.audioStart = now - tr.time;
-  tr.time = now - tr.audioStart;
-}
-
-/* Agenda la pista de fondo un poco por adelantado (TR_SCHEDULE_AHEAD): el
-   metrónomo en cada negra —con acento en el primer tiempo del compás— y el
-   acorde de Si menor en redonda, uno por compás. Se agenda con instantes
-   absolutos del reloj de audio, que es lo único que suena parejo; disparar un
-   metrónomo desde el frame lo deja tembleque. */
-function trScheduleTrack(){
-  if (tr.audioStart === null) return;
-  const now = audioNow();
-  if (now === null) return;
-
-  while (tr.nextBeat < tr.totalBeats && trBeatTime(tr.nextBeat) < tr.time + TR_SCHEDULE_AHEAD){
-    const beat = tr.nextBeat++;
-    const at = tr.audioStart + trBeatTime(beat);
-    /* Si ese pulso ya pasó (el audio arrancó tarde, o la pestaña estuvo
-       trabada), se saltea. Agendarlo igual no lo pone en su lugar: tone() lo
-       correría al presente y sonaría un montón de clicks amontonados. */
-    if (at < now) continue;
-
-    const acento = beat % TR_BEATS_PER_BAR === 0;
-    tone({
-      freq: acento ? TR_CLICK_ACCENT : TR_CLICK_BEAT,
-      durationMs: acento ? 45 : 28,
-      type: 'sine',
-      vol: acento ? 0.055 : 0.03,
-      at,
-    });
-
-    if (acento){
-      for (const freq of TR_PAD_CHORD){
-        tone({
-          freq,
-          durationMs: TR_BEAT_SEC * TR_BEATS_PER_BAR * 1000 * 0.92,
-          type: 'triangle',
-          vol: TR_PAD_VOL,
-          at,
-          attackMs: TR_PAD_ATTACK_MS,
-        });
-      }
-    }
-  }
-}
-
-function trLoop(t){
-  if (activeMinigame !== 'tap' || !tr) return;
-  const dt = Math.min(0.05, (t - (tr.lastT || t)) / 1000);
-  tr.lastT = t;
-  trAdvanceClock(dt);
-  trScheduleTrack();
-
-  /* Sostenidas en curso: se resuelven acá, no en trPress/trRelease, porque
-     "completarla" depende del tiempo transcurrido y "fallarla soltando antes"
-     depende de tr.laneDown — ambas cosas solo se saben mirando cada frame. */
-  for (const n of tr.notes){
-    if (!n.holding || n.judged) continue;
-    if (tr.time >= n.t + n.holdSec){
-      n.judged = true;
-      n.holding = false;
-      tr.combo += 1;
-      if (tr.combo > tr.bestCombo) tr.bestCombo = tr.combo;
-      tr.hits += 1;
-      tr.perfects += 1;               // una sostenida completa cuenta como perfecta
-      tr.score += 4 * trMultiplier(); // vale más que una simple: hay que sostenerla, no solo tocarla
-      trJudge('¡PERFECTO!', '#ffe66d');
-      tr.fx.push({ char: TR_LANE_CHAR[n.lane], x: (n.lane + 0.5) * tr.laneW, y: tr.hitY, vy: -55, life: 0.5 });
-      trSfxHit(n.pitch, true);
-    } else if (!tr.laneDown[n.lane]){
-      n.judged = true;
-      n.holding = false;
-      tr.combo = 0;
-      trJudge('soltaste antes', '#ff8f8f');
-      trSfxFail();
-    }
-  }
-
-  /* Pulso de fondo: uno por negra, el mismo compás que marca el metrónomo, y
-     más marcado en el primer tiempo. Late toque o no toque el jugador — es
-     metrónomo visual, no feedback de puntería. */
-  while (tr.nextPulseBeat < tr.totalBeats && trBeatTime(tr.nextPulseBeat) <= tr.time){
-    tr.pulse = (tr.nextPulseBeat % TR_BEATS_PER_BAR === 0) ? 1 : 0.55;
-    tr.nextPulseBeat++;
-  }
-  if (tr.pulse > 0) tr.pulse = Math.max(0, tr.pulse - dt * 5);
-
-  const gc = tr.gc, ctx = tr.ctx;
-  ctx.clearRect(0, 0, gc.width, gc.height);
-
-  if (tr.pulse > 0){
-    ctx.fillStyle = `rgba(255,255,255,${tr.pulse * 0.10})`;
-    ctx.fillRect(0, 0, gc.width, gc.height);
-  }
-
-  for (let i = 0; i < TR_LANES; i++){
-    if (tr.lanePulse[i] > 0) tr.lanePulse[i] -= dt;
-    if (tr.lanePulse[i] > 0){
-      ctx.fillStyle = `rgba(255,230,109,${(tr.lanePulse[i]/0.18)*0.18})`;
-      ctx.fillRect(i*tr.laneW, 0, tr.laneW, gc.height);
-    }
-    if (i > 0){
-      ctx.fillStyle = 'rgba(255,255,255,.08)';
-      ctx.fillRect(Math.round(i*tr.laneW), 0, 1, gc.height);
-    }
-  }
-
-  /* Franja de acierto: es exactamente la ventana "bien", así el jugador ve
-     dónde tiene que estar la nota al tocar en vez de adivinarlo. Asimétrica
-     como la ventana real: hacia arriba de la línea (nota que todavía baja,
-     toque temprano) llega más lejos que hacia abajo (nota que ya pasó, toque
-     tarde). La línea se engrosa con el pulso: es el mismo "metrónomo" de
-     arriba, solo que acá se ve justo donde hay que estar mirando. */
-  const bandaArriba = TR_GOOD_EARLY * tr.speed;
-  const bandaAbajo = TR_GOOD_LATE * tr.speed;
-  ctx.fillStyle = 'rgba(255,230,109,.10)';
-  ctx.fillRect(0, tr.hitY - bandaArriba, gc.width, bandaArriba + bandaAbajo);
-  ctx.fillStyle = `rgba(255,230,109,${0.55 + tr.pulse*0.4})`;
-  const grosor = 2 + tr.pulse*3;
-  ctx.fillRect(0, tr.hitY - grosor/2, gc.width, grosor);
-  for (let i = 0; i < TR_LANES; i++){
-    ctx.globalAlpha = 0.45;
-    drawEmoji(ctx, TR_LANE_CHAR[i], 15, (i + 0.5)*tr.laneW, tr.hitY + 14);
-    ctx.globalAlpha = 1;
-  }
-
-  /* El chart está ordenado por tiempo: el cursor salta las notas ya resueltas del
-     principio y el break corta las que todavía no entran en pantalla, así cada
-     frame solo toca las que se ven. */
-  while (tr.cursor < tr.notes.length && tr.notes[tr.cursor].judged) tr.cursor++;
-  let quedan = tr.cursor < tr.notes.length;
-  for (let i = tr.cursor; i < tr.notes.length; i++){
-    const n = tr.notes[i];
-    if (n.judged) continue;
-    const falta = n.t - tr.time;                   // >0 todavía viene bajando
-    /* Una sostenida ya empezada no se juzga por estas dos reglas (ni "todavía
-       no entra en pantalla" ni "se pasó de largo, fallo"): mientras se está
-       sosteniendo, falta ya es negativo por diseño, y quien la resuelve es el
-       bloque de arriba, no esto. */
-    if (!n.holding){
-      if (falta > TR_APPROACH) break;               // aún no entra en pantalla
-      if (falta < -TR_GOOD_LATE){                    // se pasó de largo: fallo
-        n.judged = true;
-        tr.combo = 0;
-        trJudge('fallo', '#ff8f8f');
-        trSfxFail();
-        continue;
-      }
-    }
-    const y = n.holding ? tr.hitY : tr.hitY - falta * tr.speed;
-    const x = (n.lane + 0.5) * tr.laneW;
-
-    if (n.hold){
-      /* Cola por encima de la cabeza: su largo es cuánto hay que sostenerla.
-         Mientras se sostiene, se va acortando a medida que falta menos. */
-      const restante = n.holding ? Math.max(0, (n.t + n.holdSec) - tr.time) : n.holdSec;
-      ctx.fillStyle = 'rgba(143,208,255,.35)';
-      ctx.fillRect(x-5, y - restante*tr.speed, 10, restante*tr.speed);
-    }
-
-    ctx.beginPath();
-    ctx.arc(x, y, 13, 0, Math.PI*2);
-    ctx.fillStyle = n.hold ? 'rgba(143,208,255,.28)' : 'rgba(255,230,109,.16)';
-    ctx.fill();
-    drawEmoji(ctx, TR_LANE_CHAR[n.lane], 20, x, y);
-  }
-
-  for (let i = tr.fx.length - 1; i >= 0; i--){
-    const f = tr.fx[i];
-    f.life -= dt;
-    if (f.life <= 0){ tr.fx.splice(i, 1); continue; }
-    f.y += f.vy * dt;
-    ctx.globalAlpha = Math.min(1, f.life * 2);
-    drawEmoji(ctx, f.char, 16, f.x, f.y);
-  }
-  ctx.globalAlpha = 1;
-
-  ctx.font = '11px monospace';
-  ctx.textBaseline = 'alphabetic';
-  ctx.textAlign = 'left';
-  ctx.fillStyle = '#fff';
-  ctx.fillText('🎵 ' + tr.score, 8, 16);
-  ctx.textAlign = 'right';
-  ctx.fillStyle = trMultiplier() > 1 ? '#ffe66d' : '#fff';
-  ctx.fillText(`combo ${tr.combo}  x${trMultiplier()}`, gc.width - 8, 16);
-
-  if (tr.time < tr.judgeUntil){
-    ctx.textAlign = 'center';
-    ctx.fillStyle = tr.judgeColor;
-    ctx.fillText(tr.judgeText, gc.width/2, tr.hitY - 26);
-  }
-
-  /* Media pausa al final para alcanzar a ver el veredicto de la última nota. */
-  if (!quedan){
-    if (!tr.endAt) tr.endAt = tr.time + 0.8;
-    if (tr.time >= tr.endAt){ endTapGame(); return; }
-  }
-  tr.raf = requestAnimationFrame(trLoop);
-}
-
-function trDispose(){
-  if (!tr) return;
-  tr.gc.removeEventListener('pointerdown', tr.onDown);
-  tr.gc.removeEventListener('pointerup', tr.onUp);
-  tr.gc.removeEventListener('pointercancel', tr.onUp);
-  window.removeEventListener('keydown', tr.onKeyDown);
-  window.removeEventListener('keyup', tr.onKeyUp);
-  tr.pointer.dispose();
-  if (tr.raf) cancelAnimationFrame(tr.raf);
-}
-
-function endTapGame(){
-  const score = tr ? tr.score : 0;
-  const bestCombo = tr ? tr.bestCombo : 0;
-  const perfects = tr ? tr.perfects : 0;
-  trDispose();
-  tr = null;
-
-  const message = score > 0
-    ? `${score} pts · ${perfects} perfectos (combo ${bestCombo})`
-    : 'Se te fue el ritmo…';
-
-  finishMinigame('tap', { score, merit: score * 0.13, energyCost: 20, message });
-}
-
-/* ===================== Prototipo: Tap prueba =====================
-   Variante de prueba del Tap rítmico, para probar si una melodía
-   compuesta a mano (en vez de un tono al azar por nota) y una progresión de
-   acordes (en vez de un Bm fijo) hacen que suene más a canción de verdad.
-   Todo lo demás — grilla rítmica, rampas de dificultad, ventanas de
-   acierto, holds/dobles, input — es EXACTAMENTE el mismo sistema que ya
-   está probado en el tap rítmico real (comparten hasta las funciones de
-   sonido, trSfxHit/trSfxFail). Solo se lanza desde el panel de prueba
-   (dbgTapPrueba), a propósito: es para escuchar la idea antes de decidir si
-   reemplaza al tap rítmico real. */
-
-/* Frase de 4 compáses en Si menor natural, compuesta a mano (índices dentro
-   de TR_SCALE: 1=B4, 3=D5, 5=F#5, 7=A5, etc). Se repite en loop mientras dura
-   el chart. Compás 1 sube (tónica-3ª-5ª-7ª), compás 2 baja por grados,
-   compás 3 rebota en tensión y el compás 4 baja y resuelve otra vez en la
-   tónica antes de repetir. */
-const TP_LOOP_BEATS = 16;   // 4 compáses de 4 negras
-const TP_MELODY = [
-  1, 3, 5, 7,   // compás 1: B  D  F#  A   (sube)
-  6, 5, 4, 3,   // compás 2: G  F#  E  D   (baja)
-  4, 5, 6, 5,   // compás 3: E  F#  G  F#  (rebote)
-  4, 3, 2, 1,   // compás 4: E  D  C#  B   (baja y resuelve)
-];
-
-/* Una corchea a mitad de camino entre dos negras no tiene nota propia en la
-   melodía: toma la del pulso que viene (anticipación), un recurso melódico
-   normal y más simple que componer 32 notas en vez de 16. */
-function tpPitchAt(beat){
-  const base = Math.floor(beat);
-  const esCorchea = beat - base > 0.25;
-  const pos = ((base % TP_LOOP_BEATS) + TP_LOOP_BEATS) % TP_LOOP_BEATS;
-  return esCorchea ? TP_MELODY[(pos + 1) % TP_LOOP_BEATS] : TP_MELODY[pos];
-}
-
-/* Progresión i-VI-III-VII en Si menor natural (Bm-G-D-A), un acorde por
-   compás, en vez del Bm fijo del tap rítmico real. Mismo voicing abierto que
-   TR_PAD_CHORD (fundamental, quinta, tercera una octava arriba). */
-const TP_CHORDS = [
-  [246.94, 369.99, 587.33],  // Bm (i):   B3, F#4, D5
-  [196.00, 293.66, 493.88],  // G  (VI):  G3, D4,  B4
-  [146.83, 220.00, 369.99],  // D  (III): D3, A3,  F#4
-  [110.00, 164.81, 277.18],  // A  (VII): A2, E3,  C#4
-];
-
-let tp = null;
-
-/* Idéntico a trBuildChart en carriles/timing/dificultad — el único cambio
-   real es que push() ya no sortea el tono, lo saca de tpPitchAt(beat) según
-   la posición dentro del compás. */
-function tpBuildChart(){
-  const notes = [];
-  const busyUntil = [0, 0, 0];
-  let recentLanes = [];
-  let recentT = -99;
-
-  const pickLane = (t, excluir = []) => {
-    const libres = [0, 1, 2].filter(l => busyUntil[l] <= t && !excluir.includes(l));
-    if (!libres.length) return null;
-    const sinRepetir = libres.filter(l => !recentLanes.includes(l));
-    let pool = libres;
-    if (t - recentT < TR_MIN_SAME_LANE_GAP){
-      if (!sinRepetir.length) return null;
-      pool = sinRepetir;
-    } else if (sinRepetir.length && Math.random() < 0.78){
-      pool = sinRepetir;
-    }
-    return pool[Math.floor(Math.random() * pool.length)];
-  };
-
-  const push = (t, lane, holdSec, beat) => {
-    const pitch = tpPitchAt(beat);
-    notes.push({ t, lane, pitch, judged: false, hold: holdSec > 0, holding: false, holdSec });
-    if (holdSec > 0) busyUntil[lane] = t + holdSec + TR_MIN_SAME_LANE_GAP;
-    return lane;
-  };
-
-  for (let b = 0; b < TR_CHART_BEATS; b++){
-    const progress = b / TR_CHART_BEATS;
-    const t = trBeatTime(TR_LEAD_IN_BEATS + b);
-
-    const lane = pickLane(t);
-    if (lane === null) continue;
-
-    const esHold = Math.random() < trRamp(TR_HOLD_CHANCE, progress);
-    push(t, lane, esHold ? TR_HOLD_SEC : 0, b);
-    const usados = [lane];
-
-    if (!esHold && Math.random() < trRamp(TR_DOUBLE_CHANCE, progress)){
-      const pareja = pickLane(t, [lane]);
-      if (pareja !== null) usados.push(push(t, pareja, 0, b));
-    }
-    recentLanes = usados;
-    recentT = t;
-
-    if (Math.random() < trRamp(TR_OFFBEAT_CHANCE, progress)){
-      const tOff = trBeatTime(TR_LEAD_IN_BEATS + b + 0.5);
-      const laneOff = pickLane(tOff);
-      if (laneOff !== null){
-        recentLanes = [push(tOff, laneOff, 0, b + 0.5)];
-        recentT = tOff;
-      }
-    }
-  }
-  return notes;
-}
-
-function startTapPruebaGame(){
-  const { gc, ctx } = enterMinigame('tapPrueba');
-  const audioT0 = audioNow();
-
-  tp = {
-    ctx, gc,
-    notes: tpBuildChart(),
-    fx: [],
-    score: 0,
-    combo: 0,
-    bestCombo: 0,
-    perfects: 0,
-    hits: 0,
-    laneW: gc.width / TR_LANES,
-    hitY: gc.height - 26,
-    time: 0,
-    cursor: 0,
-    endAt: 0,
-    judgeText: '',
-    judgeColor: '#fff',
-    judgeUntil: 0,
-    lanePulse: [0, 0, 0],
-    laneDown: [false, false, false],
-    canvasPointers: new Map(),
-    pulse: 0,
-    nextPulseBeat: 0,
-    nextBeat: 0,
-    audioStart: audioT0 === null ? null : audioT0 + TR_START_DELAY,
-    totalBeats: TR_LEAD_IN_BEATS + TR_CHART_BEATS,
-    pointer: makeCanvasPointer(gc),
-    raf: null,
-    lastT: 0,
-  };
-  tp.speed = (tp.hitY + 26) / TR_APPROACH;
-
-  tp.onDown = (e) => {
-    e.preventDefault();
-    const { x } = tp.pointer.at(e);
-    const lane = Math.max(0, Math.min(TR_LANES-1, Math.floor(x / tp.laneW)));
-    tp.canvasPointers.set(e.pointerId, lane);
-    tpPress(lane);
-  };
-  tp.onUp = (e) => {
-    const lane = tp.canvasPointers.get(e.pointerId);
-    if (lane === undefined) return;
-    tp.canvasPointers.delete(e.pointerId);
-    tpRelease(lane);
-  };
-  gc.addEventListener('pointerdown', tp.onDown);
-  gc.addEventListener('pointerup', tp.onUp);
-  gc.addEventListener('pointercancel', tp.onUp);
-
-  const cont = showGameControls(`
-    <div class="gbtn-row">
-      ${TR_LANE_CHAR.map((c, i) => `<button class="gbtn" data-lane="${i}">${c}</button>`).join('')}
-    </div>
-  `);
-  cont.querySelectorAll('[data-lane]').forEach(el => {
-    const lane = +el.dataset.lane;
-    el.addEventListener('pointerdown', (e) => { e.preventDefault(); tpPress(lane); });
-    el.addEventListener('pointerup', () => tpRelease(lane));
-    el.addEventListener('pointercancel', () => tpRelease(lane));
-    el.addEventListener('pointerleave', () => tpRelease(lane));
-  });
-
-  const KEY_LANE = { '1':0, '2':1, '3':2, a:0, s:1, d:2, ArrowLeft:0, ArrowDown:1, ArrowRight:2 };
-  tp.onKeyDown = (e) => {
-    const idx = KEY_LANE[e.key];
-    if (idx !== undefined){ e.preventDefault(); tpPress(idx); }
-  };
-  tp.onKeyUp = (e) => {
-    const idx = KEY_LANE[e.key];
-    if (idx !== undefined) tpRelease(idx);
-  };
-  window.addEventListener('keydown', tp.onKeyDown);
-  window.addEventListener('keyup', tp.onKeyUp);
-
-  say('Prueba: melodía fija + acordes en progresión');
-  tp.raf = requestAnimationFrame(tpLoop);
-}
-
-function tpMultiplier(){
-  return Math.min(4, 1 + Math.floor(tp.combo / 10));
-}
-
-function tpJudge(text, color){
-  tp.judgeText = text;
-  tp.judgeColor = color;
-  tp.judgeUntil = tp.time + 0.5;
-}
-
-function tpPress(lane){
-  if (!tp || tp.laneDown[lane]) return;
-  tp.laneDown[lane] = true;
-  tp.lanePulse[lane] = 0.18;
-
-  let mejor = null, mejorDist = Infinity;
-  for (const n of tp.notes){
-    if (n.judged || n.holding || n.lane !== lane) continue;
-    const dist = Math.abs(n.t - tp.time);
-    if (dist < mejorDist){ mejorDist = dist; mejor = n; }
-  }
-
-  const dist = mejor ? tp.time - mejor.t : 0;
-  if (!mejor || dist > TR_GOOD_LATE || dist < -TR_GOOD_EARLY){
-    tp.combo = 0;
-    tpJudge('fallo', '#ff8f8f');
-    trSfxFail();
-    return;
-  }
-
-  const at = tp.audioStart === null ? 0 : tp.audioStart + mejor.t;
-
-  if (mejor.hold){
-    mejor.holding = true;
-    tpJudge('¡mantené!', '#8fd0ff');
-    tp.fx.push({ char: TR_LANE_CHAR[lane], x: (lane + 0.5) * tp.laneW, y: tp.hitY, vy: -40, life: 0.4 });
-    trSfxHit(mejor.pitch, false, at);
-    return;
-  }
-
-  mejor.judged = true;
-  tp.combo += 1;
-  if (tp.combo > tp.bestCombo) tp.bestCombo = tp.combo;
-  tp.hits += 1;
-
-  const perfecto = mejorDist <= TR_PERFECT;
-  if (perfecto) tp.perfects += 1;
-  tp.score += (perfecto ? 3 : 1) * tpMultiplier();
-  tpJudge(perfecto ? '¡PERFECTO!' : 'bien', perfecto ? '#ffe66d' : '#c8f2c2');
-  tp.fx.push({ char: TR_LANE_CHAR[lane], x: (lane + 0.5) * tp.laneW, y: tp.hitY, vy: -55, life: 0.5 });
-  trSfxHit(mejor.pitch, perfecto, at);
-}
-
-function tpRelease(lane){
-  if (!tp) return;
-  tp.laneDown[lane] = false;
-}
-
-function tpAdvanceClock(dt){
-  const now = audioNow();
-  if (now === null){ tp.time += dt; return; }
-  if (tp.audioStart === null) tp.audioStart = now - tp.time;
-  tp.time = now - tp.audioStart;
-}
-
-/* Único cambio real contra trScheduleTrack: el acorde ya no es siempre Bm,
-   sale de TP_CHORDS según en qué compás va (progresión i-VI-III-VII). */
-function tpScheduleTrack(){
-  if (tp.audioStart === null) return;
-  const now = audioNow();
-  if (now === null) return;
-
-  while (tp.nextBeat < tp.totalBeats && trBeatTime(tp.nextBeat) < tp.time + TR_SCHEDULE_AHEAD){
-    const beat = tp.nextBeat++;
-    const at = tp.audioStart + trBeatTime(beat);
-    if (at < now) continue;
-
-    const acento = beat % TR_BEATS_PER_BAR === 0;
-    tone({
-      freq: acento ? TR_CLICK_ACCENT : TR_CLICK_BEAT,
-      durationMs: acento ? 45 : 28,
-      type: 'sine',
-      vol: acento ? 0.055 : 0.03,
-      at,
-    });
-
-    if (acento){
-      const bar = Math.floor(beat / TR_BEATS_PER_BAR) % TP_CHORDS.length;
-      for (const freq of TP_CHORDS[bar]){
-        tone({
-          freq,
-          durationMs: TR_BEAT_SEC * TR_BEATS_PER_BAR * 1000 * 0.92,
-          type: 'triangle',
-          vol: TR_PAD_VOL,
-          at,
-          attackMs: TR_PAD_ATTACK_MS,
-        });
-      }
-    }
-  }
-}
-
-function tpLoop(t){
-  if (activeMinigame !== 'tapPrueba' || !tp) return;
-  const dt = Math.min(0.05, (t - (tp.lastT || t)) / 1000);
-  tp.lastT = t;
-  tpAdvanceClock(dt);
-  tpScheduleTrack();
-
-  for (const n of tp.notes){
-    if (!n.holding || n.judged) continue;
-    if (tp.time >= n.t + n.holdSec){
-      n.judged = true;
-      n.holding = false;
-      tp.combo += 1;
-      if (tp.combo > tp.bestCombo) tp.bestCombo = tp.combo;
-      tp.hits += 1;
-      tp.perfects += 1;
-      tp.score += 4 * tpMultiplier();
-      tpJudge('¡PERFECTO!', '#ffe66d');
-      tp.fx.push({ char: TR_LANE_CHAR[n.lane], x: (n.lane + 0.5) * tp.laneW, y: tp.hitY, vy: -55, life: 0.5 });
-      trSfxHit(n.pitch, true);
-    } else if (!tp.laneDown[n.lane]){
-      n.judged = true;
-      n.holding = false;
-      tp.combo = 0;
-      tpJudge('soltaste antes', '#ff8f8f');
-      trSfxFail();
-    }
-  }
-
-  while (tp.nextPulseBeat < tp.totalBeats && trBeatTime(tp.nextPulseBeat) <= tp.time){
-    tp.pulse = (tp.nextPulseBeat % TR_BEATS_PER_BAR === 0) ? 1 : 0.55;
-    tp.nextPulseBeat++;
-  }
-  if (tp.pulse > 0) tp.pulse = Math.max(0, tp.pulse - dt * 5);
-
-  const gc = tp.gc, ctx = tp.ctx;
-  ctx.clearRect(0, 0, gc.width, gc.height);
-
-  if (tp.pulse > 0){
-    ctx.fillStyle = `rgba(255,255,255,${tp.pulse * 0.10})`;
-    ctx.fillRect(0, 0, gc.width, gc.height);
-  }
-
-  for (let i = 0; i < TR_LANES; i++){
-    if (tp.lanePulse[i] > 0) tp.lanePulse[i] -= dt;
-    if (tp.lanePulse[i] > 0){
-      ctx.fillStyle = `rgba(255,230,109,${(tp.lanePulse[i]/0.18)*0.18})`;
-      ctx.fillRect(i*tp.laneW, 0, tp.laneW, gc.height);
-    }
-    if (i > 0){
-      ctx.fillStyle = 'rgba(255,255,255,.08)';
-      ctx.fillRect(Math.round(i*tp.laneW), 0, 1, gc.height);
-    }
-  }
-
-  const bandaArriba = TR_GOOD_EARLY * tp.speed;
-  const bandaAbajo = TR_GOOD_LATE * tp.speed;
-  ctx.fillStyle = 'rgba(255,230,109,.10)';
-  ctx.fillRect(0, tp.hitY - bandaArriba, gc.width, bandaArriba + bandaAbajo);
-  ctx.fillStyle = `rgba(255,230,109,${0.55 + tp.pulse*0.4})`;
-  const grosor = 2 + tp.pulse*3;
-  ctx.fillRect(0, tp.hitY - grosor/2, gc.width, grosor);
-  for (let i = 0; i < TR_LANES; i++){
-    ctx.globalAlpha = 0.45;
-    drawEmoji(ctx, TR_LANE_CHAR[i], 15, (i + 0.5)*tp.laneW, tp.hitY + 14);
-    ctx.globalAlpha = 1;
-  }
-
-  while (tp.cursor < tp.notes.length && tp.notes[tp.cursor].judged) tp.cursor++;
-  let quedan = tp.cursor < tp.notes.length;
-  for (let i = tp.cursor; i < tp.notes.length; i++){
-    const n = tp.notes[i];
-    if (n.judged) continue;
-    const falta = n.t - tp.time;
-    if (!n.holding){
-      if (falta > TR_APPROACH) break;
-      if (falta < -TR_GOOD_LATE){
-        n.judged = true;
-        tp.combo = 0;
-        tpJudge('fallo', '#ff8f8f');
-        trSfxFail();
-        continue;
-      }
-    }
-    const y = n.holding ? tp.hitY : tp.hitY - falta * tp.speed;
-    const x = (n.lane + 0.5) * tp.laneW;
-
-    if (n.hold){
-      const restante = n.holding ? Math.max(0, (n.t + n.holdSec) - tp.time) : n.holdSec;
-      ctx.fillStyle = 'rgba(143,208,255,.35)';
-      ctx.fillRect(x-5, y - restante*tp.speed, 10, restante*tp.speed);
-    }
-
-    ctx.beginPath();
-    ctx.arc(x, y, 13, 0, Math.PI*2);
-    ctx.fillStyle = n.hold ? 'rgba(143,208,255,.28)' : 'rgba(255,230,109,.16)';
-    ctx.fill();
-    drawEmoji(ctx, TR_LANE_CHAR[n.lane], 20, x, y);
-  }
-
-  for (let i = tp.fx.length - 1; i >= 0; i--){
-    const f = tp.fx[i];
-    f.life -= dt;
-    if (f.life <= 0){ tp.fx.splice(i, 1); continue; }
-    f.y += f.vy * dt;
-    ctx.globalAlpha = Math.min(1, f.life * 2);
-    drawEmoji(ctx, f.char, 16, f.x, f.y);
-  }
-  ctx.globalAlpha = 1;
-
-  ctx.font = '11px monospace';
-  ctx.textBaseline = 'alphabetic';
-  ctx.textAlign = 'left';
-  ctx.fillStyle = '#fff';
-  ctx.fillText('🎵 ' + tp.score, 8, 16);
-  ctx.textAlign = 'right';
-  ctx.fillStyle = tpMultiplier() > 1 ? '#ffe66d' : '#fff';
-  ctx.fillText(`combo ${tp.combo}  x${tpMultiplier()}`, gc.width - 8, 16);
-
-  if (tp.time < tp.judgeUntil){
-    ctx.textAlign = 'center';
-    ctx.fillStyle = tp.judgeColor;
-    ctx.fillText(tp.judgeText, gc.width/2, tp.hitY - 26);
-  }
-
-  if (!quedan){
-    if (!tp.endAt) tp.endAt = tp.time + 0.8;
-    if (tp.time >= tp.endAt){ endTapPruebaGame(); return; }
-  }
-  tp.raf = requestAnimationFrame(tpLoop);
-}
-
-function tpDispose(){
-  if (!tp) return;
-  tp.gc.removeEventListener('pointerdown', tp.onDown);
-  tp.gc.removeEventListener('pointerup', tp.onUp);
-  tp.gc.removeEventListener('pointercancel', tp.onUp);
-  window.removeEventListener('keydown', tp.onKeyDown);
-  window.removeEventListener('keyup', tp.onKeyUp);
-  tp.pointer.dispose();
-  if (tp.raf) cancelAnimationFrame(tp.raf);
-}
-
-function endTapPruebaGame(){
-  const score = tp ? tp.score : 0;
-  const bestCombo = tp ? tp.bestCombo : 0;
-  const perfects = tp ? tp.perfects : 0;
-  tpDispose();
-  tp = null;
-
-  const message = score > 0
-    ? `${score} pts · ${perfects} perfectos (combo ${bestCombo})`
-    : 'Se te fue el ritmo…';
-
-  finishMinigame('tapPrueba', { score, merit: score * 0.13, energyCost: 20, message });
-}
-
-
-/* ===================== Minijuego 5: snake =====================
-   Se controla deslizando el dedo (o con flechas / WASD). El giro se registra en
-   pointermove y no al soltar: así se pueden encadenar dos curvas sin levantar
-   el dedo, que es lo que se necesita cuando ya va rápido. */
-
-const SN_CELL = 14;
-const SN_HUD = 22;
-const SN_START_MS = 190;   // ms por paso al empezar
-const SN_MIN_MS = 85;      // lo más rápido que llega a ir
-const SN_SPEEDUP = 4;      // ms menos por manzana
-const SN_SWIPE = 20;       // px de deslizamiento para que cuente como giro
-
-let sn = null;
-
-function startSnakeGame(){
-  const { gc, ctx } = enterMinigame('snake');
-  const cols = Math.floor(gc.width / SN_CELL);
-  const rows = Math.floor((gc.height - SN_HUD) / SN_CELL);
-  const cx = Math.floor(cols/2), cy = Math.floor(rows/2);
-
-  sn = {
-    ctx, gc, cols, rows,
-    offX: Math.floor((gc.width - cols*SN_CELL) / 2),
-    offY: SN_HUD,
-    body: [{x:cx, y:cy}, {x:cx-1, y:cy}, {x:cx-2, y:cy}],
-    dir: { x:1, y:0 },
-    nextDir: { x:1, y:0 },
-    food: null,
-    score: 0,
-    stepMs: SN_START_MS - 50*levelT(),   // 190 → 140 ms en nivel 5
-    acc: 0,
-    dead: false,
-    deadUntil: 0,
-    swipeFrom: null,
-    pointer: makeCanvasPointer(gc),
-    raf: null, lastT: 0,
-  };
-  snPlaceFood();
-
-  sn.onKeyDown = (e) => {
-    const d = { ArrowUp:[0,-1], ArrowDown:[0,1], ArrowLeft:[-1,0], ArrowRight:[1,0],
-                w:[0,-1], s:[0,1], a:[-1,0], d:[1,0] }[e.key];
-    if (!d) return;
-    e.preventDefault();
-    snTurn(d[0], d[1]);
-  };
-  window.addEventListener('keydown', sn.onKeyDown);
-
-  /* La cruceta va abajo con los mandos. Se deja además el deslizamiento sobre la
-     pantalla porque a mucha gente le sale más natural en snake, pero ya no es la
-     única forma de jugar. */
-  sn.onDown = (e) => { e.preventDefault(); sn.swipeFrom = sn.pointer.at(e); };
-  sn.onMove = (e) => {
-    if (!sn.swipeFrom) return;
-    const to = sn.pointer.at(e);
-    const dx = to.x - sn.swipeFrom.x, dy = to.y - sn.swipeFrom.y;
-    if (Math.hypot(dx, dy) < SN_SWIPE) return;
-    if (Math.abs(dx) > Math.abs(dy)) snTurn(Math.sign(dx), 0);
-    else snTurn(0, Math.sign(dy));
-    sn.swipeFrom = to;   // deja encadenar el siguiente giro sin levantar el dedo
-  };
-  sn.onUp = () => { sn.swipeFrom = null; };
-  gc.addEventListener('pointerdown', sn.onDown);
-  gc.addEventListener('pointermove', sn.onMove);
-  gc.addEventListener('pointerup', sn.onUp);
-  gc.addEventListener('pointercancel', sn.onUp);
-
-  const cont = showGameControls(`
-    <div class="gpad">
-      <button class="gbtn up"    data-dir="0,-1">▲</button>
-      <button class="gbtn left"  data-dir="-1,0">◀</button>
-      <button class="gbtn down"  data-dir="0,1">▼</button>
-      <button class="gbtn right" data-dir="1,0">▶</button>
-    </div>
-  `);
-  cont.querySelectorAll('[data-dir]').forEach(el => {
-    const [dx, dy] = el.dataset.dir.split(',').map(Number);
-    wireGameButton(el, () => snTurn(dx, dy));
-  });
-
-  say('¡Usa la cruceta para girar!');
-  sn.raf = requestAnimationFrame(snLoop);
-}
-
-/* Se compara contra `dir` (la dirección del último paso ya dado) y no contra
-   `nextDir`: si no, dos giros dentro del mismo paso permiten volverse 180° sobre
-   el propio cuerpo y morir sin haber hecho nada raro. */
-function snTurn(x, y){
-  if (!sn || sn.dead) return;
-  if (x === -sn.dir.x && y === -sn.dir.y) return;
-  sn.nextDir = { x, y };
-}
-
-function snPlaceFood(){
-  const libres = [];
-  for (let y = 0; y < sn.rows; y++){
-    for (let x = 0; x < sn.cols; x++){
-      if (!sn.body.some(s => s.x === x && s.y === y)) libres.push({ x, y });
-    }
-  }
-  sn.food = libres.length ? libres[Math.floor(Math.random()*libres.length)] : null;
-}
-
-function snStep(){
-  sn.dir = sn.nextDir;
-  const head = sn.body[0];
-  const nx = head.x + sn.dir.x, ny = head.y + sn.dir.y;
-
-  if (nx < 0 || ny < 0 || nx >= sn.cols || ny >= sn.rows){ snDie(); return; }
-  /* La cola se corre en el mismo paso, así que pisar el último segmento no mata
-     (salvo que justo se coma, y ahí la cola no se mueve). */
-  const chocaConsigo = sn.body.some((s, i) => i < sn.body.length - 1 && s.x === nx && s.y === ny);
-  if (chocaConsigo){ snDie(); return; }
-
-  sn.body.unshift({ x:nx, y:ny });
-  if (sn.food && nx === sn.food.x && ny === sn.food.y){
-    sn.score += 1;
-    sn.stepMs = Math.max(SN_MIN_MS - 15*levelT(), sn.stepMs - SN_SPEEDUP*(1 + 0.5*levelT()));
-    snPlaceFood();
-  } else {
-    sn.body.pop();
-  }
-}
-
-function snDie(){
-  sn.dead = true;
-  sn.deadUntil = performance.now() + 900;   // deja ver dónde se chocó
-}
-
-function snDraw(){
-  const { ctx, gc } = sn;
-  ctx.clearRect(0, 0, gc.width, gc.height);
-
-  ctx.fillStyle = 'rgba(0,0,0,.18)';
-  ctx.fillRect(sn.offX, sn.offY, sn.cols*SN_CELL, sn.rows*SN_CELL);
-
-  if (sn.food){
-    drawEmoji(ctx, '🍎', SN_CELL, sn.offX + (sn.food.x+0.5)*SN_CELL, sn.offY + (sn.food.y+0.5)*SN_CELL);
-  }
-
-  for (let i = sn.body.length - 1; i >= 0; i--){
-    const s = sn.body[i];
-    if (sn.dead)      ctx.fillStyle = i === 0 ? '#ff8f8f' : 'rgba(255,120,120,.5)';
-    else if (i === 0) ctx.fillStyle = '#ffe66d';
-    else              ctx.fillStyle = `rgba(200,242,194,${Math.max(0.35, 0.85 - i*0.012)})`;
-    ctx.fillRect(sn.offX + s.x*SN_CELL + 1, sn.offY + s.y*SN_CELL + 1, SN_CELL-2, SN_CELL-2);
-  }
-
-  ctx.font = '11px monospace';
-  ctx.textBaseline = 'alphabetic';
-  ctx.textAlign = 'left';
-  ctx.fillStyle = '#fff';
-  ctx.fillText('🍎 ' + sn.score, 8, 16);
-  ctx.textAlign = 'right';
-  ctx.fillStyle = sn.dead ? '#ff8f8f' : 'rgba(255,255,255,.7)';
-  ctx.fillText(sn.dead ? '¡chocaste!' : 'largo ' + sn.body.length, gc.width - 8, 16);
-}
-
-function snLoop(t){
-  if (activeMinigame !== 'snake' || !sn) return;
-  const dtMs = Math.min(120, t - (sn.lastT || t));
-  sn.lastT = t;
-
-  if (sn.dead){
-    snDraw();
-    if (performance.now() >= sn.deadUntil){ endSnakeGame(); return; }
-  } else {
-    sn.acc += dtMs;
-    while (sn.acc >= sn.stepMs && !sn.dead){
-      sn.acc -= sn.stepMs;
-      snStep();
-    }
-    snDraw();
-  }
-  sn.raf = requestAnimationFrame(snLoop);
-}
-
-function snDispose(){
-  if (!sn) return;
-  window.removeEventListener('keydown', sn.onKeyDown);
-  sn.gc.removeEventListener('pointerdown', sn.onDown);
-  sn.gc.removeEventListener('pointermove', sn.onMove);
-  sn.gc.removeEventListener('pointerup', sn.onUp);
-  sn.gc.removeEventListener('pointercancel', sn.onUp);
-  sn.pointer.dispose();
-  if (sn.raf) cancelAnimationFrame(sn.raf);
-}
-
-function endSnakeGame(){
-  const score = sn ? sn.score : 0;
-  const largo = sn ? sn.body.length : 0;
-  snDispose();
-  sn = null;
-
-  const message = score > 0 ? `${score} manzanas (largo ${largo})` : 'Se chocó al toque';
-  finishMinigame('snake', { score, merit: score * 2.2, energyCost: 20, message });
-}
-
-/* ===================== Minijuego 6: memorice de luces =====================
-   Diez luces en posiciones al azar. Se enciende una secuencia y hay que
-   repetirla tocándolas en el mismo orden; cada ronda suma una luz más. Un solo
-   error termina la partida. */
-
-const MM_LIGHTS = 10;
-const MM_START_LEN = 3;
-const MM_RADIUS = 16;
-const MM_HUD = 22;
-
-let mm = null;
-
-/* Casillas de una rejilla 4x3 barajadas, con la luz corrida al azar dentro de su
-   casilla. Sortear posiciones libres y descartar las que se pisan queda lindo en
-   el papel pero se amontona: con diez círculos en un canvas chico hay tiradas
-   donde no entra ninguna sin solaparse. Así siempre salen diez separadas y
-   tocables, y de todos modos cambian de lugar en cada partida. */
-function mmPlaceLights(gc){
-  const cols = 4, rows = 3;
-  const cw = gc.width / cols, ch = (gc.height - MM_HUD) / rows;
-  const casillas = [];
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) casillas.push({ c, r });
-  for (let i = casillas.length - 1; i > 0; i--){
-    const j = Math.floor(Math.random()*(i+1));
-    [casillas[i], casillas[j]] = [casillas[j], casillas[i]];
-  }
-  const jitterX = Math.max(0, cw/2 - MM_RADIUS - 3);
-  const jitterY = Math.max(0, ch/2 - MM_RADIUS - 3);
-  return casillas.slice(0, MM_LIGHTS).map(({ c, r }) => ({
-    x: c*cw + cw/2 + (Math.random()*2 - 1)*jitterX,
-    y: MM_HUD + r*ch + ch/2 + (Math.random()*2 - 1)*jitterY,
-  }));
-}
-
-function startMemoryGame(){
-  const { gc, ctx } = enterMinigame('memory');
-  mm = {
-    ctx, gc,
-    lights: mmPlaceLights(gc),
-    sequence: [],
-    round: 0,
-    step: 0,
-    phase: 'showing',   // 'showing' | 'input' | 'good' | 'fail'
-    lit: -1,
-    litUntil: 0,
-    wrong: -1,
-    timer: 0,
-    score: 0,
-    pointer: makeCanvasPointer(gc),
-    raf: null, lastT: 0,
-  };
-  mmNextRound();
-
-  mm.onDown = (e) => { e.preventDefault(); mmTap(mm.pointer.at(e)); };
-  gc.addEventListener('pointerdown', mm.onDown);
-
-  say('Mira la secuencia y repítela');
-  mm.raf = requestAnimationFrame(mmLoop);
-}
-
-/* La secuencia crece, no se sortea de nuevo: se apoya en lo que ya memorizaste.
-   Rehacerla entera cada ronda sería más difícil pero se siente arbitrario, y a
-   la sexta ronda ya nadie la sigue. */
-function mmNextRound(){
-  mm.round += 1;
-  const nuevas = mm.round === 1 ? MM_START_LEN + Math.round(2*levelT()) : 1;   // 3 → 5 luces en nivel 5
-  for (let i = 0; i < nuevas; i++){
-    mm.sequence.push(Math.floor(Math.random()*mm.lights.length));
-  }
-  mm.phase = 'showing';
-  mm.step = 0;
-  mm.lit = -1;
-  mm.wrong = -1;
-  mm.timer = 600;   // respiro antes de empezar a mostrar
-}
-
-function mmTap(pos){
-  if (!mm || mm.phase !== 'input') return;
-  const i = mm.lights.findIndex(l => Math.hypot(l.x - pos.x, l.y - pos.y) <= MM_RADIUS + 6);
-  if (i < 0) return;   // tocar el vacío no cuenta como error, simplemente no pasa nada
-
-  mm.lit = i;
-  mm.litUntil = performance.now() + 160;
-
-  if (i !== mm.sequence[mm.step]){
-    mm.wrong = i;
-    mm.phase = 'fail';
-    mm.timer = 950;
-    return;
-  }
-  mm.step += 1;
-  mm.score += 1;
-  if (mm.step >= mm.sequence.length){
-    mm.phase = 'good';
-    mm.timer = 550;
-  }
-}
-
-function mmDraw(){
-  const { ctx, gc } = mm;
-  ctx.clearRect(0, 0, gc.width, gc.height);
-
-  mm.lights.forEach((l, i) => {
-    const encendida = i === mm.lit;
-    const fallo = i === mm.wrong;
-    ctx.beginPath();
-    ctx.arc(l.x, l.y, MM_RADIUS, 0, Math.PI*2);
-    ctx.fillStyle = fallo ? 'rgba(255,90,90,.85)'
-                  : encendida ? 'rgba(255,230,109,.95)'
-                  : 'rgba(200,242,194,.12)';
-    ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = fallo ? '#ff6b6b' : encendida ? '#fff3b0' : 'rgba(200,242,194,.35)';
-    ctx.stroke();
-  });
-
-  ctx.font = '11px monospace';
-  ctx.textBaseline = 'alphabetic';
-  ctx.textAlign = 'left';
-  ctx.fillStyle = '#fff';
-  ctx.fillText('💡 ' + mm.score, 8, 16);
-  ctx.textAlign = 'right';
-  ctx.fillText(`ronda ${mm.round} · ${mm.sequence.length}`, gc.width - 8, 16);
-
-  ctx.textAlign = 'center';
-  if (mm.phase === 'showing'){
-    ctx.fillStyle = 'rgba(255,255,255,.75)';
-    ctx.fillText('mirá…', gc.width/2, 16);
-  } else if (mm.phase === 'input'){
-    ctx.fillStyle = '#ffe66d';
-    ctx.fillText(`tu turno  ${mm.step}/${mm.sequence.length}`, gc.width/2, 16);
-  } else if (mm.phase === 'fail'){
-    ctx.fillStyle = '#ff8f8f';
-    ctx.fillText('¡esa no era!', gc.width/2, 16);
-  }
-}
-
-function mmLoop(t){
-  if (activeMinigame !== 'memory' || !mm) return;
-  const dtMs = Math.min(120, t - (mm.lastT || t));
-  mm.lastT = t;
-  mm.timer -= dtMs;
-
-  if (mm.phase === 'showing'){
-    /* Acelera con la ronda: la secuencia larga además se muestra más rápido. */
-    const rapido = 1 - 0.3*levelT();   // -30% en nivel 5
-    const onMs  = Math.max(200, 420 - mm.round*18) * rapido;
-    const offMs = Math.max(90,  180 - mm.round*8) * rapido;
-    if (mm.timer <= 0){
-      if (mm.lit >= 0){
-        mm.lit = -1;
-        mm.step += 1;
-        mm.timer = offMs;
-        if (mm.step >= mm.sequence.length){ mm.phase = 'input'; mm.step = 0; }
-      } else {
-        mm.lit = mm.sequence[mm.step];
-        mm.timer = onMs;
-      }
-    }
-  } else if (mm.phase === 'input'){
-    if (mm.lit >= 0 && performance.now() >= mm.litUntil) mm.lit = -1;
-  } else if (mm.phase === 'good'){
-    if (mm.timer <= 0) mmNextRound();
-  } else if (mm.phase === 'fail'){
-    if (mm.timer <= 0){ endMemoryGame(); return; }
-  }
-
-  mmDraw();
-  mm.raf = requestAnimationFrame(mmLoop);
-}
-
-function mmDispose(){
-  if (!mm) return;
-  mm.gc.removeEventListener('pointerdown', mm.onDown);
-  mm.pointer.dispose();
-  if (mm.raf) cancelAnimationFrame(mm.raf);
-}
-
-function endMemoryGame(){
-  const score = mm ? mm.score : 0;
-  const rondas = mm ? mm.round - 1 : 0;   // la ronda en curso no se completó
-  mmDispose();
-  mm = null;
-
-  const message = rondas > 0 ? `${rondas} rondas · ${score} luces` : 'Se perdió en la primera';
-  finishMinigame('memory', { score, merit: score * 1.2, energyCost: 18, message });
-}
-
-/* ===================== Minijuego 7 (PRUEBA): combate =====================
-   Prototipo para probar el feel de la pelea antes de sumarlo al menú de Jugar.
-   Por ahora solo se lanza desde el panel de prueba (dbgCombat). El rival es
-   otra especie al azar (nunca la propia) — no hace falta arte nuevo, se
-   reusa el mismo drawPetAt() con debugForcedSpecies pisado un instante nada
-   más que para dibujar al rival (ver drawCombat()), y se restaura enseguida.
-
-   Mecánica: el rival telegrafía uno de tres ataques (un ícono arriba de su
-   cabeza) y hay que responder con el botón que le corresponde antes de que
-   se acabe el anillo de tiempo — igual que el resto de los minijuegos, es
-   lectura + reacción, no azar. Golpe y agarre solo evitan daño si se
-   responden bien (esquivar / bloquear); el ataque lento es el único que,
-   bien leído, deja contraatacar y hacerle daño de vuelta al rival. Números
-   sin calibrar todavía: es justo lo que hay que probar jugándolo. */
-
-const CB_ROUNDS = 8;
-const CB_PLAYER_HP = 3;
-const CB_RIVAL_HP = 3;
-const CB_IMPACT_MS = 380;   // dura el flash/sacudida/knockback de cada golpe
-const CB_END_MS = 1200;
-
-const CB_ATTACKS = {
-  golpe:  { icon: '👊', beats: 'esquivar' },
-  agarre: { icon: '🤜', beats: 'bloquear' },
-  lento:  { icon: '🐢', beats: 'contraatacar' },  // el único que se puede devolver
-};
-const CB_ATTACK_IDS = Object.keys(CB_ATTACKS);
-
-/* La ventana de reacción se achica con las rondas, mismo espíritu que
-   BB_DIFFICULTY en baloncesto. */
-function cbWindowMs(round){ return Math.max(420, 900 - round * 60); }
-
-let cb = null;
-
-function pickRivalSpecies(){
-  const mine = currentSpeciesId();
-  const opciones = SPECIES_IDS.filter(id => id !== mine);
-  const pool = opciones.length ? opciones : SPECIES_IDS;
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
-function startCombatGame(){
-  const { gc, ctx } = enterMinigame('combat');
-  const w = gc.width, h = gc.height;
-  cb = {
-    ctx, gc, w, h,
-    groundY: h - 4,
-    playerX: w * 0.22,
-    rivalX: w * 0.78,
-    rivalSpecies: pickRivalSpecies(),
-    round: 0,
-    playerHp: CB_PLAYER_HP,
-    rivalHp: CB_RIVAL_HP,
-    attack: null,
-    state: 'telegraph',    // 'telegraph' | 'impact' | 'end'
-    telegraphStart: 0,
-    telegraphMs: 0,
-    impactStart: 0,
-    lastHit: null,         // 'player' | 'rival' | 'dodge' — qué animar en el impacto
-    result: null,           // 'win' | 'lose' cuando termina
-    resultAt: 0,
-    raf: null,
-  };
-  cbNextRound();
-
-  const cont = showGameControls(`
-    <div class="game-hint" id="cbHint">¡Mirá qué viene y respondé!</div>
-    <div class="gbtn-row3">
-      <button class="gbtn gbtn-lg" id="btnDodge">🤸 Esquivar</button>
-      <button class="gbtn gbtn-lg" id="btnBlock">🛡️ Bloquear</button>
-      <button class="gbtn gbtn-lg" id="btnCounter">👊 Contra</button>
-    </div>
-  `);
-  cb.hintEl = cont.querySelector('#cbHint');
-  wireGameButton(cont.querySelector('#btnDodge'), () => cbPress('esquivar'));
-  wireGameButton(cont.querySelector('#btnBlock'), () => cbPress('bloquear'));
-  wireGameButton(cont.querySelector('#btnCounter'), () => cbPress('contraatacar'));
-
-  cb.raf = requestAnimationFrame(cbLoop);
-}
-
-function cbNextRound(){
-  cb.attack = CB_ATTACK_IDS[Math.floor(Math.random() * CB_ATTACK_IDS.length)];
-  cb.telegraphMs = cbWindowMs(cb.round);
-  cb.telegraphStart = performance.now();
-  cb.state = 'telegraph';
-  cb.lastHit = null;
-}
-
-/* Los tres botones responden siempre — no hay uno solo habilitado como en
-   Baloncesto, porque acá la gracia es elegir CUÁL de los tres es el
-   correcto, no esperar el momento de apretar el único que sirve. */
-function cbPress(which){
-  if (!cb || cb.state !== 'telegraph' || activeMinigame !== 'combat') return;
-  cbResolve(which);
-}
-
-/* which === null pasa cuando se acaba el tiempo sin ninguna respuesta: cuenta
-   como fallo, igual que apretar el botón que no corresponde. */
-function cbResolve(which){
-  const info = CB_ATTACKS[cb.attack];
-  const acierto = which === info.beats;
-
-  if (acierto && which === 'contraatacar'){
-    cb.rivalHp -= 1;
-    cb.lastHit = 'rival';
-    floatFx('💥');
-  } else if (acierto){
-    cb.lastHit = 'dodge';
-    floatFx('💨');
-  } else {
-    cb.playerHp -= 1;
-    cb.lastHit = 'player';
-    floatFx('💢');
-  }
-  cb.state = 'impact';
-  cb.impactStart = performance.now();
-}
-
-function cbEnd(won){
-  cb.state = 'end';
-  cb.result = won ? 'win' : 'lose';
-  cb.resultAt = performance.now();
-}
-
-function cbSyncButtons(){
-  if (!cb) return;
-  const cont = document.getElementById('gameControls');
-  const on = cb.state === 'telegraph';
-  ['btnDodge', 'btnBlock', 'btnCounter'].forEach(id => {
-    const el = cont.querySelector('#' + id);
-    if (el) el.disabled = !on;
-  });
-  if (cb.hintEl) cb.hintEl.textContent = on ? '¡Mirá qué viene y respondé!' : '';
-}
-
-function cbLoop(){
-  if (activeMinigame !== 'combat' || !cb) return;
-  const now = performance.now();
-
-  if (cb.state === 'telegraph'){
-    if (now - cb.telegraphStart >= cb.telegraphMs) cbResolve(null);
-  } else if (cb.state === 'impact'){
-    if (now - cb.impactStart >= CB_IMPACT_MS){
-      if (cb.rivalHp <= 0) cbEnd(true);
-      else if (cb.playerHp <= 0) cbEnd(false);
-      else if (cb.round + 1 >= CB_ROUNDS) cbEnd(cb.playerHp >= cb.rivalHp);
-      else { cb.round += 1; cbNextRound(); }
-    }
-  } else if (cb.state === 'end'){
-    if (now - cb.resultAt >= CB_END_MS){
-      finishCombatGame();
-      return;
-    }
-  }
-
-  cbSyncButtons();
-  drawCombat();
-  cb.raf = requestAnimationFrame(cbLoop);
-}
-
-function drawCombat(){
-  const { ctx, gc } = cb;
-  ctx.clearRect(0, 0, gc.width, gc.height);
-  ctx.save();
-
-  /* Sacudida de cámara: más fuerte si te pegan a vos que si le pegás al
-     rival, y nada si fue una esquiva/bloqueo limpio. */
-  if (cb.state === 'impact'){
-    const t = (performance.now() - cb.impactStart) / CB_IMPACT_MS;
-    const amp = (1 - t) * (cb.lastHit === 'player' ? 6 : cb.lastHit === 'rival' ? 4 : 0);
-    if (amp > 0) ctx.translate((Math.random()*2-1)*amp, (Math.random()*2-1)*amp);
-  }
-
-  ctx.font = '12px monospace';
-  ctx.textAlign = 'left';
-  ctx.fillStyle = 'rgba(255,255,255,.85)';
-  ctx.fillText(`Vos ${'❤️'.repeat(Math.max(0, cb.playerHp))}`, 8, 16);
-  ctx.textAlign = 'right';
-  ctx.fillText(`${'💚'.repeat(Math.max(0, cb.rivalHp))} Rival`, gc.width-8, 16);
-
-  ctx.strokeStyle = 'rgba(200,242,194,.25)';
-  ctx.beginPath();
-  ctx.moveTo(0, cb.groundY+2); ctx.lineTo(gc.width, cb.groundY+2); ctx.stroke();
-
-  /* Knockback: sale y vuelve en una sola pasada (misma idea que las
-     parábolas de baloncesto, pero en x y sin altura). */
-  let playerOffsetX = 0, rivalOffsetX = 0;
-  if (cb.state === 'impact'){
-    const t = Math.min(1, (performance.now() - cb.impactStart) / CB_IMPACT_MS);
-    const kb = Math.sin(t * Math.PI) * 10;
-    if (cb.lastHit === 'player') playerOffsetX = kb;
-    if (cb.lastHit === 'rival') rivalOffsetX = -kb;
-  }
-
-  /* El rival es otra especie: se pisa debugForcedSpecies solo para este
-     drawPetAt() y se restaura al toque, así no interfiere con el panel de
-     prueba si estaba forzando una especie propia. */
-  const prevForced = debugForcedSpecies;
-  debugForcedSpecies = cb.rivalSpecies;
-  const rivalMood = cb.state === 'end'
-    ? (cb.result === 'win' ? 'sad' : 'happy')
-    : (cb.lastHit === 'rival' ? 'sad' : 'normal');
-  drawPetAt(ctx, cb.rivalX + rivalOffsetX, cb.groundY, rivalMood, 2);
-  debugForcedSpecies = prevForced;
-
-  const playerMood = cb.state === 'end'
-    ? (cb.result === 'win' ? 'happy' : 'dead')
-    : (cb.lastHit === 'player' ? 'sad' : 'normal');
-  drawPetAt(ctx, cb.playerX + playerOffsetX, cb.groundY, playerMood, 2);
-
-  /* Flash de impacto: un rect semitransparente encima de a quién le pegaron. */
-  if (cb.state === 'impact' && cb.lastHit && cb.lastHit !== 'dodge'){
-    const t = (performance.now() - cb.impactStart) / CB_IMPACT_MS;
-    if (t < 0.4){
-      const alpha = (0.4 - t) / 0.4 * 0.5;
-      ctx.fillStyle = `rgba(255,80,80,${alpha})`;
-      const fx = cb.lastHit === 'player' ? cb.playerX : cb.rivalX;
-      ctx.fillRect(fx-32, cb.groundY-64, 64, 64);
-    }
-  }
-
-  /* Telegraph: ícono del ataque que viene + anillo de tiempo que se achica. */
-  if (cb.state === 'telegraph'){
-    const info = CB_ATTACKS[cb.attack];
-    drawEmoji(ctx, info.icon, 22, cb.rivalX, cb.groundY-80);
-    const remain = 1 - Math.min(1, (performance.now() - cb.telegraphStart) / cb.telegraphMs);
-    ctx.strokeStyle = remain > 0.3 ? 'rgba(255,206,75,.9)' : 'rgba(255,93,108,.9)';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(cb.rivalX, cb.groundY-80, 16, -Math.PI/2, -Math.PI/2 + remain*Math.PI*2);
-    ctx.stroke();
-  }
-
-  if (cb.state === 'end'){
-    ctx.font = '14px monospace';
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.fillText(cb.result === 'win' ? '¡GANASTE!' : 'Perdiste…', gc.width/2, gc.height/2);
-  }
-
-  ctx.restore();
-}
-
-function finishCombatGame(){
-  const won = cb && cb.result === 'win';
-  const rounds = cb ? cb.round + 1 : 0;
-  if (cb && cb.raf) cancelAnimationFrame(cb.raf);
-  cb = null;
-
-  const score = won ? rounds : 0;
-  const merit = won ? rounds * 9 : 0;
-  const message = won ? '¡Ganaste la pelea!' : 'Perdiste la pelea… la próxima';
-
-  finishMinigame('combat', { score, merit, energyCost: 14, message });
 }
 
 /* ===================== Overlay / setup ===================== */
@@ -5197,11 +2143,10 @@ function renderDebugPanel(){
           <button class="debug-btn" id="dbgStars">⭐ Estrellas</button>
           <button class="debug-btn" id="dbgBasketball">🏀 Baloncesto</button>
           <button class="debug-btn" id="dbgReflex">🎯 Reflejos</button>
-          <button class="debug-btn" id="dbgTap">🎵 Tap rítmico</button>
-          <button class="debug-btn" id="dbgSnake">🐍 Snake</button>
+          <button class="debug-btn" id="dbgTower">📦 Torre</button>
+          <button class="debug-btn" id="dbgSky">☁️ Salto al cielo</button>
           <button class="debug-btn" id="dbgMemory">💡 Memorice</button>
           <button class="debug-btn" id="dbgCombat">⚔️ Combate (prueba)</button>
-          <button class="debug-btn" id="dbgTapPrueba">🎼 Tap prueba</button>
         </div>
       </div>
       <div class="debug-section">
@@ -5246,11 +2191,10 @@ function renderDebugPanel(){
   document.getElementById('dbgStars').addEventListener('click', () => { closeDebugPanel(); startStarsGame(); });
   document.getElementById('dbgBasketball').addEventListener('click', () => { closeDebugPanel(); startBasketballGame(); });
   document.getElementById('dbgReflex').addEventListener('click', () => { closeDebugPanel(); startReflexGame(); });
-  document.getElementById('dbgTap').addEventListener('click', () => { closeDebugPanel(); startTapGame(); });
-  document.getElementById('dbgSnake').addEventListener('click', () => { closeDebugPanel(); startSnakeGame(); });
+  document.getElementById('dbgTower').addEventListener('click', () => { closeDebugPanel(); startTowerGame(); });
+  document.getElementById('dbgSky').addEventListener('click', () => { closeDebugPanel(); startSkyGame(); });
   document.getElementById('dbgMemory').addEventListener('click', () => { closeDebugPanel(); startMemoryGame(); });
   document.getElementById('dbgCombat').addEventListener('click', () => { closeDebugPanel(); startCombatGame(); });
-  document.getElementById('dbgTapPrueba').addEventListener('click', () => { closeDebugPanel(); startTapPruebaGame(); });
   /* Para probar la tienda (muebles, estilo, juegos) sin tener que jugar
      partidas. Son monedas reales del save: no se devuelven al apagar nada. */
   document.querySelectorAll('[data-coins]').forEach(el => el.addEventListener('click', () => {
@@ -5289,6 +2233,7 @@ function wireButtons(){
   document.getElementById('btnClean').addEventListener('click', requireAlive(btnClean));
   document.getElementById('btnShop').addEventListener('click', requireAlive(() => openShop()));
   document.getElementById('btnStyle').addEventListener('click', requireAlive(() => openPersonalize()));
+  document.getElementById('btnWheel').addEventListener('click', requireAlive(() => openWheel()));
   document.getElementById('btnDebug').addEventListener('click', requireAlive(toggleDebugPanel));
   document.getElementById('btnCloseDebugSide').addEventListener('click', closeDebugPanel);
   document.getElementById('petCanvas').addEventListener('click', requireAlive(() => {
@@ -5303,6 +2248,18 @@ function wireButtons(){
     say(isNightMode()
       ? 'Es de noche (00:00 a 06:00): todo baja a la mitad y duerme más seguido'
       : `Es de día. De ${String(NIGHT_START_HOUR).padStart(2, '0')}:00 a ${String(NIGHT_END_HOUR).padStart(2, '0')}:00 es de noche`, 2800);
+  });
+  /* Bitácora: el ícono del borde abre y cierra la lista; tocar fuera la cierra. */
+  document.getElementById('logBtn').addEventListener('click', (e) => { e.stopPropagation(); toggleLogPanel(); });
+  document.getElementById('logPanel').addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('pointerdown', (e) => {
+    if (logPanelOpen() && !e.target.closest('#logPanel, #logBtn')) closeLogPanel();
+  });
+  /* En el teléfono el intervalo se congela con la app en segundo plano: al
+     volver se pone al día de inmediato (y si fue un rato largo, la bitácora
+     pestañea) en vez de esperar al próximo tick. */
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && state && !gameOver){ tick(); render(); }
   });
   document.getElementById('giftFx').addEventListener('click', requireAlive((e) => {
     e.stopPropagation();
@@ -5319,7 +2276,7 @@ function wireButtons(){
     `, hideOverlay);
     document.getElementById('btnCancelReset').addEventListener('click', hideOverlay);
     document.getElementById('btnConfirmReset').addEventListener('click', () => {
-      localStorage.removeItem(SAVE_KEY);
+      clearSave();
       location.reload();
     });
   });

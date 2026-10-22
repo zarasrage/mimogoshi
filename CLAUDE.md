@@ -5,17 +5,23 @@ backend**: se edita directo y se abre `index.html` en el navegador. Todo el
 progreso vive en `localStorage`.
 
 **Archivos:** `index.html` (esqueleto), `styles.css` (todo el CSS) y la lógica
-en cuatro scripts clásicos que comparten el ámbito global:
-- `app.js`: el núcleo (estado, simulación, render, menús, los minijuegos de uno).
-- `muebles.js`: los muebles (catálogo, arte, guiones) y el **motor de actores**
-  que también usa el acompañante.
+en seis scripts clásicos que comparten el ámbito global:
+- `app.js`: el núcleo (estado, simulación, bitácora, render, tienda,
+  Personalizar, panel de prueba).
+- `juegos.js`: el menú de Jugar (`GAMES`, niveles, Megajuego, resultado), lo
+  que comparten todos los minijuegos (canvas, mandos, sonido, premio) y los
+  minijuegos de uno.
+- `premios.js`: la ruleta y el gacha.
+- `muebles.js`: los muebles (catálogo, arte, guiones), las habitaciones y el
+  **motor de actores** que también usa el acompañante.
 - `duo.js`: el acompañante (`buddy`) y lo que hacen los dos juntos.
 - `duo-juegos.js`: los seis juegos de a dos.
 
 Se cargan en ese orden (`index.html`). Lo de un archivo que usa otro se usa
 recién en tiempo de juego (después de `DOMContentLoaded`), nunca al cargar —
-salvo los `push` a arreglos de `app.js` (`STYLE_ITEMS`, `GAMES`,
-`extraMinigameDisposers`), que por eso van después de él. Dentro de
+salvo los `push` a arreglos de otro archivo (`STYLE_ITEMS` y
+`minigameDisposers` de `app.js`, `GAMES` de `juegos.js`), que por eso van
+después del archivo dueño del arreglo. Dentro de
 `sprites/`, un par `<especie>_spritesheet.png` + `.json` por cada especie (más
 los PNG de personajes todavía sin integrar); se cargan como `new Image()` desde
 `app.js` por ruta relativa (`sprites/<archivo>.png`).
@@ -28,7 +34,7 @@ sola persona.
 Chequeo de sintaxis (lo mínimo antes de cualquier commit):
 
 ```bash
-node -e "const fs=require('fs'); for (const f of ['app.js','muebles.js','duo.js','duo-juegos.js']) { new Function(fs.readFileSync(f,'utf8')); console.log(f, 'syntax OK'); }"
+node -e "const fs=require('fs'); for (const f of ['app.js','juegos.js','premios.js','muebles.js','duo.js','duo-juegos.js']) { new Function(fs.readFileSync(f,'utf8')); console.log(f, 'syntax OK'); }"
 ```
 
 Prueba funcional/visual con Playwright (Chromium ya está instalado en
@@ -263,8 +269,10 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
 - `.controls` en dos niveles: el **dock** (`.dock`) con los cuatro cuidados
   de todos los días —Comer, Jugar, Limpiar, Dormir—, tarjetas blancas con el
   ícono en un "squircle" de color propio (`--tint` por id), y debajo
-  **píldoras** (`.pill`) con lo de vez en cuando: Tienda, Personalizar y
-  Reiniciar como ícono chico (destructivo, no tiene por qué estar a mano).
+  **píldoras** (`.pill`) con lo de vez en cuando: Tienda, Personalizar, y
+  como íconos chicos la Ruleta 🎡 (late en amarillo cuando hay giro, `.ready`)
+  y Reiniciar (destructivo, no tiene por qué estar a mano). Las cuatro entran
+  en 360 px de ancho (340 medidos); si se suma otra, medir.
 - **Los botones avisan** (`updateDock()`, desde `render()`, solo toca el DOM
   si algo cambió): anillo de su color alrededor del ícono (`.need`) y globito
   arriba (`data-badge`): 💊 en Comer si está enferma (anillo también con
@@ -329,7 +337,37 @@ Hay que mantener eso al borrar o renombrar especies.
 
 Simulación por ticks (`TICK_MS = 4000`, `MS_PER_GAME_HOUR = 60000`): hambre,
 felicidad, energía, higiene y salud bajan solas; `catchUp()` recupera el tiempo
-que pasó con la pestaña cerrada (con tope de 3 días).
+que pasó con la pestaña cerrada, con tope de 3 días **de juego**
+(`CATCHUP_CAP_MS`, o sea 72 minutos reales: pasado eso la mascota queda "en
+pausa" hasta que vuelvas; por eso el "muere en ~17 h" de abajo solo vale con
+la app abierta).
+
+`catchUp()` simula ese tiempo **de a un tick**, igual que si la app hubiera
+estado abierta (y con `maybeAutoSleep()` en cada paso y `simNowMs` como hora
+de cada paso, que es la que lee `isNightMode()`). Antes aplicaba todas las
+horas de una sola vez y eso cambiaba las reglas: el riesgo para la salud se
+medía con las barras ya vaciadas, se quedaba dormida o despierta todo el rato
+y la noche se decidía con la hora de ahora. Son a lo sumo 1080 pasos: no se
+nota. Al volver a la pestaña (`visibilitychange`) se corre un `tick()` en el
+acto, porque en el teléfono el intervalo se congela en segundo plano.
+
+### Bitácora
+
+`state.log` guarda (hasta `LOG_MAX`) lo que pasó **solo**: caca, enfermarse,
+los seguros que dispararon, un regalo, nacer y crecer, y cuando una barra
+cruza hacia abajo su umbral (hambre/felicidad/higiene bajo `HEALTH_RISK_AT`,
+energía bajo `SLEEPY_THRESHOLD`, salud bajo `SICK_LOW_HEALTH_AT` y bajo 25).
+Lo que hace quien juega no se anota: ya lo vio. Lo detecta `logChanges()`
+comparando antes y después de cada paso de `catchUp()`.
+
+Si la app estuvo cerrada `AWAY_MIN_MS` (2 min) o más y pasó algo,
+`logAway()` cierra el grupo con un encabezado ("Mientras no estabas · 8 h")
+y una sola línea con cuánto durmió (de noche se duerme y despierta muchas
+veces, anotarlas todas llenaba la lista), y el ícono 📜 pegado al borde
+izquierdo de la pantalla (`#logBtn`, dentro del piso para que se esconda
+solo en los minijuegos) **pestañea unos segundos y nada más**: a propósito
+no abre nada ni obliga a leer. Tocarlo abre `#logPanel`, lo más nuevo
+arriba; se cierra tocando afuera.
 
 Los ritmos de decaimiento (`DECAY_PER_HOUR`, `HEALTH_DECAY_PER_HOUR`,
 `POOP_CHANCE_PER_HOUR`, `SICK_CHANCE_PER_HOUR*`) se calibraron primero todos
@@ -375,11 +413,8 @@ la mitad de velocidad (`NIGHT_DECAY_FACTOR`, aplicado junto a `sleepFactor` en
 `maybeAutoSleep()` cambia a un sube-y-baja de sueño propio en vez del gatillo
 por energía baja: `NIGHT_SLEEP_ENTER_CHANCE`/`NIGHT_SLEEP_EXIT_CHANCE` por
 tick, en proporción 3:1, dan una fracción de tiempo dormida en el largo plazo
-de `enter/(enter+exit) = 75%`. Limitación conocida y aceptada: `catchUp()`
-puede entregar de una un rango de horas que cruza medianoche, y como
-`applyDecay()` solo mira la hora ACTUAL al aplicarlas (no hora por hora), un
-tramo nocturno adentro de un catchUp largo no se trata distinto del resto —
-el mismo compromiso que ya hace `sleepFactor` con horas acumuladas.
+de `enter/(enter+exit) = 75%`. Con la app cerrada también: `catchUp()` usa la
+hora de cada paso (ver arriba).
 
 El modo nocturno **se ve**: `render()` le pone `.night` a `#screen` (el fondo
 de la LCD se oscurece —solo el fondo, la mascota no— y salen estrellas que
@@ -457,8 +492,8 @@ obvio si vuelve a haber ramas o un final según el cuidado.
 
 `state.coins` se gana **solo jugando**. Cada juego le pasa a `finishMinigame()`
 un **mérito**: su puntaje llevado a una escala común (~45 = partida muy buena),
-porque los cuatro puntajes no se pueden comparar entre sí (9 en baloncesto contra
-~500 en tap rítmico). De ese mérito salen las dos recompensas, con reglas
+porque los puntajes no se pueden comparar entre sí (9 en baloncesto contra
+~500 en salto al cielo). De ese mérito salen las dos recompensas, con reglas
 distintas a propósito:
 
 - **Felicidad** (`merit/3`, tope 15): jugar no puede ser la forma de tapar el
@@ -484,8 +519,14 @@ borra ese campo al migrar.
 
 Toda comida sube energía al comerla, no solo hambre: `food.energy` es opcional
 en `FOODS` y si falta usa el bonus plano de siempre (`FOOD_ENERGY_DEFAULT = 4`).
-La Red Bull es la única que lo pisa — poca hambre (`restore: 2`), mucha energía
+La Red Bull lo pisa — poca hambre (`restore: 2`), mucha energía
 (`energy: 20`) — al revés que el resto, que dan poca energía y mucha hambre.
+Además: el **Banquete** 🍱 (`restore: 100`) llena el hambre entera, cueste lo
+que cueste la barra (55, más que dos especiales: es la forma cómoda, no la
+barata), y dos de **solo energía** (`restore: 0`): Café ☕ (+15) y Jugo
+energético 🧃 (+35). Ninguna llega a lo que da una siesta. Con siete comidas
+más la medicina, la bandeja de Comer va en dos filas de cuatro (sigue sin
+cambiar el alto del aparato).
 
 **Medicina:** ya no es un botón propio, gratis e infinito. Es una porción más
 de la despensa (`MEDICINE`, `state.pantry.medicina`): se compra en la tienda,
@@ -501,9 +542,11 @@ queda tapado. Lo mismo vale para cualquier menú nuevo.
 
 #### Mejoras
 
-Segunda pestaña de la tienda (`shopTab`, "Comida"/"Mejoras" — un tab en vez de
-apilar dos `.menu-list`, porque la de comida ya usa todo el alto disponible y
-esto va a seguir creciendo). Catálogo en `UPGRADES`, con dos formas:
+Segunda pestaña de la tienda (`shopTab`, "Comida"/"Mejoras"/"Estilo"/"Gacha" —
+un tab en vez de apilar varias `.menu-list`, porque la de comida ya usa todo
+el alto disponible y esto va a seguir creciendo). Arriba de todo va la próxima
+**habitación** que se puede comprar (`roomUpgradeRow()`, ver "Habitaciones").
+Catálogo en `UPGRADES`, con dos formas:
 
 - **Armables** (`armable: true`, hoy `autoClean` y `autoMed`): se compran una
   sola vez pero funcionan como un seguro de **un solo uso**. Al comprarlas
@@ -552,7 +595,7 @@ y ahí tocar algo lo pone o lo saca. En Personalizar el overlay va con
 `.clear` (sin desenfoque) y la hoja mide siempre el 80% del aparato
 (`.sheet-tall`, la lista se estira): arriba se sigue viendo la carcasa y la
 pantalla con el cambio puesto. Antes se topaba al 66% con la lista a su alto
-natural y quedaba en una franja chica. La tienda **no**: sus tres pestañas usan la misma hoja a todo el alto
+natural y quedaba en una franja chica. La tienda **no**: sus cuatro pestañas usan la misma hoja a todo el alto
 (`.sheet-full`, la lista se estira y se lleva el scroll), así no salta al
 cambiar de pestaña. Antes la pestaña Estilo también iba con `.clear` y topada
 al 66%, y su lista quedaba en la mitad de alto que las otras (188 px contra
@@ -583,6 +626,60 @@ algo, porque antenas y orejas dejaban el accesorio flotando. Con `file://` el
 navegador no deja leer píxeles y cae a la parte de arriba de la celda: queda
 más alto, pero no rompe.
 
+#### Ruleta y gacha (`premios.js`)
+
+Ninguno de los dos da **monedas**, a propósito (las monedas se ganan solo
+jugando, como dice arriba): si la ruleta las diera, entrar una vez cada 12
+horas pagaría más que jugar bien. Si algún día se quiere cambiar, es sumar
+un premio a `WHEEL_PRIZES`.
+
+- **Ruleta** (píldora 🎡, `openWheel()`): un giro gratis cada
+  `WHEEL_CYCLE_MS` (12 h **reales**, `state.wheel.last`; un reloj que vuelve
+  atrás deja girar, igual que el Megajuego). Premios en `WHEEL_PRIZES`:
+  comida, medicina, +15 de felicidad o fichas para el gacha. Cada trozo de la
+  rueda mide **lo que pesa su probabilidad** (`w`): lo que se ve es lo que
+  hay. El premio se sortea, se aplica y se guarda al tocar Girar, no al
+  terminar la animación (cerrar la hoja a mitad no lo pierde); la rueda gira
+  hasta dejar el trozo bajo el puntero y guarda su ángulo
+  (`state.wheel.angle`) para que el próximo giro arranque de ahí. La cuenta
+  regresiva se refresca sola (`[data-wheel-clock]`, mismo esquema que los
+  relojes del Megajuego).
+- **Gacha** (pestaña "Gacha" de la tienda): una cápsula = un objeto de
+  `GACHA_ITEMS`, un catálogo **exclusivo** (no se vende en la tienda:
+  `styleRows('shop')` salta los `gacha`) de accesorios, adornos, carcasas y
+  pantallas, con rareza (`GACHA_RARITIES`: común 60%, raro 28%, épico 10%,
+  legendario 2%; las probabilidades están escritas en la máquina). Cuesta
+  `GACHA_PRICE` (40) o una ficha de la ruleta (`state.gachaTickets`).
+  **Nunca repite**: si ya tienes todo lo de la rareza que salió, busca en
+  las más comunes y después en las más raras; con la colección completa da
+  un Banquete de consuelo. Lo que sale queda puesto de una (como lo que se
+  compra) y en Personalizar lleva su rareza. Ids con prefijo `g_` y
+  `price: null` (con `price: 0`, `freshStyle()` lo regalaría de fábrica).
+
+#### Habitaciones
+
+La primera viene con la mascota; las otras se compran en Mejoras
+(`ROOM_PRICES`: 150, 250, 400) hasta `ROOM_MAX` (4). Cada una tiene **sus
+propios muebles y adornos**: `state.style.rooms = [{furniture, deco}]` y
+`state.style.room` = la que se está viendo; todo lo que antes leía
+`state.style.furniture`/`state.style.deco` ahora pasa por `curRoom()`.
+Carcasa, pantalla y accesorio no son de la pieza: siguen en `state.style`.
+`loadState()` mete los muebles y adornos de un save viejo en la primera.
+
+- Un mueble o adorno está en **una** habitación a la vez (`roomOf()`): en
+  Personalizar sale "En hab. N" y tocarlo lo trae a la que se está viendo.
+- Con más de una aparecen flechas `‹ ›` pegadas a los bordes de la pantalla
+  (`.room-arrow`) y puntitos arriba (`#roomDots`); dan la vuelta.
+  `goRoom()` corta lo que estén haciendo, vuelve a armar la pieza (los
+  muebles entran deslizándose desde el lado por el que se llega) y los
+  personajes **entran caminando por ese costado** (`roomEnter()`, una rutina
+  `kind:'enter'` de un solo `go` que arranca fuera de la pantalla; triste o
+  enferma igual termina de entrar). Dormida no camina: aparece acostada, y
+  si en la nueva hay cama se va a ella sola.
+- La cama acelera el sueño esté en la habitación que esté (es su casa).
+- `endFurniActivity()` deja al personaje dentro del piso (`clampX`): si algo
+  corta la entrada a mitad, no queda afuera de la pantalla.
+
 #### Muebles
 
 Cuarta clase de cosas en Estilo (`kind:'furni'`, sección "Muebles", la primera):
@@ -594,8 +691,8 @@ piano, tarima, librero y cajas; los 20 que se sumaron después: pecera, maceta,
 rueda (de hámster), balancín, cohete, arenero, piscina, hamaca, telescopio,
 reloj cucú, caballito, batería, caballete, cocinita, cofre, muro de escalada,
 ventilador, bola disco (prendida llena la pieza de luces: `.creature-floor.party`),
-puf y piñata; y dos pelotas más, el balón y la pelota de playa (ver "Pelotas"). Se ponen hasta `FURNI_MAX` (3) a la vez, **en cualquier
-parte del piso**: `state.style.furniture = [{id, x}]`, con `x` = centro del
+puf y piñata; y dos pelotas más, el balón y la pelota de playa (ver "Pelotas"). Se ponen hasta `FURNI_MAX` (3) a la vez **por habitación**, **en cualquier
+parte del piso**: `curRoom().furniture = [{id, x}]`, con `x` = centro del
 mueble como fracción del ancho del piso. (Antes eran tres lugares fijos,
 izq./centro/der.; `loadState()` convierte esos saves con `LEGACY_FURNI_SLOTS`
 y los muebles quedan donde estaban.)
@@ -875,8 +972,11 @@ juego" (`gameActor()`) que no toca `petAction` ni el paseo de la pieza.
 
 ## Minijuegos
 
-Seis, todos sobre `#gameCanvas`, que se redimensiona con `fitGameCanvas()` a
-su tamaño real en pantalla para que nada salga estirado:
+Seis de uno (en `juegos.js`), todos sobre `#gameCanvas`, que se redimensiona
+con `fitGameCanvas()` a su tamaño real en pantalla para que nada salga
+estirado. Snake y Tap rítmico (y su variante de prueba) se **sacaron**:
+`loadState()` le pasa a Torre y a Salto al cielo lo que se había pagado por
+ellos (`REMOVED_GAMES`) y borra sus récords y su xp.
 
 - **Atrapa estrellas** (`sg`): mover a la mascota con el deslizador de abajo
   para atrapar lo que cae, esquivando la caca. 20 segundos
@@ -931,151 +1031,28 @@ su tamaño real en pantalla para que nada salga estirado:
 - **Reflejos** (`rx`): aparecen blancos que duran cada vez menos; tocar los
   buenos, no las bombas. 25 segundos y 3 vidas. Tocar el vacío corta el combo,
   así que martillar la pantalla es peor que elegir.
-- **Tap rítmico** (`tr`): tres carriles, notas que bajan a la línea. El chart lo
-  genera `trBuildChart()` (los carriles y los tonos cambian en cada partida).
-  Ventana `TR_PERFECT` (simétrica) y ventana de acierto normal, que es
-  **asimétrica** (`TR_GOOD_EARLY` = 0.19s; `TR_GOOD_LATE` es un cuarto de eso,
-  0.0475s): un toque temprano suena cuantizado al pulso de la nota, sin costo
-  de audio, así que hay margen para tolerar bastante adelanto; uno tarde no se
-  puede cuantizar hacia atrás y siempre suena "ya" — de ese lado casi no hay
-  margen. Como `TR_GOOD_LATE` queda por debajo de `TR_PERFECT`, del lado tarde
-  no existe un "bien": todo toque atrasado que se acepta ya cae también
-  dentro de la ventana perfecta, o es perfecto o es fallo. Tocar de más
-  también corta el combo.
+- **Torre de cajas** (`tw`): una caja va y viene arriba de la torre y se suelta
+  tocando (la pantalla o el botón); lo que queda afuera de la caja de abajo
+  se corta y se cae, así la torre se angosta. Soltarla casi justo encima
+  (`TW_PERFECT`, 1.3% del ancho) es perfecto: no corta, vale doble y con tres
+  seguidos la caja vuelve a ensancharse un poco. Cada caja va más rápido
+  (`TW_SPEED`). Se pierde al soltarla del todo afuera. La mascota mira desde
+  abajo a la izquierda, fija (no sube con la cámara).
+- **Salto al cielo** (`sk`): la mascota rebota sola de nube en nube y se la
+  lleva de lado a lado con el deslizador (o arrastrando el dedo sobre el
+  juego, o con flechas). Nubes normales, que se mueven y grises que se
+  deshacen tras un rebote; estrellas (+5) y a veces un globo que la lanza
+  2.6 veces más alto. Nunca están más separadas que el 85% de un salto.
+  Termina al caerse por abajo o a los `SK_DURATION` (90) segundos: sin tope
+  no terminaba nunca, y con 45 s el que juega bien y el que juega mejor
+  sacaban lo mismo (subir más rápido lo limita la física; lo que separa es
+  cuánto aguanta sin caerse).
 
-  **El tempo es fijo y todo se mide en pulsos, no en segundos sueltos.**
-  `TR_BPM = 150` define la negra (`TR_BEAT_SEC` = 0.4s) y de ahí salen derivados la
-  corchea, el largo de una sostenida (una blanca), la anticipación con que se
-  ve venir una nota (tres pulsos) y el largo del chart (`TR_CHART_BARS`
-  compases de `TR_BEATS_PER_BAR`). Cambiar el BPM reacomoda todo solo.
-  `trBeatTime(beat)` multiplica en vez de ir acumulando: sumar la negra sesenta
-  veces arrastra error y deja las notas fuera de la grilla del metrónomo.
-
-  Una nota **solo puede caer en una negra o en la corchea exacta del medio**,
-  nunca en un instante intermedio: `trBuildChart()` recorre números de pulso
-  enteros y los contratiempos van en `beat + 0.5`. Verificado por simulación
-  contra la función real: 0 notas fuera de la grilla de corcheas y 0
-  sostenidas que no terminen sobre un pulso, en 4000 charts.
-
-  Antes el chart aceleraba solo y eso era lo único que subía la intensidad,
-  pero con la pista acelerando no hay forma de que suene a canción. La
-  dificultad ahora escala por **densidad** sobre la misma grilla:
-  `TR_OFFBEAT_CHANCE`, `TR_DOUBLE_CHANCE` y `TR_HOLD_CHANCE` son rampas
-  `{al empezar, al terminar}` que `trRamp()` interpola según el avance —
-  medido a 150 BPM, va de ~3.0 a ~3.9 notas/s. Si se quiere endurecer o ablandar el
-  juego, se tocan esas rampas, **no** el tempo.
-
-  Dos tipos de nota además de la simple: **dobles** (dos carriles al mismo
-  instante — hay que tocar los dos) y **sostenidas** (`TR_HOLD_SEC`, que son
-  exactamente dos pulsos; hay que mantener apretado el carril hasta
-  completarla y soltar antes corta el combo igual que un fallo). Los
-  contratiempos son siempre nota simple a propósito: si además pudieran ser
-  dobles o sostenidas, la parte densa del final se vuelve ilegible.
-
-  Por las sostenidas el input dejó de ser un solo `trHit()` en `pointerdown` y
-  pasó a `trPress()`/`trRelease()` con estado por carril (`tr.laneDown[]`):
-  hace falta saber si se sigue sosteniendo, no solo si se tocó. El botón de
-  carril ya no usa `wireGameButton()` (solo ata pointerdown) porque necesita
-  también el soltar; el canvas trackea `pointerId → carril` para que dos dedos
-  en dos carriles (una doble) funcionen a la vez.
-
-  `trBuildChart()` tiene dos resguardos para que ningún fallo sea culpa del
-  generador y no del jugador — `pickLane()` devuelve `null` y esa posición
-  queda como silencio antes que agendar una nota injusta:
-  - `busyUntil[carril]`: una sostenida deja su carril tomado hasta un poco
-    **después** de terminar (`+ TR_MIN_SAME_LANE_GAP`), así la nota siguiente
-    no cae justo en el instante en que hay que soltar.
-  - `TR_MIN_SAME_LANE_GAP`: dos notas más juntas que eso nunca comparten
-    carril (con contratiempos quedan a 0.19s y la ventana `TR_GOOD` mide lo
-    mismo, así que en el mismo carril serían indistinguibles). Aplica también
-    a la pareja de una doble, que es justo por donde se escapaba antes.
-  Verificado por simulación pura contra la función real: 0 solapamientos, 0
-  pares del mismo carril demasiado juntos, 0 charts fuera de orden.
-
-  Tiene sonido y pulso visual, el único minijuego con los dos:
-  - **Sonido**: sintetizado con Web Audio (`tone()`/`beep()`, en las
-    utilidades compartidas de minijuegos), sin archivos de audio. Un acierto
-    (normal o perfecto) **no suena en el instante del toque, sino en el pulso
-    de la nota** (`trSfxHit(pitch, perfecto, at)` recibe `tr.audioStart +
-    mejor.t`): si sonara al tocar, un acierto adelantado —dentro de la
-    ventana pero antes del pulso— se oiría desalineado del metrónomo aunque
-    el juego lo cuente como bueno. Achicar la ventana no arregla eso, solo
-    reduce cuánto se nota; cuantizar sí. `tone()` igual recorta `at` al
-    presente si ya quedó en el pasado, así que un toque tardío sigue sonando
-    "ya" —no hay forma de sonar hacia atrás—, pero es el caso adelantado el
-    que más se nota contra la pista. `trSfxFail` no cuantiza (`at` por
-    default 0): un fallo no tiene ningún pulso al que alinearse. `TR_SCALE` es
-    la escala
-    de **Si menor natural** recorrida desde el 7º grado (A, B, C♯, D, E, F♯,
-    G, A, B): nueve notas repartidas de a tres por carril, graves a la
-    izquierda y agudas a la derecha, así la altura coincide con la posición en
-    pantalla. Cada nota del chart sortea su tono entre los tres del carril
-    (puede repetir el anterior), de modo que cada partida arma una melodía
-    distinta pero siempre en tono. El registro es 440-988 Hz **a propósito**:
-    abajo de ~400 Hz el parlante de un celular casi no suena.
-    - Acierto normal: la nota sola, onda cuadrada.
-    - **Perfecto**: la nota con su 3ª y su 5ª (índices `i`, `i+2`, `i+4`), las
-      tres a la vez y en triangular — las nueve combinaciones dan tríadas
-      diatónicas completas de Si menor (A mayor, B menor, C♯ dim, …),
-      verificado calculando los intervalos desde los Hz del código. Por eso
-      `TR_SCALE` tiene 13 entradas y no 9: las cuatro de arriba no las toca
-      ninguna nota, existen solo para que las tríadas de las notas más altas
-      cierren en vez de dar la vuelta y quedar en octavas dobladas. Cada voz
-      va más bajita que un tono suelto: tres osciladores al volumen de uno
-      saturan.
-    - **Fallo** (`trSfxFail`): el tritono contra la tónica (Fa natural con
-      Si), lo único fuera de escala en todo el juego — no puede confundirse
-      con un acierto ni sonar "bien por casualidad".
-    El `AudioContext` se crea recién al primer sonido (no antes: los
-    navegadores lo bloquean si no hay un gesto del usuario previo, y acá
-    siempre lo hay porque hace falta tocar algo para llegar a jugar) y queda
-    vivo para toda la sesión, no solo para este minijuego. `getAudioCtx()`
-    está blindado con try/catch y una bandera para no reintentar, porque ahora
-    lo llama el loop del juego en cada frame: si tirara ahí, se llevaría
-    puesto el `requestAnimationFrame` y el minijuego se congelaría.
-  - **Pista de fondo** (`trScheduleTrack`): un **metrónomo** en cada negra
-    (`TR_CLICK_ACCENT`/`TR_CLICK_BEAT`, dos clicks cortos y agudos, fuera del
-    registro de la melodía para que no se confundan con una nota; el acento va
-    en el primer tiempo del compás) y el acorde de **Si menor en redonda**,
-    uno por compás (`TR_PAD_CHORD`, voicing abierto B3-F♯4-D5). Se sienta
-    debajo de la melodía **por volumen** (`TR_PAD_VOL`), no por ataque lento:
-    con `TR_PAD_ATTACK_MS` alto el acorde se percibe entrando tarde y suena
-    desfasado del metrónomo, así que el ataque es corto (12ms, solo para que
-    no chasquee) y lo que lo mantiene atrás es que está bajito.
-    Además, en `tone()` el ataque va en rampa **lineal** y solo la caída es
-    exponencial: una rampa exponencial de subida arranca pegada a cero y
-    recién despega cerca del final, o sea que el golpe se escucha bastante
-    después del instante agendado.
-    Se agenda **por adelantado** (`TR_SCHEDULE_AHEAD`) con instantes absolutos
-    del reloj de Web Audio vía `tone({ at })`, no disparando el sonido en el
-    frame que cruza el pulso: un metrónomo disparado frame a frame suena
-    tembleque. Como avanza por número de pulso y no por "crucé el beat en este
-    frame", un frame lento no le hace saltear ni duplicar clicks — verificado
-    simulando 30s con frames de 250ms intercalados. Un pulso que ya quedó en
-    el pasado se **saltea** (`if (at < now) continue`) en vez de agendarse:
-    `tone()` recorta `at` al presente, así que agendarlos igual amontonaría
-    todos los clicks atrasados de golpe. El `AudioContext` se prende en
-    `startTapGame()`, dentro del gesto que abrió el minijuego, y la pista
-    arranca `TR_START_DELAY` después: si se esperara al primer frame el
-    contexto podría seguir suspendido y se perdería el primer compás.
-  - **El reloj del juego es el del audio** (`trAdvanceClock`): `tr.time` sale
-    de `audioNow()`, no de acumular el `dt` de los frames. Si corrieran por
-    relojes distintos, la pista (agendada en el reloj de audio) se despegaría
-    de las notas apenas el navegador saltee un frame — y encima el `dt` viene
-    con tope de 0.05s, o sea que con la pestaña trabada se atrasa a propósito.
-    Mientras el `AudioContext` siga suspendido se usa el `dt` acumulado y al
-    enganchar se descuenta lo ya transcurrido, así no pega un salto.
-  - **Pulso visual**: late una vez por negra —el mismo compás que marca el
-    metrónomo, una vez visto y otra escuchado— y más fuerte en el primer
-    tiempo. Late toque o no toque el jugador: es metrónomo, no feedback de
-    puntería (eso ya lo cubren los flashes por carril y los sonidos).
-
-- **Snake** (`sn`): clásico, sobre una rejilla de celdas de `SN_CELL`. Se gira
-  deslizando el dedo o con flechas / WASD. El giro se registra en `pointermove`
-  y no al soltar, para poder encadenar dos curvas sin levantar el dedo. `snTurn()`
-  compara contra `dir` (la dirección del último paso ya dado) y no contra
-  `nextDir`: si no, dos giros dentro del mismo paso dejan volverse 180° sobre el
-  propio cuerpo. Acelera 4 ms por manzana, de 190 a 85 ms por paso.
+  Los dos separan la lógica (`twNew/twStep/twDrop`, `skNew/skStep`, sin DOM)
+  del dibujo, como los de a dos, y su mérito está **calibrado con bots**
+  (400 partidas, medianas en el comentario de `twMerit()`/`skMerit()`): bueno
+  ~40, experto ~76-80. Todo se mide en fracciones del canvas, así un teléfono
+  chico y uno grande juegan igual.
 - **Memorice** (`mm`): 10 luces en posiciones al azar; se enciende una secuencia
   y hay que repetirla tocándolas en orden. Suma una luz por ronda y un solo error
   termina la partida. Las posiciones salen de una rejilla 4x3 barajada con la luz
@@ -1138,23 +1115,24 @@ los récords viejos quedan como de nivel 1).
 
 La dificultad la lee cada juego con `levelT()` (0 en nivel 1, 1 en el máximo)
 desde la variable global `playLevel`, que `launch()` fija **antes** de
-`start()` (Snake y el chart del Tap la leen al armar su estado) y
+`start()` (Memorice y la Torre la leen al armar su estado) y
 `exitMinigame()`/`forceCloseMinigames()` devuelven a 1 — el panel de prueba
 juega siempre en nivel 1. Qué sube en el nivel máximo: Estrellas caen 50% más
 rápido, 30% más seguido y con +15 puntos de caca; Baloncesto solo la velocidad
 de la pelota (+50%: el azar de rebotes ya es bastante); Reflejos blancos 30%
-más cortos y seguidos, +12 puntos de bombas; Tap rítmico más densidad
-(`TR_LEVEL_BONUS`), **nunca** tempo; Snake arranca a 140 ms en vez de 190 y
-acelera más; Memorice arranca con 5 luces y las muestra 30% más rápido. Tap
-prueba no tiene niveles. Números sin calibrar, un primer intento.
+más cortos y seguidos, +12 puntos de bombas; Torre: la primera caja más
+angosta y todo 45% más rápido; Salto al cielo: nubes más separadas, más
+chicas y más raras; Memorice arranca con 5 luces y las muestra 30% más
+rápido. Números sin calibrar (salvo el nivel 1 de Torre y Cielo), un primer
+intento.
 
 ### Cómo se arma un minijuego
 
 **Los mandos van abajo, no encima de la pantalla.** `showGameControls(html)`
 esconde `.controls` (comer, limpiar, tienda...) y pone en su lugar los botones
 del juego; `exitMinigame()` y `forceCloseMinigames()` los sacan. Los usan
-estrellas (deslizador), baloncesto (TIRAR), snake (cruceta) y tap rítmico (un
-botón por carril). Reflejos y memorice **no**: se juegan tocando la pantalla.
+estrellas y salto al cielo (deslizador), baloncesto (TIRAR) y torre (Soltar).
+Reflejos y memorice **no**: se juegan tocando la pantalla.
 `wireGameButton()` los ata con `pointerdown` y no con `click` porque en el
 teléfono el click llega bastante después del toque.
 
@@ -1176,11 +1154,19 @@ Lo compartido está justo debajo de `fitGameCanvas()` y conviene reusarlo:
   cacheado. Llamarlo en cada `pointermove` fuerza un recálculo de layout por
   frame.
 
-Cada juego guarda su estado en una variable global (`sg`, `bb`, `rx`, `tr`, `sn`,
+Cada juego guarda su estado en una variable global (`sg`, `bb`, `rx`, `tw`, `sk`,
 `mm`; los de a dos comparten `dg`, ver "Juegos de a dos") y expone un `xxDispose()` que saca listeners y cancela el
 `requestAnimationFrame`.
-**Al agregar uno nuevo hay que sumarlo a `forceCloseMinigames()`**, que es lo que
-corre si la mascota se muere a mitad de partida.
+**Al agregar uno nuevo hay que registrar su limpieza en `minigameDisposers`**
+(`minigameDisposers.push(() => { xxDispose(); xx = null; })`, justo debajo de
+su `xxDispose()`): es lo que corre `forceCloseMinigames()` si la mascota se
+muere a mitad de partida, y ya no conoce a ningún juego por nombre.
+
+**Sonido:** `tone()`/`beep()` (Web Audio, sin archivos; `AudioContext` creado
+recién al primer sonido y blindado con try/catch para no congelar un loop),
+`SFX_SCALE` (Si menor natural desde el 7º grado, 440-988 Hz: abajo de ~400 Hz
+un celular casi no suena) y `sfxFail()` (el tritono Fa-Si: no se confunde con
+un acierto). Venían del Tap rítmico y los siguen usando los juegos de a dos.
 
 Los récords viven en `state.records[id]`, o sea dentro del save (`loadState()` los
 rellena vacíos para saves viejos).
@@ -1242,35 +1228,6 @@ correcto. El impacto (`CB_IMPACT_MS`) es sacudida de cámara + flash rojo +
 knockback de una sola pasada (misma idea que las parábolas de Baloncesto,
 pero en x). Números sin calibrar: `CB_ROUNDS`/`CB_PLAYER_HP`/`CB_RIVAL_HP`/
 `cbWindowMs()` son un primer intento a propósito, para probarlos jugando.
-
-### Tap prueba (prototipo, todavía no en el menú de Jugar)
-
-`startTapPruebaGame()` — se lanza solo desde el panel de prueba
-(`dbgTapPrueba`), a propósito: es una variante A/B del tap rítmico real para
-escuchar si suena mejor antes de decidir si lo reemplaza. Comparte TODO el
-sistema ya probado del tap rítmico real — grilla, rampas de dificultad,
-ventanas de acierto, holds/dobles, input, hasta las funciones de sonido
-`trSfxHit`/`trSfxFail` — y cambia solo dos cosas:
-
-- **Melodía fija en loop, no al azar.** `TP_MELODY` es una frase de 4
-  compáses compuesta a mano (índices en `TR_SCALE`) que sube en el primer
-  compás (tónica-3ª-5ª-7ª), baja por grados en el segundo, rebota en tensión
-  en el tercero y baja resolviendo a la tónica en el cuarto, antes de
-  repetirse. `tpPitchAt(beat)` la consulta según la posición dentro del
-  compás — el chart (`tpBuildChart`, copia de `trBuildChart`) sigue
-  sorteando carril y timing igual que siempre, lo único que ya no sortea es
-  el tono. Una corchea a mitad de camino entre dos negras no tiene nota
-  propia en la frase: toma la del pulso que viene (anticipación), más simple
-  que componer el doble de notas.
-- **Progresión de acordes, no un acorde fijo.** `TP_CHORDS` recorre
-  i-VI-III-VII en Si menor natural (Bm-G-D-A) un acorde por compás, mismo
-  voicing abierto que ya usaba el Bm fijo (fundamental, quinta, tercera una
-  octava arriba).
-
-Verificado por simulación pura contra `tpBuildChart()`/`tpPitchAt()` reales:
-0 notas fuera de la grilla, 0 solapamientos, todo pitch dentro de rango
-válido para la tríada perfecta, y la melodía se repite idéntica en cada
-loop de 16 pulsos.
 
 ## Panel de prueba
 
