@@ -29,6 +29,10 @@ los PNG de personajes todavía sin integrar); se cargan como `new Image()` desde
 Se trabaja **siempre directo sobre `main`**, sin ramas ni PRs — proyecto de una
 sola persona.
 
+`docs/PLAN-PERSONAJES.md` es la planificación (todavía sin construir) de los
+100+ personajes con stats, rarezas y el Club de la pelea;
+`docs/sim-combate.js` simula sus fórmulas de combate.
+
 ## Cómo probar cambios
 
 Chequeo de sintaxis (lo mínimo antes de cualquier commit):
