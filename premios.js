@@ -1,14 +1,14 @@
 /* ===================== Premios: ruleta y gacha =====================
    Dos formas de conseguir cosas que no son "comprar lo que elegiste":
    - La ruleta (🎡, en las píldoras de abajo): un giro gratis cada
-     WHEEL_CYCLE_MS de tiempo REAL. Da monedas, comida, medicina, felicidad
-     o fichas para el gacha.
+     WHEEL_CYCLE_MS de tiempo REAL. Da (o quita) monedas, y da comida,
+     medicina, felicidad o fichas para el gacha.
    - El gacha (pestaña "Gacha" de la tienda): una máquina de cápsulas que da
      un objeto de estilo al azar, de un catálogo propio que no se vende en la
      tienda, con rarezas. Se paga con monedas o con una ficha de la ruleta.
 
-   Las monedas de la ruleta son un extra y no reemplazan a jugar: lo normal
-   (25) son unas cuatro partidas buenas, y sale una vez cada 12 horas.
+   Las monedas de la ruleta son un extra y no reemplazan a jugar: un giro deja
+   en promedio menos que una partida buena, y sale una vez cada 12 horas.
 
    Se carga después de juegos.js y antes de muebles.js (ver index.html). El
    push a STYLE_ITEMS va al cargar, como el de los muebles; todo lo demás se
@@ -176,23 +176,48 @@ const WHEEL_CYCLE_MS = 12 * 60 * 60 * 1000;
 const WHEEL_SPIN_MS = 4200;
 
 /* Cada premio ocupa en la rueda un trozo proporcional a su probabilidad
-   (`w`): lo que se ve es lo que hay. `give()` lo aplica y devuelve el texto. */
+   (`w`): lo que se ve es lo que hay. `give()` lo aplica y devuelve el texto.
+
+   Las monedas van de varios tamaños (+2 a +100, mientras más grande más
+   raro) y también hay trozos que QUITAN monedas (-2, -5, -10; nunca más de
+   10): le dan suspenso al giro. Cuentas con los pesos de abajo (suman 120):
+   se ganan monedas el 40% de las veces, se pierden el 15%, y en promedio un
+   giro deja ~+6.4 monedas, algo menos que una partida buena (~7).
+   Los trozos de monedas llevan el número escrito (`label`) en vez de un
+   emoji: con 17 trozos no se distinguiría cuál es cuál. Van intercalados
+   con el resto para que los que quitan no queden todos juntos, y cada trozo
+   angosto va entre dos anchos: dos angostos seguidos encimaban sus emojis. */
 const WHEEL_PRIZES = [
-  { id: 'monedas',  emoji: '💰', w: 16, color: '#ffd25a', give: () => giveCoins(25) },
-  { id: 'rica',     emoji: '🍗', w: 14, color: '#ffb36b', give: () => giveFood('rica', 2) },
-  { id: 'feliz',    emoji: '⭐', w: 14, color: '#fff0a0', give: () => { state.happiness = clamp(state.happiness + 15); return '+15 de felicidad'; } },
-  { id: 'cafe',     emoji: '☕', w: 12, color: '#c99a6b', give: () => giveFood('cafe', 2) },
-  { id: 'especial', emoji: '🍰', w: 14, color: '#ff9ec4', give: () => giveFood('especial', 1) },
-  { id: 'ficha',    emoji: '🎟️', w: 12, color: '#8fd3ff', give: () => giveTickets(1) },
-  { id: 'medicina', emoji: '💊', w: 12, color: '#ff7b8a', give: () => giveFood(MEDICINE.id, 1) },
-  { id: 'banquete', emoji: '🍱', w: 8,  color: '#8fcf7f', give: () => giveFood('banquete', 1) },
-  { id: 'fichas3',  emoji: '💎', w: 4,  color: '#b39cff', give: () => giveTickets(3), big: true },
-  { id: 'monedas+', emoji: '🤑', w: 3,  color: '#5ccf7a', give: () => giveCoins(100), big: true },
+  { id: 'm5',       label: '+5',   w: 12, color: '#ffd25a', give: () => giveCoins(5) },
+  { id: 'rica',     emoji: '🍗',   w: 9,  color: '#ffb36b', give: () => giveFood('rica', 2) },
+  { id: 'm-2',      label: '-2',   w: 8,  color: '#7a6c96', give: () => giveCoins(-2), lose: true },
+  { id: 'm10',      label: '+10',  w: 10, color: '#ffe27a', give: () => giveCoins(10) },
+  { id: 'fichas3',  emoji: '💎',   w: 3,  color: '#b39cff', give: () => giveTickets(3), big: true },
+  { id: 'ficha',    emoji: '🎟️',   w: 7,  color: '#8fd3ff', give: () => giveTickets(1) },
+  { id: 'm2',       label: '+2',   w: 12, color: '#ffd25a', give: () => giveCoins(2) },
+  { id: 'banquete', emoji: '🍱',   w: 5,  color: '#8fcf7f', give: () => giveFood('banquete', 1) },
+  { id: 'feliz',    emoji: '⭐',   w: 8,  color: '#fff0a0', give: () => { state.happiness = clamp(state.happiness + 15); return '+15 de felicidad'; } },
+  { id: 'm-5',      label: '-5',   w: 6,  color: '#6a5a8a', give: () => giveCoins(-5), lose: true },
+  { id: 'm25',      label: '+25',  w: 7,  color: '#ffc93c', give: () => giveCoins(25) },
+  { id: 'cafe',     emoji: '☕',   w: 8,  color: '#c99a6b', give: () => giveFood('cafe', 2) },
+  { id: 'm50',      label: '+50',  w: 4,  color: '#ffb13d', give: () => giveCoins(50), big: true },
+  { id: 'medicina', emoji: '💊',   w: 7,  color: '#ff7b8a', give: () => giveFood(MEDICINE.id, 1) },
+  { id: 'm-10',     label: '-10',  w: 4,  color: '#4f416c', give: () => giveCoins(-10), lose: true },
+  { id: 'especial', emoji: '🍰',   w: 7,  color: '#ff9ec4', give: () => giveFood('especial', 1) },
+  { id: 'm100',     label: '+100', w: 3,  color: '#5ccf7a', give: () => giveCoins(100), big: true },
 ];
 
+/* Suma o resta monedas. Quitar nunca deja el saldo bajo cero: si tienes
+   menos de lo que dice el trozo, se pierde solo lo que hay. */
 function giveCoins(n){
-  state.coins += n;
-  return `${coinsLabel('+' + n)} monedas`;
+  if (n >= 0){
+    state.coins += n;
+    return `${coinsLabel('+' + n)} monedas`;
+  }
+  const quita = Math.min(-n, state.coins);
+  state.coins -= quita;
+  if (quita === 0) return `Te tocó ${n}… pero no tenías monedas 😅`;
+  return quita < -n ? `Perdiste tus últimas ${quita} monedas 💸` : `Perdiste ${quita} monedas 💸`;
 }
 
 function giveFood(id, n){
@@ -233,11 +258,18 @@ function wheelHtml(){
   const slices = wheelSlices();
   const grad = slices.map(s => `${s.p.color} ${s.a0.toFixed(2)}deg ${s.a1.toFixed(2)}deg`).join(', ');
   const labels = slices.map(s => {
-    /* El emoji en el centro de su trozo, al 36% del radio hacia afuera
-       (en % de la rueda, así vale para cualquier tamaño). */
-    const mid = (s.a0 + s.a1) / 2 * Math.PI / 180;
-    const left = 50 + 36 * Math.sin(mid), top = 50 - 36 * Math.cos(mid);
-    return `<span class="wheel-label" style="left:${left.toFixed(2)}%; top:${top.toFixed(2)}%">${s.p.emoji}</span>`;
+    /* En el centro de su trozo, hacia afuera (en % de la rueda, así vale
+       para cualquier tamaño). El número de las monedas va escrito a lo
+       largo del radio, como en una ruleta de verdad: atravesado no cabe en
+       los trozos angostos. En la mitad izquierda se da vuelta para que no
+       quede de cabeza. */
+    const midDeg = (s.a0 + s.a1) / 2, mid = midDeg * Math.PI / 180;
+    const r = s.p.label ? 37 : s.p.w <= 5 ? 38 : 35;   // los angostos, más afuera: ahí el trozo es más ancho
+    const left = 50 + r * Math.sin(mid), top = 50 - r * Math.cos(mid);
+    const pos = `left:${left.toFixed(2)}%; top:${top.toFixed(2)}%`;
+    if (!s.p.label) return `<span class="wheel-label" style="${pos}">${s.p.emoji}</span>`;
+    const rot = midDeg <= 180 ? midDeg - 90 : midDeg + 90;
+    return `<span class="wheel-label txt ${s.p.lose ? 'lose' : ''}" style="${pos}; transform:rotate(${rot.toFixed(1)}deg)">${s.p.label}</span>`;
   }).join('');
   return `
     <div class="wheel-wrap">
@@ -292,6 +324,11 @@ function spinWheel(btn){
   setTimeout(() => {
     clearInterval(ticks);
     if (!document.getElementById('wheel')) return;   // cerraron la hoja: el premio ya está dado
+    if (pick.p.lose){
+      sfxFail();
+      openWheel(`¡Uy! ${texto}`);
+      return;
+    }
     tone({ freq: 880, durationMs: 160, type: 'triangle', vol: 0.09 });
     tone({ freq: 1318.51, durationMs: 220, type: 'triangle', vol: 0.08, at: (audioNow() || 0) + 0.12 });
     if (pick.p.big) triggerPetAction('celebrate');

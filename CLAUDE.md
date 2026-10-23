@@ -635,15 +635,22 @@ más alto, pero no rompe.
 
 #### Ruleta y gacha (`premios.js`)
 
-La ruleta **sí da monedas**: 💰 25 en el premio común y 🤑 100 en un premio
-mayor raro. Son un extra, no un reemplazo de jugar: 25 son unas cuatro
-partidas buenas (~7 cada una) y la ruleta sale una vez cada 12 horas. El
-gacha no da monedas (se paga con ellas).
+La ruleta **da y quita monedas**: trozos de +2, +5, +10, +25, +50 y +100
+(mientras más grande, más raro: +100 sale el 2.5% de las veces) y trozos
+que quitan -2, -5 y -10 (nunca más de 10, y nunca bajo cero: `giveCoins()`
+quita solo lo que haya). Con los pesos de hoy se ganan monedas el 40% de
+las veces, se pierden el 15%, y en promedio un giro deja ~+6.4, algo menos
+que una partida buena (~7): es un extra, no un reemplazo de jugar. Los
+trozos de monedas llevan el número escrito a lo largo del radio (`label`)
+en vez de un emoji, y cada trozo angosto va entre dos anchos (dos angostos
+seguidos encimaban sus emojis). El gacha no da monedas (se paga con
+ellas).
 
 - **Ruleta** (píldora 🎡, `openWheel()`): un giro gratis cada
   `WHEEL_CYCLE_MS` (12 h **reales**, `state.wheel.last`; un reloj que vuelve
-  atrás deja girar, igual que el Megajuego). Premios en `WHEEL_PRIZES`:
-  monedas, comida, medicina, +15 de felicidad o fichas para el gacha. Cada trozo de la
+  atrás deja girar, igual que el Megajuego). Premios en `WHEEL_PRIZES` (17
+  trozos): monedas (y monedas que se pierden), comida, medicina, +15 de
+  felicidad o fichas para el gacha. Cada trozo de la
   rueda mide **lo que pesa su probabilidad** (`w`): lo que se ve es lo que
   hay. El premio se sortea, se aplica y se guarda al tocar Girar, no al
   terminar la animación (cerrar la hoja a mitad no lo pierde); la rueda gira

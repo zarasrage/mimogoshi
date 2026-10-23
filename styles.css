@@ -1802,7 +1802,7 @@ body{
 
 .wheel-wrap{
   position:relative;
-  width:min(250px, 68vw);
+  width:min(280px, 74vw);
   aspect-ratio:1;
   margin:6px auto 14px;
   flex-shrink:0;
@@ -1820,9 +1820,20 @@ body{
   width:30px; height:30px;
   margin:-15px 0 0 -15px;
   display:grid; place-items:center;
-  font-size:21px;
+  font-size:18px;
   line-height:1;
 }
+/* El número de los trozos de monedas, a lo largo del radio (wheelHtml). */
+.wheel-label.txt{
+  width:40px; height:18px;
+  margin:-9px 0 0 -20px;
+  font-family:var(--font-ui);
+  font-size:12.5px;
+  font-weight:900;
+  color:#4a3300;
+  letter-spacing:-.2px;
+}
+.wheel-label.txt.lose{color:#fff;}
 .wheel-pointer{
   position:absolute;
   left:50%; top:-12px;
