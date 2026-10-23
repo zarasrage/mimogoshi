@@ -64,7 +64,7 @@ Antes de las propuestas, lo que ya existe y no conviene romper:
 | Hay **una** mascota principal más un acompañante sin barras (`duo.js`). | Tener muchos personajes pide decidir qué pasa con los que no están en pantalla (§3). |
 | Sin backend: todo en `localStorage`. | Todo lo social tiene que funcionar primero sin servidor, o esperar a tenerlo. |
 | Los ritmos de las barras están calibrados por simulación (muere descuidada en ~17 h con la app abierta). | Cualquier rasgo que cambie el hambre o la energía obliga a repetir esa simulación por rasgo, no a ojo. |
-| Las monedas se ganan **solo jugando**, con el mérito como escala común. | Ni el combate automático ni la rareza deberían fabricar monedas, o se rompe la economía. |
+| Las monedas salen sobre todo de jugar (con el mérito como escala común) y también de la ruleta. No es obligatorio que salgan solo de los juegos. | El Club y otras cosas pueden dar monedas; lo que hay que cuidar es que jugar bien siga siendo la fuente principal y que la rareza no las multiplique. |
 | `careGood`/`careBad` se acumulan pero nadie los lee. Las mejoras "Pase de visita" y "Silbato de regreso" se venden pero no hacen nada. | Son los enganches naturales: el cuidado define stats, y el pase y el silbato pasan a ser "mandar al Club" y "traerla antes". |
 | Ya existe un prototipo de combate (`startCombatGame`, leer el ataque y reaccionar). | Sirve como modo interactivo de combate (§7, formato B). |
 
@@ -386,7 +386,7 @@ contraatacar). Los stats ajustan la ventana de reacción (agilidad), el daño
 - A favor: ya está medio hecho, y es habilidad pura.
 - En contra: no sirve para peleas que pasan mientras no miras.
 - **Uso propuesto:** "jefes" del Club (una pelea en vivo al final de cada
-  liga) y entrenamiento. Este sí puede dar monedas, porque es jugar.
+  liga) y entrenamiento. Puede pagar monedas como un minijuego más.
 
 ### Formato C: táctico por turnos (movimientos y maná, tipo Pokémon)
 
@@ -427,13 +427,15 @@ Cuatro movimientos por especie, elegir qué hacer en cada turno.
 6. El **"Silbato de regreso"** (la otra mejora que hoy no hace nada) la
    trae antes de tiempo.
 
-### ¿Da monedas?
+### ¿Cuántas monedas da?
 
-Recomiendo **no, o muy pocas.** La regla del juego es que las monedas se
-ganan jugando, y el Club pelea solo. Si diera monedas, mandar a la mascota
-cada 8 horas pagaría más que jugar. Que dé trofeos, xp, objetos y huevos.
-Las peleas de **jefe en vivo** (formato B), en cambio, sí pueden pagar como
-un minijuego más.
+Puede dar monedas: no hay ninguna regla que las limite a los minijuegos.
+Lo que recomiendo es **una cantidad moderada**, porque el Club pelea solo:
+si una expedición de 8 horas pagara más que jugar ese rato, jugar dejaría
+de tener sentido. Una referencia: que una expedición larga pague más o menos
+lo mismo que la ruleta (~25), y que lo grande sean los trofeos, la xp, los
+objetos y los huevos. Las peleas de **jefe en vivo** (formato B) pueden
+pagar como un minijuego más.
 
 ### Ligas y rivales sin servidor
 
@@ -486,8 +488,9 @@ Lo del §8. Sin servidor.
 
 ## 10. Economía: que nada de esto la rompa
 
-- **Monedas:** siguen saliendo solo de jugar (minijuegos y jefes en vivo).
-  Nuevos gastos: huevos, espacios de guardería, entrenamientos.
+- **Monedas:** salen de jugar (minijuegos y jefes en vivo), de la ruleta y,
+  en cantidad moderada, del Club. Que jugar bien siga siendo la fuente
+  principal. Nuevos gastos: huevos, espacios de guardería, entrenamientos.
 - **Trofeos:** no se gastan, solo marcan la liga.
 - **Fichas:** las de la ruleta, sirven también para la gacha de huevos.
 - **Cuidado con la inflación por rareza:** si los stats dan ayudas en los
@@ -595,7 +598,7 @@ dibujar o encargar las bases, generar variantes.
 | La rareza hace aburrido pelear entre amigos | Techo chico (§5), modo parejo (§9), rareza vía rasgos más que vía números. |
 | Los rasgos de cuidado rompen la calibración de muerte | Rango ×0.8-×1.25 y simulación obligatoria por rasgo (§6). |
 | El Club se usa para "pausar" el cuidado | Barras a la mitad, no en cero, mientras está fuera (§8). |
-| Inflación de monedas | Club sin monedas; ayudas de minijuego que no multiplican el mérito (§10). |
+| Inflación de monedas | Club con monedas moderadas; ayudas de minijuego que no multiplican el mérito (§10). |
 | La migración del save rompe partidas | Fase 0 aislada, con saves de prueba de cada versión vieja. |
 | Trampa en códigos de amigo | Aceptarlo entre amigos; servidor solo si hace falta ranking público (§9). |
 | Demasiados sistemas para una pantalla chica | Cada fase agrega UNA cosa visible; la ficha concentra los números. |
@@ -622,7 +625,8 @@ todo" si te parece bien:
    pelear? (Ayudas chicas.)
 6. **Combate:** ¿automático con repetición como base? ¿O prefieres que el
    jugador siempre pelee en vivo? (Automático + jefes en vivo.)
-7. **El Club, ¿da monedas?** (No, o muy pocas; sí trofeos, xp y huevos.)
+7. **¿Cuántas monedas da el Club?** (Moderadas, ~25 por expedición larga;
+   lo grande son los trofeos, la xp y los huevos.)
 8. **Amigos:** ¿te sirven los códigos sin servidor como primer paso, o el
    plan es ir directo a un servidor? (Códigos primero.)
 9. **Nombres:** "Club de la pelea" puede sonar a la película; otras

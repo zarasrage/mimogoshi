@@ -6,9 +6,9 @@
    se usa recién en tiempo de juego, no al cargar. */
 
 /* Minijuegos del menú de Jugar. Se desbloquean con monedas, una sola vez y para
-   siempre; Atrapa estrellas viene gratis de inicio porque las monedas solo se
-   ganan jugando (ver finishMinigame): sin un juego abierto no habría forma de
-   juntar la primera. Precios sin calibrar, un primer intento: una partida buena
+   siempre; Atrapa estrellas viene gratis de inicio para que desde el primer
+   minuto haya algo que jugar y una forma de juntar monedas, sin esperar a la
+   ruleta. Precios sin calibrar, un primer intento: una partida buena
    da ~7 monedas. Combate no va acá — es un prototipo que solo lanza el panel
    de prueba, que además se salta el bloqueo. Snake y Tap rítmico se sacaron:
    loadState() les pasa lo pagado a Torre y Salto al cielo (ver

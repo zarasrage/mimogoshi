@@ -1,15 +1,14 @@
 /* ===================== Premios: ruleta y gacha =====================
    Dos formas de conseguir cosas que no son "comprar lo que elegiste":
    - La ruleta (🎡, en las píldoras de abajo): un giro gratis cada
-     WHEEL_CYCLE_MS de tiempo REAL. Da comida, medicina, felicidad o fichas
-     para el gacha.
+     WHEEL_CYCLE_MS de tiempo REAL. Da monedas, comida, medicina, felicidad
+     o fichas para el gacha.
    - El gacha (pestaña "Gacha" de la tienda): una máquina de cápsulas que da
      un objeto de estilo al azar, de un catálogo propio que no se vende en la
      tienda, con rarezas. Se paga con monedas o con una ficha de la ruleta.
 
-   Ninguno de los dos da monedas, a propósito: las monedas se ganan solo
-   jugando (ver finishMinigame), igual que con los regalos. Si la ruleta las
-   diera, entrar una vez cada 12 horas pagaría más que jugar bien.
+   Las monedas de la ruleta son un extra y no reemplazan a jugar: lo normal
+   (25) son unas cuatro partidas buenas, y sale una vez cada 12 horas.
 
    Se carga después de juegos.js y antes de muebles.js (ver index.html). El
    push a STYLE_ITEMS va al cargar, como el de los muebles; todo lo demás se
@@ -179,15 +178,22 @@ const WHEEL_SPIN_MS = 4200;
 /* Cada premio ocupa en la rueda un trozo proporcional a su probabilidad
    (`w`): lo que se ve es lo que hay. `give()` lo aplica y devuelve el texto. */
 const WHEEL_PRIZES = [
-  { id: 'rica',     emoji: '🍗', w: 18, color: '#ffb36b', give: () => giveFood('rica', 2) },
-  { id: 'feliz',    emoji: '⭐', w: 14, color: '#ffe066', give: () => { state.happiness = clamp(state.happiness + 15); return '+15 de felicidad'; } },
-  { id: 'cafe',     emoji: '☕', w: 14, color: '#c99a6b', give: () => giveFood('cafe', 2) },
+  { id: 'monedas',  emoji: '💰', w: 16, color: '#ffd25a', give: () => giveCoins(25) },
+  { id: 'rica',     emoji: '🍗', w: 14, color: '#ffb36b', give: () => giveFood('rica', 2) },
+  { id: 'feliz',    emoji: '⭐', w: 14, color: '#fff0a0', give: () => { state.happiness = clamp(state.happiness + 15); return '+15 de felicidad'; } },
+  { id: 'cafe',     emoji: '☕', w: 12, color: '#c99a6b', give: () => giveFood('cafe', 2) },
   { id: 'especial', emoji: '🍰', w: 14, color: '#ff9ec4', give: () => giveFood('especial', 1) },
   { id: 'ficha',    emoji: '🎟️', w: 12, color: '#8fd3ff', give: () => giveTickets(1) },
   { id: 'medicina', emoji: '💊', w: 12, color: '#ff7b8a', give: () => giveFood(MEDICINE.id, 1) },
   { id: 'banquete', emoji: '🍱', w: 8,  color: '#8fcf7f', give: () => giveFood('banquete', 1) },
   { id: 'fichas3',  emoji: '💎', w: 4,  color: '#b39cff', give: () => giveTickets(3), big: true },
+  { id: 'monedas+', emoji: '🤑', w: 3,  color: '#5ccf7a', give: () => giveCoins(100), big: true },
 ];
+
+function giveCoins(n){
+  state.coins += n;
+  return `${coinsLabel('+' + n)} monedas`;
+}
 
 function giveFood(id, n){
   state.pantry[id] = foodStock(id) + n;

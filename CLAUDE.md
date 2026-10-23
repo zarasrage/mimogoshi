@@ -407,8 +407,8 @@ compite por atención con nada más (no toca higiene ni ninguna otra barra).
 Al abrir uno (`collectGift()`, tocando el ícono 🎁 que aparece flotando junto
 a la mascota) da una porción de una comida mejor que la inicial
 (`GIFT_FOOD_POOL`: rica, especial o Red Bull, al azar) más `GIFT_HAPPINESS`
-de felicidad — **nunca monedas**: esas se ganan solo jugando (ver
-`finishMinigame`), y si el regalo también las diera dejaría de ser cierto.
+de felicidad. Hoy no da monedas, pero no es una regla: si se quiere, es
+sumarlas en `collectGift()`.
 
 **Modo nocturno** (`isNightMode()`, 00:00 a 06:00 **hora real** del
 dispositivo — es de noche para quien juega, no para la mascota): todo decae a
@@ -494,7 +494,10 @@ obvio si vuelve a haber ramas o un final según el cuidado.
 
 ### Dinero y tienda
 
-`state.coins` se gana **solo jugando**. Cada juego le pasa a `finishMinigame()`
+`state.coins` sale sobre todo de jugar, y también de la ruleta (ver "Ruleta y
+gacha"). **No es una regla que las monedas salgan solo de los juegos**: se
+pueden dar en otros lados si conviene; lo que hay que cuidar es que jugar
+bien siga siendo la fuente principal. Cada juego le pasa a `finishMinigame()`
 un **mérito**: su puntaje llevado a una escala común (~45 = partida muy buena),
 porque los puntajes no se pueden comparar entre sí (9 en baloncesto contra
 ~500 en salto al cielo). De ese mérito salen las dos recompensas, con reglas
@@ -632,15 +635,15 @@ más alto, pero no rompe.
 
 #### Ruleta y gacha (`premios.js`)
 
-Ninguno de los dos da **monedas**, a propósito (las monedas se ganan solo
-jugando, como dice arriba): si la ruleta las diera, entrar una vez cada 12
-horas pagaría más que jugar bien. Si algún día se quiere cambiar, es sumar
-un premio a `WHEEL_PRIZES`.
+La ruleta **sí da monedas**: 💰 25 en el premio común y 🤑 100 en un premio
+mayor raro. Son un extra, no un reemplazo de jugar: 25 son unas cuatro
+partidas buenas (~7 cada una) y la ruleta sale una vez cada 12 horas. El
+gacha no da monedas (se paga con ellas).
 
 - **Ruleta** (píldora 🎡, `openWheel()`): un giro gratis cada
   `WHEEL_CYCLE_MS` (12 h **reales**, `state.wheel.last`; un reloj que vuelve
   atrás deja girar, igual que el Megajuego). Premios en `WHEEL_PRIZES`:
-  comida, medicina, +15 de felicidad o fichas para el gacha. Cada trozo de la
+  monedas, comida, medicina, +15 de felicidad o fichas para el gacha. Cada trozo de la
   rueda mide **lo que pesa su probabilidad** (`w`): lo que se ve es lo que
   hay. El premio se sortea, se aplica y se guarda al tocar Girar, no al
   terminar la animación (cerrar la hoja a mitad no lo pierde); la rueda gira
@@ -1073,8 +1076,8 @@ puntaje fue positivo.
 Los seis juegos del menú viven en `GAMES` (id, nombre, precio y `start`): el
 menú de Jugar se arma solo desde ahí. Se desbloquean con monedas tocándolos en
 el mismo menú, una vez y para siempre (`state.unlockedGames`). Atrapa
-estrellas es gratis (`price: 0`) a propósito: las monedas solo se ganan
-jugando, sin un juego abierto no habría cómo juntar la primera. `loadState()`
+estrellas es gratis (`price: 0`) a propósito: desde el primer minuto hay algo
+que jugar y una forma de juntar monedas, sin esperar a la ruleta. `loadState()`
 deja desbloqueados en saves viejos los juegos que ya tienen récord. El panel de
 prueba se salta el bloqueo. El cansancio (`energy < GAME_MIN_ENERGY`, 10) se revisa al lanzar,
 no al abrir el menú, para poder comprar igual.

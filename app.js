@@ -1513,9 +1513,7 @@ const btnClean = () => {
 };
 
 /* Comida de premio, no la de arranque: la gracia del regalo es que sea mejor
-   que lo que ya se puede comprar barato. Nunca monedas — esas se ganan SOLO
-   jugando (ver finishMinigame): si el regalo también las diera, dejaría de
-   ser cierto y el tope de felicidad de los minijuegos perdería sentido. */
+   que lo que ya se puede comprar barato. */
 const GIFT_FOOD_POOL = ['rica', 'especial', 'redbull'];
 const GIFT_HAPPINESS = 8;
 
@@ -1806,7 +1804,7 @@ function openShop(aviso, gachaRes){
 
   showOverlay(`
     <h3>🛒 Tienda</h3>
-    <p>${aviso ? escapeHtml(aviso) : `Tienes ${coinsLabel(state.coins)}. Se ganan monedas jugando.`}</p>
+    <p>${aviso ? escapeHtml(aviso) : `Tienes ${coinsLabel(state.coins)}. Se ganan jugando y en la ruleta 🎡.`}</p>
     <div class="shop-tabs">
       <button class="shop-tab ${shopTab === 'food' ? 'active' : ''}" id="shopTabFood">Comida</button>
       <button class="shop-tab ${shopTab === 'upgrades' ? 'active' : ''}" id="shopTabUpgrades">Mejoras</button>
