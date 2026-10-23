@@ -1,8 +1,9 @@
 /* ===================== Premios: ruleta y gacha =====================
    Dos formas de conseguir cosas que no son "comprar lo que elegiste":
    - La ruleta (🎡, en las píldoras de abajo): un giro gratis cada
-     WHEEL_CYCLE_MS de tiempo REAL. Da (o quita) monedas, y da comida,
-     medicina, felicidad o fichas para el gacha.
+     WHEEL_CYCLE_MS de tiempo REAL, y giros extra con tickets de ruleta
+     (🎫, state.wheelTickets, salen en los regalos). Da (o quita) monedas,
+     y da comida, medicina, felicidad o fichas para el gacha.
    - El gacha (pestaña "Gacha" de la tienda): una máquina de cápsulas que da
      un objeto de estilo al azar, de un catálogo propio que no se vende en la
      tienda, con rarezas. Se paga con monedas o con una ficha de la ruleta.
@@ -247,6 +248,8 @@ function wheelMsLeft(){
 
 function wheelReady(){ return wheelMsLeft() === 0; }
 
+function wheelTickets(){ return state.wheelTickets || 0; }
+
 /* Ángulos de cada trozo, en grados desde arriba en sentido horario. */
 function wheelSlices(){
   const tot = WHEEL_PRIZES.reduce((a, p) => a + p.w, 0);
@@ -279,35 +282,53 @@ function wheelHtml(){
     </div>`;
 }
 
+/* Dos formas de girar, independientes: el giro gratis (uno cada 12 horas)
+   y los tickets de ruleta (🎫). Usar un ticket NO toca el reloj del gratis:
+   van aparte. Con el gratis disponible, ese va primero (es el botón
+   principal) y el del ticket queda de secundario, así no se gasta un ticket
+   sin querer. */
 function openWheel(aviso){
   const ready = wheelReady();
+  const tickets = wheelTickets();
+  const nota = aviso ? escapeHtml(aviso)
+    : ready ? 'Un giro gratis cada 12 horas'
+    : tickets ? 'El gratis ya lo usaste, pero tienes tickets 🎫' : 'Ya giraste: vuelve más tarde';
+  const ticketBtn = tickets
+    ? `<button class="overlay-btn ${ready ? 'secondary' : ''}" id="btnSpinTicket">Usar ticket 🎫 (${tickets})</button>` : '';
   showOverlay(`
     <h3>🎡 Ruleta</h3>
-    <p class="sheet-note" id="wheelNote">${aviso ? escapeHtml(aviso) : ready ? 'Un giro gratis cada 12 horas' : 'Ya giraste: vuelve más tarde'}</p>
+    <p class="sheet-note" id="wheelNote">${nota}</p>
     ${wheelHtml()}
     <div class="overlay-actions">
-      ${ready ? '<button class="overlay-btn" id="btnSpin">¡Girar!</button>'
-        : `<div class="mega-wait"><div class="mega-wait-row"><b>Próximo giro</b><span>⏳ <span data-wheel-clock>${megaClockLabel(wheelMsLeft())}</span></span></div></div>`}
+      ${ready ? '<button class="overlay-btn" id="btnSpin">¡Girar gratis!</button>'
+        : `<div class="mega-wait"><div class="mega-wait-row"><b>Próximo giro gratis</b><span>⏳ <span data-wheel-clock>${megaClockLabel(wheelMsLeft())}</span></span></div></div>`}
+      ${ticketBtn}
+      ${tickets ? '' : '<p class="wheel-hint">¿Más giros? Los regalos 🎁 a veces traen tickets de ruleta 🎫</p>'}
       <button class="overlay-btn secondary" id="btnCloseWheel">Cerrar</button>
     </div>
   `, hideOverlay);
   document.getElementById('btnCloseWheel').addEventListener('click', hideOverlay);
   const spin = document.getElementById('btnSpin');
-  if (spin) spin.addEventListener('click', () => spinWheel(spin));
+  const spinT = document.getElementById('btnSpinTicket');
+  if (spin) spin.addEventListener('click', () => spinWheel(false));
+  if (spinT) spinT.addEventListener('click', () => spinWheel(true));
 }
 
 /* El premio se sortea y se aplica (y se guarda) al tocar Girar, no al
    terminar la animación: si se cierra la hoja a mitad del giro, el premio
-   igual queda. La animación solo lo muestra. */
-function spinWheel(btn){
-  if (!wheelReady()) return;
+   igual queda. La animación solo lo muestra. Con ticket, se gasta el ticket
+   y el reloj del gratis no se toca. */
+function spinWheel(conTicket){
+  if (wheelSpinning) return;
+  if (conTicket ? wheelTickets() <= 0 : !wheelReady()) return;
   const slices = wheelSlices();
   const tot = WHEEL_PRIZES.reduce((a, p) => a + p.w, 0);
   let r = Math.random() * tot, pick = slices[slices.length - 1];
   for (const s of slices){ if (r < s.p.w){ pick = s; break; } r -= s.p.w; }
   const texto = pick.p.give();
   const w = wheelState();
-  w.last = Date.now();
+  if (conTicket) state.wheelTickets = wheelTickets() - 1;
+  else w.last = Date.now();
   /* Para que el puntero (arriba) quede sobre el trozo, la rueda gira hasta
      que el centro del trozo (con un poco de azar adentro) llegue a 0°. */
   const dentro = pick.a0 + (pick.a1 - pick.a0) * (0.2 + Math.random() * 0.6);
@@ -315,14 +336,18 @@ function spinWheel(btn){
   w.angle = base + 5 * 360 + (360 - dentro);
   saveState(); render(); updateWheelPill();
 
-  btn.disabled = true;
-  btn.textContent = 'Girando…';
+  /* Mientras gira no se puede volver a girar (ni con el otro botón). */
+  wheelSpinning = true;
+  document.querySelectorAll('#btnSpin, #btnSpinTicket').forEach(b => { b.disabled = true; });
+  const btn = document.getElementById(conTicket ? 'btnSpinTicket' : 'btnSpin');
+  if (btn) btn.textContent = 'Girando…';
   const wheel = document.getElementById('wheel');
   wheel.style.transition = `transform ${WHEEL_SPIN_MS}ms cubic-bezier(.12,.7,.12,1)`;
   requestAnimationFrame(() => { wheel.style.transform = `rotate(${w.angle}deg)`; });
   const ticks = setInterval(() => tone({ freq: 1200, durationMs: 18, type: 'square', vol: 0.03 }), 140);
   setTimeout(() => {
     clearInterval(ticks);
+    wheelSpinning = false;
     if (!document.getElementById('wheel')) return;   // cerraron la hoja: el premio ya está dado
     if (pick.p.lose){
       sfxFail();
@@ -336,7 +361,10 @@ function spinWheel(btn){
   }, WHEEL_SPIN_MS + 120);
 }
 
-/* La píldora de la ruleta late cuando hay un giro disponible. */
+let wheelSpinning = false;
+
+/* La píldora de la ruleta late cuando hay un giro gratis disponible (los
+   tickets no la hacen latir: si no, con un ticket guardado latiría siempre). */
 function updateWheelPill(){
   const pill = document.getElementById('btnWheel');
   if (!pill || !state) return;
@@ -353,6 +381,6 @@ if (typeof window !== 'undefined') setInterval(() => {
   const clocks = document.querySelectorAll('[data-wheel-clock]');
   if (!clocks.length) return;
   const ms = wheelMsLeft();
-  if (ms <= 0){ openWheel(); return; }   // se cumplió con la hoja abierta: aparece el botón
+  if (ms <= 0){ if (!wheelSpinning) openWheel(); return; }   // se cumplió con la hoja abierta: aparece el botón
   clocks.forEach(el => { el.textContent = megaClockLabel(ms); });
 }, 1000);

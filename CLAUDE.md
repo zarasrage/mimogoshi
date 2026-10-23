@@ -407,8 +407,10 @@ compite por atención con nada más (no toca higiene ni ninguna otra barra).
 Al abrir uno (`collectGift()`, tocando el ícono 🎁 que aparece flotando junto
 a la mascota) da una porción de una comida mejor que la inicial
 (`GIFT_FOOD_POOL`: rica, especial o Red Bull, al azar) más `GIFT_HAPPINESS`
-de felicidad. Hoy no da monedas, pero no es una regla: si se quiere, es
-sumarlas en `collectGift()`.
+de felicidad, y la mitad de las veces (`GIFT_WHEEL_TICKET_CHANCE`) además un
+**ticket de ruleta** 🎫 (ver "Ruleta y gacha"): con un regalo cada ~12 h,
+un ticket cada ~24 h. Hoy no da monedas, pero no es una regla: si se quiere,
+es sumarlas en `collectGift()`.
 
 **Modo nocturno** (`isNightMode()`, 00:00 a 06:00 **hora real** del
 dispositivo — es de noche para quien juega, no para la mascota): todo decae a
@@ -655,7 +657,16 @@ ellas).
   hay. El premio se sortea, se aplica y se guarda al tocar Girar, no al
   terminar la animación (cerrar la hoja a mitad no lo pierde); la rueda gira
   hasta dejar el trozo bajo el puntero y guarda su ángulo
-  (`state.wheel.angle`) para que el próximo giro arranque de ahí. La cuenta
+  (`state.wheel.angle`) para que el próximo giro arranque de ahí.
+  **Tickets de ruleta** 🎫 (`state.wheelTickets`, salen en los regalos):
+  cada uno es un giro extra que **no toca el reloj del gratis**, van aparte
+  (`spinWheel(true)` gasta el ticket y no escribe `state.wheel.last`). Con
+  el gratis disponible, ese es el botón principal y "Usar ticket" queda de
+  secundario, para no gastar un ticket sin querer; sin gratis, el ticket
+  pasa a ser el principal. `wheelSpinning` impide girar de nuevo (con
+  cualquiera de los dos botones) mientras la rueda gira. La píldora 🎡 late
+  solo por el gratis: con un ticket guardado latiría siempre. El panel de
+  prueba tiene "+1 ticket de ruleta" y "Ruleta gratis ya". La cuenta
   regresiva se refresca sola (`[data-wheel-clock]`, mismo esquema que los
   relojes del Megajuego).
 - **Gacha** (pestaña "Gacha" de la tienda): una cápsula = un objeto de

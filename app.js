@@ -703,6 +703,7 @@ function freshState(name, species){
     log: [],             // bitácora: lo que pasó solo (ver logEvent)
     wheel: { last: null, angle: 0 },   // ruleta (premios.js): último giro y dónde quedó la rueda
     gachaTickets: 0,     // fichas de la ruleta para el gacha
+    wheelTickets: 0,     // tickets de ruleta: giros extra, aparte del gratis (premios.js)
   };
 }
 
@@ -800,6 +801,7 @@ function loadState(){
     // ruleta y gacha (premios.js): de antes no existían
     if (!s.wheel || typeof s.wheel !== 'object') s.wheel = { last: null, angle: 0 };
     if (typeof s.gachaTickets !== 'number' || !isFinite(s.gachaTickets)) s.gachaTickets = 0;
+    if (typeof s.wheelTickets !== 'number' || !isFinite(s.wheelTickets)) s.wheelTickets = 0;
     // saves con 'grown' (antes de la escalera de tamaños) o con una etapa fantasma
     if (!ALL_STAGES.includes(s.stage)) s.stage = 'adult';
     return s;
@@ -1516,6 +1518,10 @@ const btnClean = () => {
    que lo que ya se puede comprar barato. */
 const GIFT_FOOD_POOL = ['rica', 'especial', 'redbull'];
 const GIFT_HAPPINESS = 8;
+/* Además de la comida, a veces trae un ticket de ruleta (premios.js): un
+   giro extra que no toca el gratis de cada 12 horas. Con un regalo cada
+   ~12 h reales, sale un ticket cada ~24 h. */
+const GIFT_WHEEL_TICKET_CHANCE = 0.5;
 
 const collectGift = () => {
   if (!tryWake()) return;
@@ -1525,9 +1531,12 @@ const collectGift = () => {
   const food = foodById(GIFT_FOOD_POOL[Math.floor(Math.random() * GIFT_FOOD_POOL.length)]);
   state.pantry[food.id] = (state.pantry[food.id] || 0) + 1;
   state.happiness = clamp(state.happiness + GIFT_HAPPINESS);
+  const ticket = Math.random() < GIFT_WHEEL_TICKET_CHANCE;
+  if (ticket) state.wheelTickets = (state.wheelTickets || 0) + 1;
 
   floatFx(food.emoji);
-  say(`¡Un regalo! +1 ${food.name} ${food.emoji}`);
+  if (ticket) setTimeout(() => floatFx('🎫'), 250);
+  say(`¡Un regalo! +1 ${food.name} ${food.emoji}` + (ticket ? ' y un ticket de ruleta 🎫' : ''), ticket ? 2600 : 1600);
   triggerPetAction('celebrate');
   saveState(); render();
 };
@@ -2099,6 +2108,8 @@ function renderDebugPanel(){
         <div class="debug-grid" style="margin-top:6px; grid-template-columns:1fr 1fr">
           <button class="debug-btn" data-coins="100">💰 +100 monedas</button>
           <button class="debug-btn" data-coins="1000">💰 +1000 monedas</button>
+          <button class="debug-btn" id="dbgWheelTicket">🎫 +1 ticket de ruleta</button>
+          <button class="debug-btn" id="dbgWheelReset">🎡 Ruleta gratis ya</button>
         </div>
         <button class="debug-btn wide" id="dbgNight" style="margin-top:6px">${
           debugForcedNight === null ? '🕐 Día/noche: hora real' : debugForcedNight ? '🌙 Día/noche: noche forzada' : '☀️ Día/noche: día forzado'}</button>
@@ -2195,6 +2206,12 @@ function renderDebugPanel(){
   document.getElementById('dbgCombat').addEventListener('click', () => { closeDebugPanel(); startCombatGame(); });
   /* Para probar la tienda (muebles, estilo, juegos) sin tener que jugar
      partidas. Son monedas reales del save: no se devuelven al apagar nada. */
+  document.getElementById('dbgWheelTicket').addEventListener('click', () => {
+    state.wheelTickets = (state.wheelTickets || 0) + 1; saveState(); render(); renderDebugPanel();
+  });
+  document.getElementById('dbgWheelReset').addEventListener('click', () => {
+    if (state.wheel) state.wheel.last = null; saveState(); render(); renderDebugPanel();
+  });
   document.querySelectorAll('[data-coins]').forEach(el => el.addEventListener('click', () => {
     state.coins += +el.dataset.coins; saveState(); render(); renderDebugPanel();
   }));
