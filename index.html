@@ -22,6 +22,7 @@
     <div class="device-top">
       <span class="brand">MIMOGOSHI</span>
       <div class="device-top-right">
+        <button class="debug-toggle" id="btnSettings" title="Configuración" aria-label="Configuración">⚙️</button>
         <button class="debug-toggle" id="btnDebug" title="Modo prueba">🧪</button>
         <span class="led" id="led"></span>
       </div>
@@ -162,11 +163,11 @@
           <span class="btn-icon">🍽️</span><span class="btn-label">Comer</span>
         </button>
       </div>
+      <!-- La ruleta vive dentro de Juegos y Reiniciar en la configuración (⚙️ de
+           arriba): aquí quedan solo las dos cosas de vez en cuando. -->
       <div class="dock-sec">
-        <button class="pill" id="btnShop" title="Tienda">🛒 Tienda</button>
         <button class="pill" id="btnStyle" title="Personalizar">🎨 Personalizar</button>
-        <button class="pill pill-icon" id="btnWheel" title="Ruleta">🎡</button>
-        <button class="pill pill-icon" id="btnReset" title="Reiniciar">↺</button>
+        <button class="pill" id="btnShop" title="Tienda">🛒 Tienda</button>
       </div>
       <div class="food-tray hidden" id="foodTray"></div>
     </div>
@@ -174,10 +175,6 @@
     <!-- Reemplaza a .controls mientras dura un minijuego: los mandos del juego
          viven acá abajo y no encima de la pantalla. -->
     <div class="game-controls hidden" id="gameControls"></div>
-
-    <div class="speaker">
-      <span></span><span></span><span></span><span></span><span></span>
-    </div>
 
     <!-- Los menús cubren el aparato entero (hoja que sube desde abajo), no
          solo la pantalla LCD: ahí adentro no entraban más de dos filas. -->

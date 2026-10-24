@@ -275,11 +275,83 @@ function wheelHtml(){
     return `<span class="wheel-label txt ${s.p.lose ? 'lose' : ''}" style="${pos}; transform:rotate(${rot.toFixed(1)}deg)">${s.p.label}</span>`;
   }).join('');
   return `
-    <div class="wheel-wrap">
-      <div class="wheel-pointer"></div>
-      <div class="wheel" id="wheel" style="background:conic-gradient(${grad}); transform:rotate(${wheelState().angle || 0}deg)">${labels}</div>
-      <div class="wheel-hub">🎡</div>
+    <div class="wheel-stage">
+      <div class="wheel-wrap">
+        <div class="wheel-pointer"></div>
+        <div class="wheel" id="wheel" style="background:conic-gradient(${grad}); transform:rotate(${wheelState().angle || 0}deg)">${labels}</div>
+        <div class="wheel-hub">🎡</div>
+      </div>
+      <canvas class="wheel-pet" id="wheelPet"></canvas>
     </div>`;
+}
+
+/* Entrada a la ruleta arriba del menú de Juegos (antes era una píldora
+   suelta abajo). Dice si hay giro gratis, cuánto falta o cuántos tickets. */
+function wheelEntryHtml(){
+  return `<button class="wheel-entry ${wheelReady() ? 'ready' : ''}" id="btnOpenWheel">${wheelEntryInner()}</button>`;
+}
+function wheelEntryInner(){
+  const t = wheelTickets();
+  const sub = wheelReady() ? '¡Tienes un giro gratis!'
+    : `Gratis en ${megaClockLabel(wheelMsLeft(), true)}${t ? ` · ${t} ticket${t > 1 ? 's' : ''} 🎫` : ''}`;
+  return `<span class="we-icon">🎡</span><span class="we-text"><b>Ruleta</b><small>${sub}</small></span><span class="we-go">›</span>`;
+}
+
+/* ---------- La mascota que gira la ruleta ----------
+   Está parada al lado de la rueda: al girar toma vuelo, la empuja y se queda
+   saltando de los nervios mientras da vueltas; con el premio celebra (o se
+   pone triste si perdió monedas). Es un actor de juego (gameActor, de
+   duo-juegos.js) con la especie de la mascota, así no toca su animación en
+   la pieza. El canvas va en píxeles físicos y la escala es entera en
+   píxeles físicos (ver "La regla de oro"); el movimiento también se redondea
+   a píxeles físicos. */
+const WHEEL_PET_SCALE = 2.6;   // objetivo en px CSS por píxel del arte (8 físicos en un 3x)
+const wheelPet = { ga: null, mode: 'idle', t0: 0, raf: 0 };
+
+function setWheelPetMode(mode){
+  wheelPet.mode = mode;
+  wheelPet.t0 = performance.now();
+  if (!wheelPet.ga) return;
+  if (mode === 'win' || mode === 'big') gaOnce(wheelPet.ga, 'celebrate');
+}
+
+function startWheelPet(mode){
+  const c = document.getElementById('wheelPet');
+  if (!c) return;
+  const dpr = window.devicePixelRatio || 1;
+  c.width = Math.round(c.clientWidth * dpr);
+  c.height = Math.round(c.clientHeight * dpr);
+  wheelPet.ga = gameActor(currentSpeciesId());
+  setWheelPetMode(mode);
+  cancelAnimationFrame(wheelPet.raf);
+  wheelPet.raf = requestAnimationFrame(wheelPetLoop);
+}
+
+function wheelPetLoop(now){
+  const c = document.getElementById('wheelPet');
+  if (!c || !c.isConnected){ wheelPet.raf = 0; return; }   // se cerró la hoja
+  const ga = wheelPet.ga, t = now - wheelPet.t0;
+  let dx = 0, dy = 0;   // en px CSS: a la derecha (hacia la rueda) y hacia arriba
+  switch (wheelPet.mode){
+    case 'spin':
+      if (t < 260){ gaLoop(ga, 'walk'); dx = -6 * (t / 260); }             // toma vuelo
+      else if (t < 420){ gaLoop(ga, 'pet'); dx = -6 + 18 * ((t - 260) / 160); } // empujón
+      else if (t < 900){ gaLoop(ga, 'happy'); dx = 12 * (1 - (t - 420) / 480); }
+      else { gaLoop(ga, 'happy'); dy = Math.abs(Math.sin((t - 900) / 230)) * 7; } // saltitos de nervios
+      break;
+    case 'lose': gaLoop(ga, 'sad'); break;
+    case 'big': if (t > 1400) gaLoop(ga, 'happy'), dy = Math.abs(Math.sin(t / 200)) * 5; break;
+    default: gaLoop(ga, 'idle');
+  }
+  const dpr = window.devicePixelRatio || 1;
+  const k = Math.max(1, Math.round(WHEEL_PET_SCALE * dpr));
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.save();
+  ctx.translate(Math.round(dx * dpr), -Math.round(dy * dpr));
+  drawSprite(ctx, 'adult', 'normal', 0, true, k, { w: c.width, h: c.height }, ga);
+  ctx.restore();
+  wheelPet.raf = requestAnimationFrame(wheelPetLoop);
 }
 
 /* Dos formas de girar, independientes: el giro gratis (uno cada 12 horas)
@@ -287,7 +359,7 @@ function wheelHtml(){
    van aparte. Con el gratis disponible, ese va primero (es el botón
    principal) y el del ticket queda de secundario, así no se gasta un ticket
    sin querer. */
-function openWheel(aviso){
+function openWheel(aviso, petMode = 'idle'){
   const ready = wheelReady();
   const tickets = wheelTickets();
   const nota = aviso ? escapeHtml(aviso)
@@ -304,10 +376,15 @@ function openWheel(aviso){
         : `<div class="mega-wait"><div class="mega-wait-row"><b>Próximo giro gratis</b><span>⏳ <span data-wheel-clock>${megaClockLabel(wheelMsLeft())}</span></span></div></div>`}
       ${ticketBtn}
       ${tickets ? '' : '<p class="wheel-hint">¿Más giros? Los regalos 🎁 a veces traen tickets de ruleta 🎫</p>'}
-      <button class="overlay-btn secondary" id="btnCloseWheel">Cerrar</button>
+      <button class="overlay-btn secondary" id="btnCloseWheel">Volver a Juegos</button>
     </div>
   `, hideOverlay);
-  document.getElementById('btnCloseWheel').addEventListener('click', hideOverlay);
+  /* La ruleta se abre desde Juegos: volver la deja donde estaba. */
+  document.getElementById('btnCloseWheel').addEventListener('click', () => openGamesMenu());
+  startWheelPet(petMode);
+  const card = document.querySelector('#overlay .overlay-card');
+  snapPixelIcons(card);
+  card.addEventListener('animationend', () => snapPixelIcons(card), { once: true });
   const spin = document.getElementById('btnSpin');
   const spinT = document.getElementById('btnSpinTicket');
   if (spin) spin.addEventListener('click', () => spinWheel(false));
@@ -334,7 +411,8 @@ function spinWheel(conTicket){
   const dentro = pick.a0 + (pick.a1 - pick.a0) * (0.2 + Math.random() * 0.6);
   const base = Math.ceil((w.angle || 0) / 360) * 360;
   w.angle = base + 5 * 360 + (360 - dentro);
-  saveState(); render(); updateWheelPill();
+  saveState(); render();
+  setWheelPetMode('spin');
 
   /* Mientras gira no se puede volver a girar (ni con el otro botón). */
   wheelSpinning = true;
@@ -351,33 +429,26 @@ function spinWheel(conTicket){
     if (!document.getElementById('wheel')) return;   // cerraron la hoja: el premio ya está dado
     if (pick.p.lose){
       sfxFail();
-      openWheel(`¡Uy! ${texto}`);
+      openWheel(`¡Uy! ${texto}`, 'lose');
       return;
     }
     tone({ freq: 880, durationMs: 160, type: 'triangle', vol: 0.09 });
     tone({ freq: 1318.51, durationMs: 220, type: 'triangle', vol: 0.08, at: (audioNow() || 0) + 0.12 });
     if (pick.p.big) triggerPetAction('celebrate');
-    openWheel(`${pick.p.big ? '¡Premio mayor! ' : '¡Ganaste! '}${texto}`);
+    openWheel(`${pick.p.big ? '¡Premio mayor! ' : '¡Ganaste! '}${texto}`, pick.p.big ? 'big' : 'win');
   }, WHEEL_SPIN_MS + 120);
 }
 
 let wheelSpinning = false;
 
-/* La píldora de la ruleta late cuando hay un giro gratis disponible (los
-   tickets no la hacen latir: si no, con un ticket guardado latiría siempre). */
-function updateWheelPill(){
-  const pill = document.getElementById('btnWheel');
-  if (!pill || !state) return;
-  const ready = wheelReady();
-  if (pill._ready !== ready){ pill._ready = ready; pill.classList.toggle('ready', ready); }
-}
-
 /* Reloj de la ruleta en vivo, como los del Megajuego: un solo intervalo que
-   no hace nada si no hay ninguno a la vista. También refresca la píldora
-   (pasan las 12 horas con la app abierta). */
+   no hace nada si no hay ninguno a la vista. También refresca la entrada a
+   la ruleta del menú de Juegos (pasan las 12 horas con el menú abierto). */
 if (typeof window !== 'undefined') setInterval(() => {
   if (!state) return;
-  updateWheelPill();
+  const entry = document.getElementById('btnOpenWheel');
+  if (entry) entry.innerHTML = wheelEntryInner();
+  if (entry) entry.classList.toggle('ready', wheelReady());
   const clocks = document.querySelectorAll('[data-wheel-clock]');
   if (!clocks.length) return;
   const ms = wheelMsLeft();

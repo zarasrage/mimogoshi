@@ -973,6 +973,7 @@ body{
   box-shadow:0 0 0 3px rgba(255,111,174,.15);
 }
 .menu-item.locked{opacity:.42; cursor:not-allowed; filter:grayscale(.4);}
+.menu-item.settings-danger .info b{color:#ff8a96;}
 @media (hover:hover){
   .menu-item:not(.locked):hover{background:var(--surface-hi);}
 }
@@ -1613,7 +1614,9 @@ body{
   transition:transform .14s var(--ease-spring), background .15s ease;
 }
 .pill:active{transform:scale(.94); background:rgba(255,255,255,.32);}
-.pill-icon{padding:9px 13px; font-size:14px;}
+/* Dos píldoras del mismo ancho: Personalizar a la izquierda, Tienda a la
+   derecha. */
+.dock-sec .pill{flex:1; max-width:180px; justify-content:center;}
 
 /* Bandeja de comidas: se abre con Comer y flota encima del dock y las
    píldoras, del mismo tamaño que ellos (posición absoluta): el aparato no
@@ -1770,16 +1773,6 @@ body{
   text-align:center;
 }
 
-.speaker{
-  display:flex;
-  justify-content:center;
-  gap:5px;
-  margin-top:16px;
-}
-.speaker span{
-  width:5px;height:5px;border-radius:50%;
-  background:rgba(255,255,255,.35);
-}
 
 /* ---------- toasts / floating fx ---------- */
 
@@ -1810,7 +1803,6 @@ body{
   .screen-bezel{padding:10px;}
   .controls{margin-top:12px; gap:8px;}
   .dock{gap:7px;}
-  .speaker{margin-top:10px;}
 }
 
 /* Teléfono: el aparato llega a los bordes laterales, sin margen, y se le
@@ -1854,15 +1846,64 @@ body{
 }
 
 @media (prefers-reduced-motion: reduce){
-  .device, .led, .overlay, .overlay-card, .gc-mega, .result-score, .result-badge, .night-sky::before, .night-sky::after, .creature-floor.party::before, .stat.charging .stat-fill, .stat.charging .stat-icon, .stat.charging .stat-spark, .stat.low .stat-ring svg{animation:none;}
+  .device, .led, .overlay, .overlay-card, .gc-mega, .result-score, .result-badge, .night-sky::before, .night-sky::after, .creature-floor.party::before, .stat.charging .stat-fill, .stat.charging .stat-icon, .stat.charging .stat-spark, .stat.low .stat-ring svg, .wheel-entry.ready{animation:none;}
   .xp-fill{transition:none;}
 }
 
 /* ---------- Ruleta y gacha (premios.js) ---------- */
 
 /* La píldora de la ruleta late cuando hay un giro disponible. */
-.pill.ready{background:#ffce4b; color:#3a2a00; animation:pillReady 1.4s ease-in-out infinite;}
-@keyframes pillReady{ 50%{transform:scale(1.08); box-shadow:0 0 14px 2px rgba(255,206,75,.75);} }
+/* Entrada a la ruleta, arriba de la grilla de Juegos. Con giro gratis se
+   enciende en amarillo. */
+.wheel-entry{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  width:100%;
+  margin-bottom:12px;
+  padding:10px 14px;
+  border:none;
+  border-radius:var(--r-md);
+  background:var(--surface);
+  box-shadow:0 0 0 1px var(--stroke) inset;
+  color:var(--text);
+  font-family:var(--font-ui);
+  text-align:left;
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  user-select:none;
+  touch-action:manipulation;
+}
+.wheel-entry:active{transform:scale(.98);}
+.wheel-entry .we-icon{font-size:26px; line-height:1;}
+.wheel-entry .we-text{flex:1; display:flex; flex-direction:column; gap:2px;}
+.wheel-entry b{font-size:14px; font-weight:900;}
+.wheel-entry small{font-size:11.5px; font-weight:700; color:var(--text-soft);}
+.wheel-entry .we-go{font-size:18px; color:var(--text-soft);}
+.wheel-entry.ready{
+  background:linear-gradient(135deg, #ffd65c, #ffb238);
+  box-shadow:0 6px 18px -6px rgba(255,190,60,.7);
+  color:#3a2a00;
+  animation:wheelEntry 1.6s ease-in-out infinite;
+}
+.wheel-entry.ready small, .wheel-entry.ready .we-go{color:#6b4a00;}
+@keyframes wheelEntry{ 50%{box-shadow:0 6px 22px -2px rgba(255,190,60,.95);} }
+
+/* La mascota al lado de la rueda: la empuja al girar, la mira dar vueltas
+   y celebra o se pone triste con el premio (wheelPetLoop en premios.js).
+   El canvas va en píxeles físicos y se calza con snapPixelIcons(). */
+.wheel-stage{position:relative; width:min(280px, 74vw); margin:6px auto 14px; flex-shrink:0;}
+.wheel-stage .wheel-wrap{margin:0 0 0 auto; width:calc(100% - 26px);}
+.wheel-pet{
+  position:absolute;
+  left:-34px;
+  bottom:-4px;
+  z-index:3;
+  width:120px;
+  height:112px;
+  pointer-events:none;
+  image-rendering:pixelated;
+}
 
 .wheel-wrap{
   position:relative;

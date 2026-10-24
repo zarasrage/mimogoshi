@@ -1337,7 +1337,6 @@ function render(){
 
   /* Los botones de abajo avisan lo que hace falta (enferma, caca, sueño). */
   updateDock();
-  if (typeof updateWheelPill === 'function') updateWheelPill();
   /* Las flechas de habitación no salen mientras es huevo: al nacer aparecen. */
   const roomKey = state.style.rooms.length + ':' + state.style.room + ':' + displayStage();
   if (render._roomKey !== roomKey){ render._roomKey = roomKey; updateRoomNav(); }
@@ -1553,7 +1552,7 @@ function installPixelIcons(){
    el píxel más cercano. */
 function snapPixelIcons(root = document){
   const dpr = window.devicePixelRatio || 1;
-  for (const el of root.querySelectorAll('.px-icon')){
+  for (const el of root.querySelectorAll('.px-icon, .wheel-pet')){
     el.style.transform = '';
     const r = el.getBoundingClientRect();
     if (!r.width) continue;   // escondido: se calza al mostrarse
@@ -1814,6 +1813,8 @@ function updateDock(){
     btnFeed:  { need: state.hunger < 30 || !!state.sick, badge: state.sick ? '💊' : '' },
     btnClean: { need: !!state.poop, badge: state.poop ? '💩' : '' },
     btnSleep: { need: sleepy, badge: sleepy ? 'zZ' : '', soft: !isExhausted(), asleep: !!state.sleeping },
+    /* La ruleta vive dentro de Juegos: el giro gratis se avisa en Jugar. */
+    btnPlay:  { need: false, badge: typeof wheelReady === 'function' && wheelReady() ? '🎡' : '', soft: true },
   };
   const key = JSON.stringify(want);
   if (updateDock._key === key) return;
@@ -2470,7 +2471,6 @@ function wireButtons(){
   document.getElementById('btnClean').addEventListener('click', requireAlive(btnClean));
   document.getElementById('btnShop').addEventListener('click', requireAlive(() => openShop()));
   document.getElementById('btnStyle').addEventListener('click', requireAlive(() => openPersonalize()));
-  document.getElementById('btnWheel').addEventListener('click', requireAlive(() => openWheel()));
   document.getElementById('btnDebug').addEventListener('click', requireAlive(toggleDebugPanel));
   document.getElementById('btnCloseDebugSide').addEventListener('click', closeDebugPanel);
   document.getElementById('petCanvas').addEventListener('click', requireAlive(() => {
@@ -2502,6 +2502,29 @@ function wireButtons(){
     e.stopPropagation();
     collectGift();
   }));
+  document.getElementById('btnSettings').addEventListener('click', () => openSettings());
+
+  document.getElementById('screen').addEventListener('click', (e) => {
+    if (arranging || e.target.closest('.overlay') || e.target.closest('#gameCanvas')) return;
+    if (state.poop) { btnClean(); return; }
+  });
+}
+
+/* Configuración (⚙️ arriba, al lado del modo prueba). Por ahora solo
+   Reiniciar, que antes era una píldora abajo: destructivo, no tiene por qué
+   estar a mano junto a los cuidados de todos los días. */
+function openSettings(){
+  showOverlay(`
+    <h3>Configuración</h3>
+    <div class="menu-list">
+      <div class="menu-item settings-danger" id="btnReset">
+        <span class="emoji">↺</span>
+        <div class="info"><b>Reiniciar partida</b><small>Empezar de cero con una mascota nueva</small></div>
+      </div>
+    </div>
+    <button class="overlay-btn secondary" id="btnCloseSettings">Cerrar</button>
+  `, hideOverlay);
+  document.getElementById('btnCloseSettings').addEventListener('click', hideOverlay);
   document.getElementById('btnReset').addEventListener('click', () => {
     showOverlay(`
       <h3>¿Reiniciar?</h3>
@@ -2510,17 +2533,12 @@ function wireButtons(){
         <button class="overlay-btn danger" id="btnConfirmReset">Sí, reiniciar</button>
         <button class="overlay-btn secondary" id="btnCancelReset">Cancelar</button>
       </div>
-    `, hideOverlay);
-    document.getElementById('btnCancelReset').addEventListener('click', hideOverlay);
+    `, openSettings);
+    document.getElementById('btnCancelReset').addEventListener('click', openSettings);
     document.getElementById('btnConfirmReset').addEventListener('click', () => {
       clearSave();
       location.reload();
     });
-  });
-
-  document.getElementById('screen').addEventListener('click', (e) => {
-    if (arranging || e.target.closest('.overlay') || e.target.closest('#gameCanvas')) return;
-    if (state.poop) { btnClean(); return; }
   });
 }
 

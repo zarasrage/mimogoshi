@@ -232,6 +232,7 @@ function openGamesMenu(aviso){
     <h3>Juegos</h3>
     ${aviso ? `<p class="sheet-note">${escapeHtml(aviso)}</p>` : megaBanner()}
     <div class="menu-list">
+      ${wheelEntryHtml()}
       <div class="game-grid">${solos}</div>
       ${duos ? `<div class="game-grid-head"><span class="ggh-icon">👯</span><span>De a dos<br><small>${conQuien}</small></span></div>
       <div class="game-grid">${duos}</div>` : ''}
@@ -242,6 +243,7 @@ function openGamesMenu(aviso){
   document.querySelectorAll('[data-open-game]').forEach(el => {
     el.addEventListener('click', () => openGameDetail(el.dataset.openGame));
   });
+  document.getElementById('btnOpenWheel').addEventListener('click', () => openWheel());
   document.querySelectorAll('[data-buy-game]').forEach(el => {
     el.addEventListener('click', () => {
       const g = gameById(el.dataset.buyGame);

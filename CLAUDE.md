@@ -274,10 +274,13 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   de todos los días —Dormir, Limpiar, Jugar, Comer, en el mismo orden que
   los relojes de la pantalla (ver "Relojes" abajo)—, tarjetas blancas con el
   ícono en un "squircle" de color propio (`--tint` por id), y debajo
-  **píldoras** (`.pill`) con lo de vez en cuando: Tienda, Personalizar, y
-  como íconos chicos la Ruleta 🎡 (late en amarillo cuando hay giro, `.ready`)
-  y Reiniciar (destructivo, no tiene por qué estar a mano). Las cuatro entran
-  en 360 px de ancho (340 medidos); si se suma otra, medir.
+  dos **píldoras** (`.pill`, del mismo ancho) con lo de vez en cuando:
+  Personalizar a la izquierda y Tienda a la derecha. Antes también estaban
+  la Ruleta 🎡 (ahora dentro de Juegos, ver "Ruleta y gacha") y Reiniciar
+  (ahora en la configuración, el ⚙️ de arriba junto al 🧪 del modo prueba,
+  `openSettings()`: destructivo, no tiene por qué estar a mano). Debajo
+  había cinco puntitos de adorno (un "parlante") que parecían indicadores de
+  pestañas y confundían: se sacaron.
 - **Relojes** (`#stats`, abajo de la pantalla): las cinco estadísticas son
   anillos en fila en vez de barras, en el orden **energía, higiene, salud,
   felicidad, hambre**: cada cuidado queda encima de su botón del dock
@@ -687,7 +690,9 @@ en vez de un emoji, y cada trozo angosto va entre dos anchos (dos angostos
 seguidos encimaban sus emojis). El gacha no da monedas (se paga con
 ellas).
 
-- **Ruleta** (píldora 🎡, `openWheel()`): un giro gratis cada
+- **Ruleta** (`openWheel()`, se entra desde la fila 🎡 de arriba del menú de
+  Juegos, `wheelEntryHtml()`, que se pone amarilla con el giro gratis; el
+  botón de la hoja vuelve a Juegos): un giro gratis cada
   `WHEEL_CYCLE_MS` (12 h **reales**, `state.wheel.last`; un reloj que vuelve
   atrás deja girar, igual que el Megajuego). Premios en `WHEEL_PRIZES` (17
   trozos): monedas (y monedas que se pierden), comida, medicina, +15 de
@@ -703,8 +708,15 @@ ellas).
   el gratis disponible, ese es el botón principal y "Usar ticket" queda de
   secundario, para no gastar un ticket sin querer; sin gratis, el ticket
   pasa a ser el principal. `wheelSpinning` impide girar de nuevo (con
-  cualquiera de los dos botones) mientras la rueda gira. La píldora 🎡 late
-  solo por el gratis: con un ticket guardado latiría siempre. El panel de
+  cualquiera de los dos botones) mientras la rueda gira. El giro gratis se
+  avisa con un globito 🎡 en el botón Jugar (`updateDock()`), solo por el
+  gratis: con un ticket guardado estaría siempre. **La mascota gira la
+  ruleta**: está parada junto a la rueda (`#wheelPet`, un actor de juego con
+  su especie que no toca su animación en la pieza), al girar toma vuelo y
+  la empuja, salta de los nervios mientras da vueltas y con el premio
+  celebra o se pone triste si perdió monedas (`wheelPetLoop()`). Canvas en
+  píxeles físicos, escala entera en píxeles físicos (objetivo 2.6 px CSS) y
+  calzado con `snapPixelIcons()`. El panel de
   prueba tiene "+1 ticket de ruleta" y "Ruleta gratis ya". La cuenta
   regresiva se refresca sola (`[data-wheel-clock]`, mismo esquema que los
   relojes del Megajuego).
