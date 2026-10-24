@@ -1396,10 +1396,9 @@ const PX_ICONS = {
   health: {
     pal: { o:'#6e0b20', b:'#ff4d6d', l:'#ffadbb', m:'#d4284a', w:'#ffffff' },
     art: [
-      '.bbb.bbb.',
-      'bwlbbbbbb',
+      '.bb...bb.',
+      'bwlb.bbbm',
       'blbbbbbbm',
-      'bbbbbbbbm',
       'bbbbbbbbm',
       '.bbbbbbm.',
       '..bbbbm..',
@@ -1489,9 +1488,10 @@ const PX_ICONS = {
 /* Tamaño de un píxel del arte, como objetivo en px CSS. Lo que tiene que ser
    entero son los píxeles físicos (ver "La regla de oro"), así que
    pxIconScale() lo redondea en píxeles físicos: en un teléfono 3x, 2.3 da 7
-   físicos y 2.6 da 8. Los de los relojes van más grandes que los de la barra
-   de arriba, y el de la salud, en el reloj grande, más todavía. */
-const PX_ICON_SCALE = { base: 2, stat: 2.3, main: 2.6 };
+   físicos. Los de los relojes van más grandes que los de la barra de arriba;
+   el de la salud iba más grande todavía y se veía tosco: queda igual que los
+   otros (el reloj grande ya lo destaca). */
+const PX_ICON_SCALE = { base: 2, stat: 2.3 };
 function pxIconScale(target){
   const dpr = window.devicePixelRatio || 1;
   return Math.max(1, Math.round(target * dpr)) / dpr;
@@ -1521,15 +1521,13 @@ function installPixelIcons(){
   if (dpr === pxIconsDpr) return;
   pxIconsDpr = dpr;
   const size = (sel, w, h, k) => `${sel}{width:${w * k}px;height:${h * k}px;}\n`;
-  const base = pxIconScale(PX_ICON_SCALE.base), stat = pxIconScale(PX_ICON_SCALE.stat),
-        main = pxIconScale(PX_ICON_SCALE.main);
+  const base = pxIconScale(PX_ICON_SCALE.base), stat = pxIconScale(PX_ICON_SCALE.stat);
   let css = '';
   for (const [name, icon] of Object.entries(PX_ICONS)){
     const { w, h, uri } = pxIconSvg(icon);
     css += `.px-${name}{background-image:url("${uri}");}\n`;
     css += size(`.px-${name}`, w, h, base);
     css += size(`.stat-icon .px-${name}`, w, h, stat);
-    css += size(`.stat.main .stat-icon .px-${name}`, w, h, main);
   }
   let style = document.getElementById('pxIcons');
   if (!style){

@@ -313,7 +313,9 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   de los relojes van en los tonos de su reloj. `installPixelIcons()` los
   arma como SVG en data URI (anda con `file://`) en clases `.px-<nombre>`,
   con la escala redondeada en **píxeles físicos** (`pxIconScale()`, objetivo
-  2 px CSS en la barra, 2.3 en los relojes, 2.6 en el de la salud) y
+  2 px CSS en la barra, 2.3 en los relojes; el corazón de la salud iba a
+  2.6 y se veía tosco, ahora va igual que los otros y con la muesca de
+  arriba marcada para que se lean los dos lóbulos) y
   `snapPixelIcons()` los corre al píxel físico más cercano (los relojes
   caen en posiciones fraccionarias): un `ResizeObserver` sobre `#screen`,
   cuando cambia el número de monedas o el día/noche, y al terminar de subir
