@@ -284,9 +284,15 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   (Dormir, Limpiar, Jugar, Comer) y la salud, que no tiene botón porque es
   la consecuencia de las otras, va al medio y más grande (58 px contra 50).
   Cada anillo es un SVG con `pathLength="100"`: `render()` pone el valor tal
-  cual en `stroke-dasharray`, el color de `statColor()` en `stroke` y el
+  cual en `stroke-dasharray` (del arco y de su brillo, `#shine-<stat>`) y el
   número debajo (`#num-<stat>`). En 0 se esconde el arco (`.empty`), si no
-  la punta redondeada deja un puntito. Antes eran cinco barras finas iguales
+  la punta redondeada deja un puntito. **Cada reloj tiene su color**
+  (`--stat` por `data-stat` en el CSS: violeta energía, celeste higiene,
+  rojo salud, amarillo felicidad, naranja hambre), no el verde/amarillo/rojo
+  de antes; `statColor()` ahora solo decide si va `.low` (todo lo que no
+  daría verde): el reloj late, el canal se pone rojizo y el número rojo. Y
+  van con **relieve** (canal hundido, esfera oscura, filo claro adentro,
+  brillo fino sobre el arco y sombra), que fue el "toque final" elegido. Antes eran cinco barras finas iguales
   que trataban igual a la salud que a la higiene; se eligió esto entre una
   veintena de propuestas capturadas en la app real.
 - **Los botones avisan** (`updateDock()`, desde `render()`, solo toca el DOM
@@ -475,8 +481,8 @@ anillo, el anillo que brilla y el ⚡ latiendo). Hacía falta porque sube
 
 Antes el candado era 25 y el sueño empezaba en 35: pasaba mucho rato dormida
 sin que se pudiera hacer nada. Ahora el candado es corto y la franja de 7 a 15
-es una decisión de quien juega: despertarla cuesta salud. La barra de energía
-se pinta con estos umbrales (rojo bajo 15, amarillo bajo 20), y el LED también.
+es una decisión de quien juega: despertarla cuesta salud. El reloj de energía
+se marca como bajo con estos umbrales (bajo 20), y el LED los usa también.
 El tiempo hasta la muerte por descuido (arriba) no cambia: la energía despierta
 baja tan lento (~56 h la barra) que en esa simulación nunca llega a 20.
 

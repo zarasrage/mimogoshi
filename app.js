@@ -1281,9 +1281,13 @@ function render(){
   [...CARE_STATS, 'health'].forEach(k => {
     const v = clamp(state[k]);
     const fill = document.getElementById('fill-'+k);
-    fill.style.strokeDasharray = v + ' 100';   // el anillo tiene pathLength=100
-    fill.style.stroke = statColor(state[k], k);
+    const shine = document.getElementById('shine-'+k);
+    fill.style.strokeDasharray = shine.style.strokeDasharray = v + ' 100';   // pathLength=100
     fill.classList.toggle('empty', v < 1);
+    shine.classList.toggle('empty', v < 1);
+    /* El color del anillo es el propio de cada reloj (CSS); los umbrales de
+       statColor() deciden solo si se marca como bajo. */
+    fill.closest('.stat').classList.toggle('low', statColor(state[k], k) !== 'var(--good)');
     const num = document.getElementById('num-'+k);
     const txt = Math.round(v) + '%';
     if (num.textContent !== txt) num.textContent = txt;
