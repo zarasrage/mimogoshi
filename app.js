@@ -1350,6 +1350,21 @@ function fitPetCanvas(canvas){
   if (canvas.height !== h) canvas.height = h;
 }
 
+/* Los íconos pixel en HTML (.happy-face) tienen que empezar en un píxel
+   físico, igual que todo el pixel art (ver "La regla de oro"): los relojes
+   se reparten con space-around y caen en posiciones fraccionarias. Se corre
+   cada uno lo que le falta para el píxel más cercano. */
+function snapPixelIcons(root = document){
+  const dpr = window.devicePixelRatio || 1;
+  for (const el of root.querySelectorAll('.happy-face')){
+    el.style.transform = '';
+    const r = el.getBoundingClientRect();
+    const dx = Math.round(r.left * dpr) / dpr - r.left;
+    const dy = Math.round(r.top * dpr) / dpr - r.top;
+    if (dx || dy) el.style.transform = `translate(${dx}px, ${dy}px)`;
+  }
+}
+
 let lastFrameT = 0;
 function loopRender(t){
   const dt = Math.min(0.05, (t - (lastFrameT || t)) / 1000);
@@ -2323,6 +2338,10 @@ function boot(){
 }
 
 function init(){
+  /* Los relojes se reparten según el ancho de la pantalla: cada vez que
+     cambia, la carita de la felicidad se vuelve a calzar a píxeles físicos. */
+  const stats = document.getElementById('stats');
+  if (window.ResizeObserver) new ResizeObserver(() => snapPixelIcons(stats)).observe(stats);
   state = loadState();
   if (!state){
     askName();

@@ -292,7 +292,16 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   de antes; `statColor()` ahora solo decide si va `.low` (todo lo que no
   daría verde): el reloj late, el canal se pone rojizo y el número rojo. Y
   van con **relieve** (canal hundido, esfera oscura, filo claro adentro,
-  brillo fino sobre el arco y sombra), que fue el "toque final" elegido. Antes eran cinco barras finas iguales
+  brillo fino sobre el arco y sombra), que fue el "toque final" elegido.
+  El botón de cada cuidado lleva el mismo color que su reloj (Jugar pasó de
+  lila a amarillo para calzar con la felicidad). La felicidad no usa emoji:
+  la estrella se confundía con los juegos y una carita emoji desentonaba, así
+  que es una **carita pixel de 9x9** (`.happy-face`, un SVG embebido en el
+  CSS a 2 px CSS por píxel del arte), también en el chip de felicidad del
+  resultado de los minijuegos. Como los relojes caen en posiciones
+  fraccionarias, `snapPixelIcons()` la corre al píxel físico más cercano (un
+  `ResizeObserver` sobre `#stats`, y al terminar de subir la hoja del
+  resultado). Antes eran cinco barras finas iguales
   que trataban igual a la salud que a la higiene; se eligió esto entre una
   veintena de propuestas capturadas en la app real.
 - **Los botones avisan** (`updateDock()`, desde `render()`, solo toca el DOM

@@ -367,7 +367,7 @@ function openGameDetail(id, aviso){
 function showGameResult(r){
   const g = gameById(r.id);
   const chips = [
-    r.happinessGain > 0 ? `<span class="chip">⭐ +${r.happinessGain}</span>` : '',
+    r.happinessGain > 0 ? `<span class="chip"><i class="happy-face"></i> +${r.happinessGain}</span>` : '',
     r.coins > 0 ? `<span class="chip gold">${coinsLabel('+' + r.coins)}${r.mega ? ' · MEGA' : ''}</span>` : '',
     r.bonus > 0 ? `<span class="chip gold">Megajuegos completos ${coinsLabel('+' + r.bonus)}</span>` : '',
   ].join('');
@@ -392,6 +392,11 @@ function showGameResult(r){
     </div>
   `, hideOverlay);
   document.getElementById('overlay').classList.add('clear');
+  /* La carita del chip de felicidad, calzada a píxeles físicos; la hoja sube
+     con una animación, así que se vuelve a calzar cuando termina. */
+  const card = document.querySelector('#overlay .overlay-card');
+  snapPixelIcons(card);
+  card.addEventListener('animationend', () => snapPixelIcons(card), { once: true });
 
   const fill = document.getElementById('resXp');
   if (fill) requestAnimationFrame(() => requestAnimationFrame(() => {
