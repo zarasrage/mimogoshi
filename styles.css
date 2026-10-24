@@ -307,10 +307,11 @@ body{
   background:rgba(var(--screen-lit-rgb), .1);
   border-radius:999px;
   padding:2px 6px;
-  font-size:11px;
-  line-height:1.3;
+  line-height:0;
   cursor:pointer;
 }
+.day-night .px-moon, .day-night.is-night .px-sun{display:none;}
+.day-night.is-night .px-moon{display:inline-block;}
 
 /* De noche: la pantalla se oscurece (solo el fondo, la mascota no) y salen
    estrellas que titilan arriba. */
@@ -348,7 +349,10 @@ body{
   text-shadow:0 0 6px rgba(255,206,75,.45);
   background:rgba(255,206,75,.1);
   border-radius:999px;
-  padding:3px 7px 2px;
+  padding:1px 7px 1px 4px;
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
 }
 
 .creature-floor{
@@ -437,8 +441,9 @@ body{
   border:none;
   border-radius:0 10px 10px 0;
   background:rgba(var(--screen-lit-rgb), .14);
-  font-size:14px;
-  line-height:30px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
   cursor:pointer;
   -webkit-tap-highlight-color:transparent;
   user-select:none;
@@ -688,31 +693,32 @@ body{
 
 /* Bajo (donde statColor() ya no da verde: cuesta salud o le da sueño): el
    reloj late, el canal se pone rojizo y el número rojo. */
-.stat.low .stat-ring{animation:statLow 1s ease-in-out infinite;}
+.stat.low .stat-ring svg{animation:statLow 1s ease-in-out infinite;}
 .stat.low .stat-track{stroke:rgba(255,93,108,.28);}
 .stat.low .stat-num{color:var(--bad); opacity:1;}
-@keyframes statLow{ 50%{transform:scale(1.08);} }
+/* Late con un halo rojo y no escalando: escalar deformaría el ícono pixel. */
+@keyframes statLow{
+  0%,100%{filter:drop-shadow(0 2px 2px rgba(0,0,0,.45));}
+  50%{filter:drop-shadow(0 2px 2px rgba(0,0,0,.45)) drop-shadow(0 0 6px rgba(255,93,108,.95));}
+}
 
 .stat-icon{
   position:absolute;
   inset:0;
   display:grid;
   place-items:center;
-  font-size:16px;
 }
-.stat.main .stat-icon{font-size:20px;}
 
-/* La felicidad no tiene un emoji que calce (la estrella se confundía con los
-   juegos y una carita emoji desentona): va una carita pixel de 9x9 dibujada
-   aquí mismo, a 2 px CSS por píxel del arte. Como los relojes caen en
-   posiciones fraccionarias, snapPixelIcons() (app.js) la corre lo justo para
-   que empiece en un píxel físico: si no, unas columnas salían más anchas. */
-.happy-face{
+/* Íconos pixel de la pantalla (relojes y barra de arriba): el dibujo y el
+   tamaño de cada uno los pone installPixelIcons() (app.js) como .px-<nombre>,
+   a una escala entera en píxeles físicos, y snapPixelIcons() los calza a píxeles
+   físicos. Nunca escalarlos con transform: un pixel art escalado por un
+   factor no entero se deforma (ver "La regla de oro"). */
+.px-icon{
   display:inline-block;
-  width:18px;
-  height:18px;
-  vertical-align:-3px;
-  background:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%209%209%22%20shape-rendering%3D%22crispEdges%22%3E%3Crect%20x%3D%222%22%20y%3D%220%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%223%22%20y%3D%220%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%224%22%20y%3D%220%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%225%22%20y%3D%220%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%226%22%20y%3D%220%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%221%22%20y%3D%221%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%222%22%20y%3D%221%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%223%22%20y%3D%221%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%224%22%20y%3D%221%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%225%22%20y%3D%221%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%226%22%20y%3D%221%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%227%22%20y%3D%221%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%220%22%20y%3D%222%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%221%22%20y%3D%222%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%222%22%20y%3D%222%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23fff1b0%22%2F%3E%3Crect%20x%3D%223%22%20y%3D%222%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%224%22%20y%3D%222%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%225%22%20y%3D%222%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%226%22%20y%3D%222%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%227%22%20y%3D%222%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%228%22%20y%3D%222%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%220%22%20y%3D%223%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%221%22%20y%3D%223%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%222%22%20y%3D%223%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%233a2400%22%2F%3E%3Crect%20x%3D%223%22%20y%3D%223%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%224%22%20y%3D%223%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%225%22%20y%3D%223%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%226%22%20y%3D%223%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%233a2400%22%2F%3E%3Crect%20x%3D%227%22%20y%3D%223%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%228%22%20y%3D%223%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%220%22%20y%3D%224%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%221%22%20y%3D%224%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%222%22%20y%3D%224%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%233a2400%22%2F%3E%3Crect%20x%3D%223%22%20y%3D%224%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%224%22%20y%3D%224%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%225%22%20y%3D%224%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%226%22%20y%3D%224%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%233a2400%22%2F%3E%3Crect%20x%3D%227%22%20y%3D%224%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%228%22%20y%3D%224%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%220%22%20y%3D%225%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%221%22%20y%3D%225%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%222%22%20y%3D%225%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%223%22%20y%3D%225%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%224%22%20y%3D%225%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%225%22%20y%3D%225%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%226%22%20y%3D%225%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%227%22%20y%3D%225%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%228%22%20y%3D%225%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%220%22%20y%3D%226%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%221%22%20y%3D%226%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%233a2400%22%2F%3E%3Crect%20x%3D%222%22%20y%3D%226%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%223%22%20y%3D%226%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%224%22%20y%3D%226%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%225%22%20y%3D%226%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%226%22%20y%3D%226%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffc23d%22%2F%3E%3Crect%20x%3D%227%22%20y%3D%226%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%233a2400%22%2F%3E%3Crect%20x%3D%228%22%20y%3D%226%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%221%22%20y%3D%227%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%222%22%20y%3D%227%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%233a2400%22%2F%3E%3Crect%20x%3D%223%22%20y%3D%227%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%233a2400%22%2F%3E%3Crect%20x%3D%224%22%20y%3D%227%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%233a2400%22%2F%3E%3Crect%20x%3D%225%22%20y%3D%227%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%233a2400%22%2F%3E%3Crect%20x%3D%226%22%20y%3D%227%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%233a2400%22%2F%3E%3Crect%20x%3D%227%22%20y%3D%227%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%222%22%20y%3D%228%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%223%22%20y%3D%228%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%224%22%20y%3D%228%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%225%22%20y%3D%228%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3Crect%20x%3D%226%22%20y%3D%228%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23b8730a%22%2F%3E%3C%2Fsvg%3E") center/100% 100% no-repeat;
+  flex:none;
+  vertical-align:middle;
+  background:center/100% 100% no-repeat;
   image-rendering:pixelated;
 }
 
@@ -740,7 +746,7 @@ body{
   0%,100%{filter:drop-shadow(0 0 1px var(--stat));}
   50%{filter:drop-shadow(0 0 5px var(--stat));}
 }
-@keyframes statPulse{ 0%,100%{transform:scale(1); opacity:.7;} 50%{transform:scale(1.25); opacity:1;} }
+@keyframes statPulse{ 0%,100%{filter:brightness(1); opacity:.75;} 50%{filter:brightness(1.6) drop-shadow(0 0 3px var(--stat)); opacity:1;} }
 
 /* ---------- menús: hoja que sube desde abajo ----------
    El overlay cubre el aparato entero (no solo la pantalla LCD): metido en los
@@ -1848,7 +1854,7 @@ body{
 }
 
 @media (prefers-reduced-motion: reduce){
-  .device, .led, .overlay, .overlay-card, .gc-mega, .result-score, .result-badge, .night-sky::before, .night-sky::after, .creature-floor.party::before, .stat.charging .stat-fill, .stat.charging .stat-icon, .stat.charging .stat-spark, .stat.low .stat-ring{animation:none;}
+  .device, .led, .overlay, .overlay-card, .gc-mega, .result-score, .result-badge, .night-sky::before, .night-sky::after, .creature-floor.party::before, .stat.charging .stat-fill, .stat.charging .stat-icon, .stat.charging .stat-spark, .stat.low .stat-ring svg{animation:none;}
   .xp-fill{transition:none;}
 }
 

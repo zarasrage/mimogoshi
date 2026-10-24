@@ -35,8 +35,8 @@
         <div class="topbar">
           <div class="pet-name" id="petName">—</div>
           <div class="topbar-right">
-            <button class="day-night" id="dayNight" title="De día">☀️</button>
-            <span class="pet-coins" id="petCoins">💰 0</span>
+            <button class="day-night" id="dayNight" title="De día"><i class="px-icon px-sun"></i><i class="px-icon px-moon"></i></button>
+            <span class="pet-coins"><i class="px-icon px-coin"></i><span id="petCoins">0</span></span>
             <span class="pet-age" id="petAge">Día 0</span>
           </div>
         </div>
@@ -54,7 +54,7 @@
           <!-- Bitácora: un ícono pegado al borde que pestañea al volver si
                pasó algo mientras no estabas; tocarlo abre la lista. Va dentro
                del piso para que se esconda solo durante los minijuegos. -->
-          <button class="log-btn" id="logBtn" title="Bitácora" aria-label="Bitácora">📜</button>
+          <button class="log-btn" id="logBtn" title="Bitácora" aria-label="Bitácora"><i class="px-icon px-log"></i></button>
           <!-- Habitaciones: flechas a los costados y puntitos arriba, solo si
                hay más de una (ver goRoom en muebles.js). -->
           <button class="room-arrow prev hidden" id="roomPrev" aria-label="Habitación anterior">‹</button>
@@ -82,7 +82,7 @@
                 <circle class="stat-inner" cx="25" cy="25" r="17.6"/>
                 <circle class="stat-spark" cx="25" cy="25" r="21" pathLength="100"/>
               </svg>
-              <span class="stat-icon">⚡</span>
+              <span class="stat-icon"><i class="px-icon px-energy"></i></span>
             </div>
             <span class="stat-num" id="num-energy"></span>
           </div>
@@ -95,7 +95,7 @@
                 <circle class="stat-shine" id="shine-hygiene" cx="25" cy="25" r="22.2" pathLength="100"/>
                 <circle class="stat-inner" cx="25" cy="25" r="17.6"/>
               </svg>
-              <span class="stat-icon">🧼</span>
+              <span class="stat-icon"><i class="px-icon px-hygiene"></i></span>
             </div>
             <span class="stat-num" id="num-hygiene"></span>
           </div>
@@ -108,7 +108,7 @@
                 <circle class="stat-shine" id="shine-health" cx="25" cy="25" r="22.2" pathLength="100"/>
                 <circle class="stat-inner" cx="25" cy="25" r="17.6"/>
               </svg>
-              <span class="stat-icon">❤️</span>
+              <span class="stat-icon"><i class="px-icon px-health"></i></span>
             </div>
             <span class="stat-num" id="num-health"></span>
           </div>
@@ -121,7 +121,7 @@
                 <circle class="stat-shine" id="shine-happiness" cx="25" cy="25" r="22.2" pathLength="100"/>
                 <circle class="stat-inner" cx="25" cy="25" r="17.6"/>
               </svg>
-              <span class="stat-icon"><i class="happy-face"></i></span>
+              <span class="stat-icon"><i class="px-icon px-happiness"></i></span>
             </div>
             <span class="stat-num" id="num-happiness"></span>
           </div>
@@ -134,7 +134,7 @@
                 <circle class="stat-shine" id="shine-hunger" cx="25" cy="25" r="22.2" pathLength="100"/>
                 <circle class="stat-inner" cx="25" cy="25" r="17.6"/>
               </svg>
-              <span class="stat-icon">🍖</span>
+              <span class="stat-icon"><i class="px-icon px-hunger"></i></span>
             </div>
             <span class="stat-num" id="num-hunger"></span>
           </div>

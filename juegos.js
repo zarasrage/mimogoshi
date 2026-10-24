@@ -367,7 +367,7 @@ function openGameDetail(id, aviso){
 function showGameResult(r){
   const g = gameById(r.id);
   const chips = [
-    r.happinessGain > 0 ? `<span class="chip"><i class="happy-face"></i> +${r.happinessGain}</span>` : '',
+    r.happinessGain > 0 ? `<span class="chip"><i class="px-icon px-happiness"></i> +${r.happinessGain}</span>` : '',
     r.coins > 0 ? `<span class="chip gold">${coinsLabel('+' + r.coins)}${r.mega ? ' · MEGA' : ''}</span>` : '',
     r.bonus > 0 ? `<span class="chip gold">Megajuegos completos ${coinsLabel('+' + r.bonus)}</span>` : '',
   ].join('');

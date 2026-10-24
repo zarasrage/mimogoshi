@@ -1276,7 +1276,11 @@ function render(){
 
   document.getElementById('petName').textContent = state.name;
   document.getElementById('petAge').textContent = `Día ${Math.floor(state.ageHours/24)+1}`;
-  document.getElementById('petCoins').textContent = coinsLabel(state.coins);
+  const coinsEl = document.getElementById('petCoins');
+  if (coinsEl.textContent !== String(state.coins)){
+    coinsEl.textContent = state.coins;
+    snapPixelIcons(document.querySelector('.topbar'));   // el largo del número corre la moneda
+  }
 
   [...CARE_STATS, 'health'].forEach(k => {
     const v = clamp(state[k]);
@@ -1311,8 +1315,9 @@ function render(){
     render._night = night;
     document.getElementById('screen').classList.toggle('night', night);
     const dn = document.getElementById('dayNight');
-    dn.textContent = night ? '🌙' : '☀️';
+    dn.classList.toggle('is-night', night);
     dn.title = night ? 'De noche' : 'De día';
+    snapPixelIcons(dn);
   }
 
   const canvas = document.getElementById('petCanvas');
@@ -1350,15 +1355,208 @@ function fitPetCanvas(canvas){
   if (canvas.height !== h) canvas.height = h;
 }
 
-/* Los íconos pixel en HTML (.happy-face) tienen que empezar en un píxel
-   físico, igual que todo el pixel art (ver "La regla de oro"): los relojes
-   se reparten con space-around y caen en posiciones fraccionarias. Se corre
-   cada uno lo que le falta para el píxel más cercano. */
+/* ===================== Íconos pixel de la pantalla =====================
+   Lo que vive en la LCD es pixel art (la mascota, los muebles), y los íconos
+   de los relojes y de la barra de arriba también: los emojis son de otro
+   estilo (brillos, degradados) y al lado del resto desentonaban. Afuera de
+   la pantalla (dock, menús) siguen los emojis: es la parte de app moderna.
+   Cada ícono se escribe solo con su relleno y el contorno ('o') se agrega
+   solo alrededor, así todos tienen el mismo trazo. Letras: b base, l luz,
+   m sombra, w brillo, más las propias (d rasgos, p mejillas, c/e hueso).
+   Los de los relojes van en los tonos de su reloj (--stat), para que ícono
+   y anillo se lean como una sola pieza. */
+const PX_ICONS = {
+  energy: {
+    pal: { o:'#2e2275', b:'#8f7bff', l:'#cdc3ff', m:'#6550e0', w:'#ffffff' },
+    art: [
+      '.....bbbb',
+      '....lbbb.',
+      '...lbbm..',
+      '..lbbm...',
+      '.lbbbbbbm',
+      '....bbbm.',
+      '...bbbm..',
+      '..bbm....',
+      '.bm......',
+    ],
+  },
+  hygiene: {
+    pal: { o:'#08496e', b:'#3fb8ff', l:'#b5e9ff', m:'#1f8fd0', w:'#ffffff' },
+    art: [
+      '...b.....',
+      '..bbb..l.',
+      '..lbb....',
+      '.lbbbm...',
+      'lwbbbbm..',
+      'lbbbbbm.l',
+      'bbbbbbm..',
+      '.bbbbm...',
+      '..mmm....',
+      '.bmmmm...',
+    ],
+  },
+  health: {
+    pal: { o:'#6e0b20', b:'#ff4d6d', l:'#ffadbb', m:'#d4284a', w:'#ffffff' },
+    art: [
+      '.bbb.bbb.',
+      'bwlbbbbbb',
+      'blbbbbbbm',
+      'bbbbbbbbm',
+      'bbbbbbbbm',
+      '.bbbbbbm.',
+      '..bbbbm..',
+      '...bbm...',
+      '....m....',
+    ],
+  },
+  happiness: {
+    pal: { o:'#7a4706', b:'#ffc23d', l:'#fff1b8', m:'#e8a020', w:'#ffffff', d:'#3a2400', p:'#ff8a7a' },
+    art: [
+      '..bbbbb..',
+      '.bwlbbbb.',
+      'blbbbbbbm',
+      'bbdbbbdbm',
+      'bbdbbbdbm',
+      'bpbbbbbpm',
+      'bdbbbbbdm',
+      '.mdddddm.',
+      '..mmmmm..',
+    ],
+  },
+  hunger: {
+    pal: { o:'#6b250a', b:'#ff8a4c', l:'#ffd0b0', m:'#d75f26', w:'#ffffff', c:'#fff4de', e:'#e6d3b0' },
+    art: [
+      '....lbbb.',
+      '...lwbbbm',
+      '..lbbbbbm',
+      '..bbbbbbm',
+      '..bbbbbm.',
+      '..cbmmm..',
+      '.cc......',
+      'cc.......',
+      'ce.......',
+      '.ce......',
+    ],
+  },
+  coin: {
+    pal: { o:'#6b4000', b:'#ffc23d', l:'#fff1b8', m:'#e09a1a', w:'#ffffff' },
+    art: [
+      '.bbbbb.',
+      'blllbbm',
+      'blwbmbm',
+      'blbbmbm',
+      'blbbmbm',
+      'bbmmmbm',
+      '.mmmmm.',
+      '.mmmmm.',
+    ],
+  },
+  sun: {
+    pal: { o:'#8a4a00', b:'#ffcf3d', l:'#fff4b8', m:'#ff9a1a', w:'#ffffff' },
+    art: [
+      'b..b..b',
+      '.b.b.b.',
+      '..lbb..',
+      'bblwbbb',
+      '..bbm..',
+      '.b.b.b.',
+      'b..b..b',
+      '...b...',
+    ],
+  },
+  log: {
+    pal: { o:'#4a2c0a', b:'#d99a4a', l:'#fff1d0', m:'#a8682a', d:'#b88a5a', w:'#ffffff' },
+    art: [
+      '.bbbbbbb.',
+      'bmmmmmmmb',
+      '.lwlllll.',
+      '.lddddll.',
+      '.lllllll.',
+      '.ldddlll.',
+      '.lllllll.',
+      'bmmmmmmmb',
+      '.bbbbbbb.',
+    ],
+  },
+  moon: {
+    pal: { o:'#4a3f12', b:'#fff0a8', l:'#ffffff', m:'#d9c25a', w:'#ffffff' },
+    art: [
+      '..bbb..',
+      '.lbb...',
+      'lwb....',
+      'lbb....',
+      'bbb....',
+      '.bbbbm.',
+      '..mmm..',
+      '..mmm..',
+    ],
+  },
+};
+/* Tamaño de un píxel del arte, como objetivo en px CSS. Lo que tiene que ser
+   entero son los píxeles físicos (ver "La regla de oro"), así que
+   pxIconScale() lo redondea en píxeles físicos: en un teléfono 3x, 2.3 da 7
+   físicos y 2.6 da 8. Los de los relojes van más grandes que los de la barra
+   de arriba, y el de la salud, en el reloj grande, más todavía. */
+const PX_ICON_SCALE = { base: 2, stat: 2.3, main: 2.6 };
+function pxIconScale(target){
+  const dpr = window.devicePixelRatio || 1;
+  return Math.max(1, Math.round(target * dpr)) / dpr;
+}
+
+/* El arte con su contorno, como SVG en un data URI (sin archivos aparte, así
+   anda también abriendo index.html con file://). */
+function pxIconSvg({ pal, art }){
+  const h = art.length + 2, w = art[0].length + 2;
+  const at = (x, y) => (art[y - 1] && art[y - 1][x - 1]) || '.';
+  let rects = '';
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++){
+    let c = at(x, y);
+    if (c === '.' && [[1,0],[-1,0],[0,1],[0,-1]].some(([dx, dy]) => at(x + dx, y + dy) !== '.')) c = 'o';
+    if (c !== '.') rects += `<rect x="${x}" y="${y}" width="1" height="1" fill="${pal[c]}"/>`;
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges">${rects}</svg>`;
+  return { w, h, uri: 'data:image/svg+xml,' + encodeURIComponent(svg) };
+}
+
+/* Una clase .px-<nombre> por ícono, con su tamaño y su dibujo (y el tamaño
+   más grande dentro de los relojes). Depende de la densidad de la pantalla:
+   si cambia (otro monitor, zoom), se vuelve a armar. */
+let pxIconsDpr = 0;
+function installPixelIcons(){
+  const dpr = window.devicePixelRatio || 1;
+  if (dpr === pxIconsDpr) return;
+  pxIconsDpr = dpr;
+  const size = (sel, w, h, k) => `${sel}{width:${w * k}px;height:${h * k}px;}\n`;
+  const base = pxIconScale(PX_ICON_SCALE.base), stat = pxIconScale(PX_ICON_SCALE.stat),
+        main = pxIconScale(PX_ICON_SCALE.main);
+  let css = '';
+  for (const [name, icon] of Object.entries(PX_ICONS)){
+    const { w, h, uri } = pxIconSvg(icon);
+    css += `.px-${name}{background-image:url("${uri}");}\n`;
+    css += size(`.px-${name}`, w, h, base);
+    css += size(`.stat-icon .px-${name}`, w, h, stat);
+    css += size(`.stat.main .stat-icon .px-${name}`, w, h, main);
+  }
+  let style = document.getElementById('pxIcons');
+  if (!style){
+    style = document.createElement('style');
+    style.id = 'pxIcons';
+    document.head.appendChild(style);
+  }
+  style.textContent = css;
+}
+
+/* Los íconos pixel tienen que empezar en un píxel físico, igual que todo el
+   pixel art (ver "La regla de oro"): los relojes se reparten con
+   space-around y la barra de arriba depende del largo del texto, así que
+   caen en posiciones fraccionarias. Se corre cada uno lo que le falta para
+   el píxel más cercano. */
 function snapPixelIcons(root = document){
   const dpr = window.devicePixelRatio || 1;
-  for (const el of root.querySelectorAll('.happy-face')){
+  for (const el of root.querySelectorAll('.px-icon')){
     el.style.transform = '';
     const r = el.getBoundingClientRect();
+    if (!r.width) continue;   // escondido: se calza al mostrarse
     const dx = Math.round(r.left * dpr) / dpr - r.left;
     const dy = Math.round(r.top * dpr) / dpr - r.top;
     if (dx || dy) el.style.transform = `translate(${dx}px, ${dy}px)`;
@@ -2338,10 +2536,11 @@ function boot(){
 }
 
 function init(){
-  /* Los relojes se reparten según el ancho de la pantalla: cada vez que
-     cambia, la carita de la felicidad se vuelve a calzar a píxeles físicos. */
-  const stats = document.getElementById('stats');
-  if (window.ResizeObserver) new ResizeObserver(() => snapPixelIcons(stats)).observe(stats);
+  installPixelIcons();
+  /* Los íconos pixel de la pantalla se reparten según su tamaño: cada vez
+     que cambia, se vuelven a calzar a píxeles físicos. */
+  const screen = document.getElementById('screen');
+  if (window.ResizeObserver) new ResizeObserver(() => { installPixelIcons(); snapPixelIcons(screen); }).observe(screen);
   state = loadState();
   if (!state){
     askName();
