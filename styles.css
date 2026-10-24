@@ -355,6 +355,49 @@ body{
   gap:4px;
 }
 
+/* Comida servida en el piso (serveFood en app.js): cae con un rebote, se
+   achica de a mordiscos mientras la mascota come y se desvanece al final. */
+.floor-food{
+  position:absolute;
+  bottom:4px;
+  font-size:20px;
+  line-height:1;
+  transform:translateX(-50%);
+  pointer-events:none;
+  animation:foodDrop .5s cubic-bezier(.3,1.5,.5,1);
+}
+.floor-food.eating{animation:foodBite 1.8s steps(3, end) forwards;}
+.floor-food.gone{opacity:0; transition:opacity .25s;}
+@keyframes foodDrop{
+  0%{transform:translate(-50%, -70px); opacity:0;}
+  40%{opacity:1;}
+  100%{transform:translate(-50%, 0);}
+}
+@keyframes foodBite{
+  from{transform:translateX(-50%) scale(1);}
+  to{transform:translateX(-50%) scale(.25);}
+}
+/* La cantidad en la confirmación de compra (comida y medicina). */
+.qty{display:flex; align-items:center; justify-content:center; gap:10px;}
+.qty-btn{
+  width:40px; height:40px;
+  border:none; border-radius:50%;
+  background:var(--surface-hi); color:var(--text);
+  font-size:22px; font-weight:900; line-height:1;
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation;
+}
+.qty-btn:disabled{opacity:.35; cursor:default;}
+.qty-n{min-width:34px; font-size:24px; font-weight:900; font-variant-numeric:tabular-nums;}
+.qty-max{
+  border:none; border-radius:999px;
+  padding:9px 12px;
+  background:rgba(255,214,92,.16); color:#ffd65c;
+  font-family:var(--font-ui); font-size:12.5px; font-weight:900;
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation;
+}
+
 .creature-floor{
   position:relative;
   flex:1;
@@ -1924,7 +1967,7 @@ body{
 }
 
 @media (prefers-reduced-motion: reduce){
-  .device, .led, .overlay, .overlay-card, .gc-mega, .result-score, .result-badge, .night-sky::before, .night-sky::after, .creature-floor.party::before, .stat.charging .stat-fill, .stat.charging .stat-icon, .stat.charging .stat-spark, .stat.low .stat-ring svg, .wheel-entry.ready, .popup.reward .popup-icon::before{animation:none;}
+  .device, .led, .overlay, .overlay-card, .gc-mega, .result-score, .result-badge, .night-sky::before, .night-sky::after, .creature-floor.party::before, .stat.charging .stat-fill, .stat.charging .stat-icon, .stat.charging .stat-spark, .stat.low .stat-ring svg, .wheel-entry.ready, .popup.reward .popup-icon::before, .floor-food, .floor-food.eating{animation:none;}
   .xp-fill{transition:none;}
 }
 

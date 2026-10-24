@@ -1710,11 +1710,38 @@ function feedFood(id){
   state.hunger = clamp(state.hunger + food.restore);
   state.energy = clamp(state.energy + (food.energy ?? FOOD_ENERGY_DEFAULT));
   state.selectedFood = food.id;
-  floatFx(food.emoji);
   say(food.restore ? '¡Ñam ñam!' : '¡Con pilas! ⚡');
-  triggerPetAction('eat');
+  serveFood(food);
   saveState(); render();
   return true;
+}
+
+/* La comida cae al piso en un lugar al azar de la pieza y la mascota va a
+   comérsela; mientras come se achica de a mordiscos y al final desaparece.
+   Con plato puesto se sirve en el plato, como antes (para eso está). Las
+   barras ya se movieron al tocarla: esto es solo lo que se ve. Si algo la
+   corta (un mimo, dormirse, un minijuego), la comida se va igual. */
+const FOOD_REACH_PX = 26;   // de la comida al centro de la mascota cuando come
+function serveFood(food){
+  if (activeMinigame || gameOver || displayStage() === 'egg') return;
+  petAction = null;
+  if (startFurniRoutine('eat')) return;
+  const floor = document.getElementById('creatureFloor');
+  floor.querySelectorAll('.floor-food').forEach(e => e.remove());   // una a la vez
+  let fx = 0.15 + Math.random() * 0.7;
+  for (let i = 0; i < 8 && Math.abs(fx - walker.x) < 0.2; i++) fx = 0.15 + Math.random() * 0.7;
+  const el = document.createElement('div');
+  el.className = 'floor-food';
+  el.textContent = food.emoji;
+  el.style.left = (fx * 100) + '%';
+  floor.insertBefore(el, document.getElementById('buddyCanvas'));   // detrás de los personajes
+  const side = fx > walker.x ? -1 : 1;        // se para del lado por donde llega
+  const standX = fx + side * FOOD_REACH_PX / floorWidth();
+  startActivity(walker, [
+    { go: standX, speed: 0.24 },
+    { anim: 'eat', ms: 1800, dir: -side, fx: ['😋'], fxEvery: 850, start: () => el.classList.add('eating') },
+    { anim: 'happy', ms: 600, dir: -side, fx: ['💖'] },
+  ], { kind: 'eat', onEnd: () => { el.classList.add('gone'); setTimeout(() => el.remove(), 260); } });
 }
 
 const btnClean = () => {
@@ -2113,12 +2140,12 @@ function openShop(aviso, gachaRes){
       openShop(`Te faltan ${coinsLabel(MEDICINE.price - state.coins)} para ${MEDICINE.name}`);
       return;
     }
-    confirmBuy({ icon: MEDICINE.emoji, name: MEDICINE.name, price: MEDICINE.price }, () => {
-      state.coins -= MEDICINE.price;
-      state.pantry[MEDICINE.id] = foodStock(MEDICINE.id) + 1;
+    confirmBuy({ icon: MEDICINE.emoji, name: MEDICINE.name, price: MEDICINE.price, multi: true }, n => {
+      state.coins -= MEDICINE.price * n;
+      state.pantry[MEDICINE.id] = foodStock(MEDICINE.id) + n;
       saveState(); render();
       reopen();
-      boughtPopup({ icon: MEDICINE.emoji, name: MEDICINE.name, price: MEDICINE.price,
+      boughtPopup({ icon: MEDICINE.emoji, name: MEDICINE.name, amount: `+${n}`, price: MEDICINE.price * n,
         note: `Ahora tienes ${foodStock(MEDICINE.id)}. Se da desde Comer.` });
     });
   });
@@ -2130,12 +2157,12 @@ function openShop(aviso, gachaRes){
         openShop(`Te faltan ${coinsLabel(food.price - state.coins)} para ${food.name}`);
         return;
       }
-      confirmBuy({ icon: food.emoji, name: food.name, price: food.price }, () => {
-        state.coins -= food.price;
-        state.pantry[food.id] = (state.pantry[food.id] || 0) + 1;
+      confirmBuy({ icon: food.emoji, name: food.name, price: food.price, multi: true }, n => {
+        state.coins -= food.price * n;
+        state.pantry[food.id] = (state.pantry[food.id] || 0) + n;
         saveState(); render();
         reopen();
-        boughtPopup({ icon: food.emoji, name: food.name, price: food.price,
+        boughtPopup({ icon: food.emoji, name: food.name, amount: `+${n}`, price: food.price * n,
           note: `Ahora tienes ${foodStock(food.id)}.` });
       });
     });
@@ -2297,15 +2324,44 @@ function rewardSound(){
 
 /* "¿Comprar X por N?" antes de gastar. Si no alcanza, quien llama ya avisó
    antes y no llega acá. */
-function confirmBuy({ icon, name, price }, onYes){
+function confirmBuy({ icon, name, price, multi = false }, onYes){
+  /* Lo que se gasta por porciones (comida, medicina) deja elegir cuántas:
+     de 1 hasta lo que alcance (tope 99). onYes recibe la cantidad. */
+  const max = multi ? Math.max(1, Math.min(99, Math.floor(state.coins / price))) : 1;
+  let n = 1;
   showPopup({
     tone: 'confirm', icon, title: `¿Comprar ${name}?`,
     items: [
       { icon: '💰', text: 'Cuesta', amount: price },
       { icon: '👛', text: 'Te quedan después', amount: state.coins - price },
     ],
-    ok: 'Comprar', cancel: 'Cancelar', onOk: onYes,
+    ok: 'Comprar', cancel: 'Cancelar', onOk: () => onYes(n),
   });
+  if (max <= 1) return;
+  const card = document.querySelector('#popup .popup-card');
+  card.querySelector('.popup-items').insertAdjacentHTML('beforebegin', `
+    <div class="qty" role="group" aria-label="Cantidad">
+      <button class="qty-btn" data-q="-1" aria-label="Una menos">−</button>
+      <b class="qty-n" aria-live="polite">1</b>
+      <button class="qty-btn" data-q="1" aria-label="Una más">+</button>
+      <button class="qty-max" data-q="max">Máx · ${max}</button>
+    </div>`);
+  const amounts = card.querySelectorAll('.pi-amount');
+  const okBtn = card.querySelector('[data-pop="ok"]');
+  const paint = () => {
+    card.querySelector('.qty-n').textContent = n;
+    amounts[0].textContent = price * n;
+    amounts[1].textContent = state.coins - price * n;
+    card.querySelector('[data-q="-1"]').disabled = n <= 1;
+    card.querySelector('[data-q="1"]').disabled = n >= max;
+    okBtn.textContent = n > 1 ? `Comprar ${n}` : 'Comprar';
+  };
+  card.querySelectorAll('[data-q]').forEach(b => b.addEventListener('click', () => {
+    const q = b.dataset.q;
+    n = q === 'max' ? max : Math.max(1, Math.min(max, n + Number(q)));
+    paint();
+  }));
+  paint();
 }
 
 /* "¡Compra realizada!" con lo que llegó y lo que se pagó. */

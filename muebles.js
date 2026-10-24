@@ -789,11 +789,12 @@ function furniHelpers(rt, act, partner){
 }
 
 /* Arranca una rutina. `opts.duo` es el objeto compartido de una rutina de a
-   dos (sus `sync` se anotan ahí); `opts.partner`, el otro actor. */
+   dos (sus `sync` se anotan ahí); `opts.partner`, el otro actor; `opts.onEnd`,
+   algo que correr cuando termina o se corta. */
 function startActivity(act, steps, opts = {}){
-  const { rt = null, kind = 'visit', duo = null, partner = null } = opts;
+  const { rt = null, kind = 'visit', duo = null, partner = null, onEnd = null } = opts;
   if (act.activity) endFurniActivity(act, false);
-  act.activity = { rt, kind, steps, i: 0, st: 0, fw: floorWidth(), duo, partner };
+  act.activity = { rt, kind, steps, i: 0, st: 0, fw: floorWidth(), duo, partner, onEnd };
   act.pauseUntil = 0;
   if (rt) rt.users.add(act.key);
 }
@@ -838,6 +839,8 @@ function endFurniActivity(act = walker, cascade = true){
   const a = act.activity;
   if (!a) return;
   if (a.st){ const s = a.steps[a.i]; if (s && s.end) s.end(a.rt, act, a); }
+  /* Limpieza de la rutina entera, termine sola o se corte (la comida del piso). */
+  if (a.onEnd) a.onEnd();
   act.activity = null;
   act.anim = null;
   act.frame = 0;

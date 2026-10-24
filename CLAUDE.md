@@ -335,7 +335,9 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
 - **Pop-up de compra y de premio** (`showPopup()` en `app.js`, `#popup`,
   z-index 20: encima de todo, también de la hoja abierta). Toda compra con
   monedas **se confirma** antes (`confirmBuy()`: precio y con cuánto quedas;
-  Cancelar no gasta nada) y después sale "¡Compra realizada!"
+  Cancelar no gasta nada; la comida y la medicina dejan elegir **cuántas**
+  con − / + y "Máx", hasta lo que alcance, `multi:true`) y después sale
+  "¡Compra realizada!"
   (`boughtPopup()`) con lo que llegó y lo que se pagó: comida, medicina,
   Estilo, mejoras, habitaciones, juegos y el gacha con monedas (con ficha no
   se confirma, no es plata). Lo que se **gana** también sale en pop-up, con
@@ -354,7 +356,14 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   cerrada), y no tapa la pantalla: se ve comer y la barra de hambre. Todas
   las comidas con su stock, más la medicina en la misma fila (antes eran dos
   botones —Comer daba la elegida y Menú la elegía— y el botiquín era una
-  sección del menú). Tocar una se la da en el acto (`feedFood()`); la última
+  sección del menú). Tocar una se la da en el acto (`feedFood()`: las barras
+  suben al tocarla) y **la comida cae al piso** en un lugar al azar de la
+  pieza (`serveFood()`, `.floor-food`, lejos de la mascota si se puede): la
+  mascota camina hasta ella con una rutina sin mueble (`startActivity()`,
+  `kind:'eat'`, que no se corta por estar triste o enferma), se para al lado
+  (`FOOD_REACH_PX`) y la come mientras se achica de a mordiscos. La rutina
+  lleva `onEnd`, que saca la comida termine sola o se corte (un mimo,
+  dormirse). Con plato puesto se sirve en el plato, como antes. La última
   queda marcada (`state.selectedFood`); una en 0 sale apagada y tocarla abre
   la tienda en Comida. Se cierra con Cerrar, tocando afuera o al entrar a un
   minijuego (`showGameControls()`). Mientras está abierta se esconden los
