@@ -332,6 +332,22 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   arriba (`data-badge`): 💊 en Comer si está enferma (anillo también con
   hambre bajo 30), 💩 en Limpiar si hay caca, zZ en Dormir con energía bajo
   `SLEEPY_THRESHOLD` (violeta; rojo si ya está agotada).
+- **Pop-up de compra y de premio** (`showPopup()` en `app.js`, `#popup`,
+  z-index 20: encima de todo, también de la hoja abierta). Toda compra con
+  monedas **se confirma** antes (`confirmBuy()`: precio y con cuánto quedas;
+  Cancelar no gasta nada) y después sale "¡Compra realizada!"
+  (`boughtPopup()`) con lo que llegó y lo que se pagó: comida, medicina,
+  Estilo, mejoras, habitaciones, juegos y el gacha con monedas (con ficha no
+  se confirma, no es plata). Lo que se **gana** también sale en pop-up, con
+  cada cosa y cuánto: el premio de la ruleta (`wheelPrizeRow()` separa el
+  texto de `give()` en nombre y cantidad; lo que se pierde va con
+  `tone:'lose'`), lo que sale del gacha (cuando termina de abrirse la
+  cápsula) y los regalos 🎁. Si no alcanza, sigue el aviso dentro de la hoja
+  y no se pregunta nada. El premio suena con `rewardSound()`, un arpegio de
+  prueba; el sonido definitivo queda para después. En las filas chicas un
+  mueble va con ✨: su miniatura pixel no se puede achicar a un tamaño no
+  entero. El resultado de los minijuegos **no** usa pop-up: ya tiene su
+  propia hoja con los premios.
 - **Comer abre una bandeja** (`#foodTray`, `toggleFoodTray()`), no una hoja:
   flota encima del dock y las píldoras con posición absoluta, así **el aparato
   no cambia de alto** al abrirla (verificado midiendo `#device` abierta y

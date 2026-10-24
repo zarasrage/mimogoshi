@@ -164,10 +164,30 @@ function wireGachaTab(reopen){
     if (r.error){ reopen(r.error); return; }
     tone({ freq: 659.25, durationMs: 90, type: 'triangle', vol: 0.08 });
     reopen(r.item ? `¡Salió ${r.item.name}! Cámbialo cuando quieras en Personalizar` : 'Ya tienes todo lo de la máquina', r);
+    /* El pop-up sale cuando la cápsula termina de abrirse en la máquina. */
+    const pago = conFicha ? { icon: '🎟️', text: 'Ficha', amount: '-1', neg: true }
+      : { icon: '💰', text: 'Pagaste', amount: `-${GACHA_PRICE}`, neg: true };
+    setTimeout(() => {
+      if (r.item){
+        const rar = rarityById(r.item.gacha);
+        showPopup({ icon: gachaSwatch(r.item), title: `¡${rar.name}!`,
+          items: [{ icon: gachaSwatch(r.item), text: r.item.name, amount: 'Nuevo' }, pago],
+          note: `${GACHA_KIND_NAMES[r.item.kind]} · solo sale en el gacha. Ya lo tiene puesto.` });
+      } else {
+        showPopup({ icon: r.consuelo.emoji, title: '¡Colección completa!',
+          items: [{ icon: r.consuelo.emoji, text: r.consuelo.name, amount: '+1' }, pago],
+          note: 'Ya tienes todo lo de la máquina: te llevas un premio de consuelo.' });
+      }
+    }, 750);
   };
   const pay = document.getElementById('gachaPay');
   const tick = document.getElementById('gachaTicket');
-  if (pay) pay.addEventListener('click', () => tirar(false));
+  /* Con monedas es una compra: se confirma antes. Con ficha no se gasta
+     plata, así que gira de una. */
+  if (pay) pay.addEventListener('click', () => {
+    if (state.coins < GACHA_PRICE){ tirar(false); return; }   // tirar() avisa lo que falta
+    confirmBuy({ icon: '🎰', name: 'un giro del gacha', price: GACHA_PRICE }, () => tirar(false));
+  });
   if (tick) tick.addEventListener('click', () => tirar(true));
 }
 
@@ -207,6 +227,18 @@ const WHEEL_PRIZES = [
   { id: 'especial', emoji: '🍰',   w: 7,  color: '#ff9ec4', give: () => giveFood('especial', 1) },
   { id: 'm100',     label: '+100', w: 3,  color: '#5ccf7a', give: () => giveCoins(100), big: true },
 ];
+
+/* La fila del pop-up para un premio de la ruleta: el nombre a la izquierda y
+   la cantidad a la derecha, como en el resto de los pop-ups. give() devuelve
+   un texto tipo "+2 Café ☕"; acá se separa en cantidad y nombre. */
+function wheelPrizeRow(p, texto){
+  if (p.label) return { icon: '💰', text: 'Monedas', amount: p.label };
+  if (p.id === 'feliz') return { icon: '😊', text: 'Felicidad', amount: '+15' };
+  const m = texto.match(/^\+(\d+) (.+)$/);
+  if (!m) return { icon: p.emoji, text: texto };
+  const nombre = m[2].replace(/\s*[^\p{L}\p{N}\s]+$/u, '');
+  return { icon: p.emoji, text: nombre[0].toUpperCase() + nombre.slice(1), amount: '+' + m[1] };
+}
 
 /* Suma o resta monedas. Quitar nunca deja el saldo bajo cero: si tienes
    menos de lo que dice el trozo, se pierde solo lo que hay. */
@@ -427,15 +459,17 @@ function spinWheel(conTicket){
     clearInterval(ticks);
     wheelSpinning = false;
     if (!document.getElementById('wheel')) return;   // cerraron la hoja: el premio ya está dado
+    const pago = conTicket ? [{ icon: '🎫', text: 'Ticket de ruleta', amount: '-1', neg: true }] : [];
     if (pick.p.lose){
-      sfxFail();
       openWheel(`¡Uy! ${texto}`, 'lose');
+      showPopup({ tone: 'lose', icon: '💸', title: '¡Uy!', ok: 'Ni modo',
+        items: [{ icon: '💰', text: texto }, ...pago] });
       return;
     }
-    tone({ freq: 880, durationMs: 160, type: 'triangle', vol: 0.09 });
-    tone({ freq: 1318.51, durationMs: 220, type: 'triangle', vol: 0.08, at: (audioNow() || 0) + 0.12 });
     if (pick.p.big) triggerPetAction('celebrate');
     openWheel(`${pick.p.big ? '¡Premio mayor! ' : '¡Ganaste! '}${texto}`, pick.p.big ? 'big' : 'win');
+    const icono = pick.p.emoji || '💰';
+    showPopup({ icon: icono, title: pick.p.big ? '¡Premio mayor!' : '¡Ganaste!', items: [wheelPrizeRow(pick.p, texto), ...pago] });
   }, WHEEL_SPIN_MS + 120);
 }
 

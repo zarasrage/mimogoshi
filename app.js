@@ -1750,9 +1750,17 @@ const collectGift = () => {
 
   floatFx(food.emoji);
   if (ticket) setTimeout(() => floatFx('🎫'), 250);
-  say(`¡Un regalo! +1 ${food.name} ${food.emoji}` + (ticket ? ' y un ticket de ruleta 🎫' : ''), ticket ? 2600 : 1600);
   triggerPetAction('celebrate');
   saveState(); render();
+  showPopup({
+    icon: '🎁', title: '¡Un regalo!',
+    items: [
+      { icon: food.emoji, text: food.name, amount: '+1' },
+      { icon: '😊', text: 'Felicidad', amount: `+${GIFT_HAPPINESS}` },
+      ...(ticket ? [{ icon: '🎫', text: 'Ticket de ruleta', amount: '+1' }] : []),
+    ],
+    note: ticket ? 'El ticket es un giro extra: úsalo en Juegos → Ruleta.' : '',
+  });
 };
 
 /* Dar una medicina de la despensa. Devuelve el aviso si no se pudo (no está
@@ -1955,23 +1963,30 @@ function roomUpgradeRow(){
    pantalla) o el emoji (accesorio y adorno); abajo, el precio o el estado. */
 /* mode 'shop': la tienda (precio o "Tuyo"). mode 'mine': Personalizar, solo
    lo comprado, con "En uso" / "Usar". */
-function styleTile(it, mode){
-  const owned = state.style.owned[it.id];
-  const puesto = owned && isStyleEquipped(it) && mode === 'mine';
-  let swatch;
+/* La muestra de algo de Estilo: el degradado de la carcasa, la pantalla, la
+   miniatura del mueble o el emoji. La usan las fichas de la tienda y el
+   pop-up de compra. */
+function styleSwatch(it){
   if (it.kind === 'shell'){
-    swatch = `<span class="swatch shell" style="background:linear-gradient(150deg, ${it.colors.join(', ')})"></span>`;
-  } else if (it.kind === 'screen'){
+    return `<span class="swatch shell" style="background:linear-gradient(150deg, ${it.colors.join(', ')})"></span>`;
+  }
+  if (it.kind === 'screen'){
     const [bg, hi, lit] = it.lcd;
-    swatch = `<span class="swatch lcd" style="background:radial-gradient(120% 120% at 50% 0%, ${hi}, ${bg} 70%); color:rgb(${lit})">▪▪</span>`;
-  } else if (it.kind === 'furni'){
+    return `<span class="swatch lcd" style="background:radial-gradient(120% 120% at 50% 0%, ${hi}, ${bg} 70%); color:rgb(${lit})">▪▪</span>`;
+  }
+  if (it.kind === 'furni'){
     /* Miniatura a escala entera de px CSS (el pixel art no se reescala raro). */
     const art = FURNI_ART[it.id];
     const s = Math.min(3, Math.max(1, Math.floor(46 / Math.max(art.w, art.h))));   // tope: la pelota sola salía gigante
-    swatch = `<span class="swatch furni"><img src="${furniThumb(it.id)}" alt="" style="width:${art.w * s}px;height:${art.h * s}px"></span>`;
-  } else {
-    swatch = `<span class="swatch emoji">${it.emoji}</span>`;
+    return `<span class="swatch furni"><img src="${furniThumb(it.id)}" alt="" style="width:${art.w * s}px;height:${art.h * s}px"></span>`;
   }
+  return `<span class="swatch emoji">${it.emoji}</span>`;
+}
+
+function styleTile(it, mode){
+  const owned = state.style.owned[it.id];
+  const puesto = owned && isStyleEquipped(it) && mode === 'mine';
+  const swatch = styleSwatch(it);
   /* Puesto en otra habitación: tocarlo lo trae a esta. */
   const otra = mode === 'mine' && owned && !puesto && (it.kind === 'furni' || it.kind === 'deco') ? roomOf(it) : -1;
   const estado = puesto ? 'En uso' : otra >= 0 ? `En hab. ${otra + 1}` : mode === 'mine' ? 'Usar' : owned ? 'Tuyo ✓' : coinsLabel(it.price);
@@ -2071,12 +2086,19 @@ function openShop(aviso, gachaRes){
           reopen(`Te faltan ${coinsLabel(it.price - state.coins)} para ${it.name}`);
           return;
         }
-        state.coins -= it.price;
-        state.style.owned[it.id] = true;
-        const puesto = isStyleEquipped(it) || toggleStyleItem(it) === true;   // se estrena apenas se compra
-        saveState(); applyStyle(); render();
-        reopen(puesto ? `¡${it.name} comprado y puesto! Cámbialo cuando quieras en Personalizar`
-          : `¡${it.name} comprado! No había espacio: ponlo desde Personalizar`);
+        confirmBuy({ icon: styleSwatch(it), name: it.name, price: it.price }, () => {
+          state.coins -= it.price;
+          state.style.owned[it.id] = true;
+          const puesto = isStyleEquipped(it) || toggleStyleItem(it) === true;   // se estrena apenas se compra
+          saveState(); applyStyle(); render();
+          reopen();
+          /* En la fila chica, un mueble va con ✨: su miniatura pixel no se
+             puede achicar a un tamaño no entero sin deformarse. */
+          boughtPopup({ icon: styleSwatch(it), rowIcon: it.kind === 'furni' ? '✨' : styleSwatch(it),
+            name: it.name, amount: 'Nuevo', price: it.price,
+            note: puesto ? 'Ya lo tiene puesto. Cámbialo cuando quieras en Personalizar.'
+              : 'No había espacio para ponerlo: hazlo desde Personalizar.' });
+        });
         return;
       }
       /* Lo ya comprado se pone y se saca en Personalizar, no acá: la tienda
@@ -2091,10 +2113,14 @@ function openShop(aviso, gachaRes){
       openShop(`Te faltan ${coinsLabel(MEDICINE.price - state.coins)} para ${MEDICINE.name}`);
       return;
     }
-    state.coins -= MEDICINE.price;
-    state.pantry[MEDICINE.id] = foodStock(MEDICINE.id) + 1;
-    saveState(); render();
-    openShop(`¡${MEDICINE.name} comprada! Te quedan ${coinsLabel(state.coins)}`);
+    confirmBuy({ icon: MEDICINE.emoji, name: MEDICINE.name, price: MEDICINE.price }, () => {
+      state.coins -= MEDICINE.price;
+      state.pantry[MEDICINE.id] = foodStock(MEDICINE.id) + 1;
+      saveState(); render();
+      reopen();
+      boughtPopup({ icon: MEDICINE.emoji, name: MEDICINE.name, price: MEDICINE.price,
+        note: `Ahora tienes ${foodStock(MEDICINE.id)}. Se da desde Comer.` });
+    });
   });
 
   document.querySelectorAll('[data-buy]').forEach(el => {
@@ -2104,10 +2130,14 @@ function openShop(aviso, gachaRes){
         openShop(`Te faltan ${coinsLabel(food.price - state.coins)} para ${food.name}`);
         return;
       }
-      state.coins -= food.price;
-      state.pantry[food.id] = (state.pantry[food.id] || 0) + 1;
-      saveState(); render();
-      openShop(`¡${food.name} comprada! Te quedan ${coinsLabel(state.coins)}`);
+      confirmBuy({ icon: food.emoji, name: food.name, price: food.price }, () => {
+        state.coins -= food.price;
+        state.pantry[food.id] = (state.pantry[food.id] || 0) + 1;
+        saveState(); render();
+        reopen();
+        boughtPopup({ icon: food.emoji, name: food.name, price: food.price,
+          note: `Ahora tienes ${foodStock(food.id)}.` });
+      });
     });
   });
 
@@ -2118,13 +2148,17 @@ function openShop(aviso, gachaRes){
         openShop(`Te faltan ${coinsLabel(upgrade.price - state.coins)} para ${upgrade.name}`);
         return;
       }
-      state.coins -= upgrade.price;
-      const st = upgradeState(upgrade.id);
-      st.owned = true;
-      if (upgrade.armable) st.armed = true;   // lista para usarse apenas se compra
-      state.upgrades[upgrade.id] = st;
-      saveState(); render();
-      openShop(`¡${upgrade.name} comprada! Te quedan ${coinsLabel(state.coins)}`);
+      confirmBuy({ icon: upgrade.emoji, name: upgrade.name, price: upgrade.price }, () => {
+        state.coins -= upgrade.price;
+        const st = upgradeState(upgrade.id);
+        st.owned = true;
+        if (upgrade.armable) st.armed = true;   // lista para usarse apenas se compra
+        state.upgrades[upgrade.id] = st;
+        saveState(); render();
+        reopen();
+        boughtPopup({ icon: upgrade.emoji, name: upgrade.name, amount: 'Nueva', price: upgrade.price,
+          note: upgrade.armable ? 'Ya quedó activada.' : upgrade.desc });
+      });
     });
   });
 
@@ -2133,10 +2167,14 @@ function openShop(aviso, gachaRes){
     const n = state.style.rooms.length;
     const price = ROOM_PRICES[n];
     if (state.coins < price){ openShop(`Te faltan ${coinsLabel(price - state.coins)} para la habitación ${n + 1}`); return; }
-    state.coins -= price;
-    state.style.rooms.push(freshRoom());
-    saveState(); applyStyle(); render();
-    openShop(`¡Habitación ${n + 1} comprada! Usa las flechas de los costados de la pantalla para ir`);
+    confirmBuy({ icon: '🏠', name: `la habitación ${n + 1}`, price }, () => {
+      state.coins -= price;
+      state.style.rooms.push(freshRoom());
+      saveState(); applyStyle(); render();
+      reopen();
+      boughtPopup({ icon: '🏠', name: `Habitación ${n + 1}`, amount: 'Nueva', price,
+        note: 'Usa las flechas de los costados de la pantalla para ir.' });
+    });
   });
 
   document.querySelectorAll('[data-toggle-upgrade]').forEach(el => {
@@ -2206,6 +2244,79 @@ function showOverlay(html, onDismiss){
 
 function hideOverlay(){
   document.getElementById('overlay').classList.add('hidden');
+}
+
+/* ===================== Pop-up de compra y de premio =====================
+   Una tarjeta chica al centro, encima de todo (también de la hoja de la
+   tienda o de la ruleta), para dos momentos: confirmar una compra antes de
+   gastar, y mostrar lo que se consiguió (una compra, un premio de la ruleta
+   o del gacha, un regalo) con cada cosa y cuánto. Antes una compra se
+   avisaba con una línea dentro de la hoja que pasaba desapercibida, y se
+   compraba al primer toque, sin confirmar.
+   `tone`: 'reward' (celebra, con sonido), 'confirm' (pregunta) o 'lose'.
+   `icon` e `items[].icon` son HTML (emoji o miniatura); el resto es texto. */
+function showPopup({ tone = 'reward', icon = '', title, items = [], note = '',
+                     ok = '¡Genial!', cancel = null, onOk = null, onCancel = null }){
+  const el = document.getElementById('popup');
+  const rows = items.map(i => `
+      <div class="popup-item">
+        <span class="pi-icon">${i.icon || ''}</span>
+        <span class="pi-text">${escapeHtml(i.text)}</span>
+        ${i.amount != null ? `<b class="pi-amount ${i.neg ? 'neg' : ''}">${escapeHtml(String(i.amount))}</b>` : ''}
+      </div>`).join('');
+  el.innerHTML = `
+    <div class="popup-card" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+      ${icon ? `<div class="popup-icon">${icon}</div>` : ''}
+      <h3>${escapeHtml(title)}</h3>
+      ${rows ? `<div class="popup-items">${rows}</div>` : ''}
+      ${note ? `<p class="popup-note">${escapeHtml(note)}</p>` : ''}
+      <div class="popup-actions">
+        ${cancel ? `<button class="overlay-btn secondary" data-pop="cancel">${escapeHtml(cancel)}</button>` : ''}
+        <button class="overlay-btn" data-pop="ok">${escapeHtml(ok)}</button>
+      </div>
+    </div>`;
+  el.className = `popup ${tone}`;
+  const close = fn => { el.className = 'popup hidden'; el.innerHTML = ''; if (fn) fn(); };
+  el.querySelector('[data-pop="ok"]').addEventListener('click', () => close(onOk));
+  const c = el.querySelector('[data-pop="cancel"]');
+  if (c) c.addEventListener('click', () => close(onCancel));
+  /* Tocar afuera: en una pregunta es cancelar; en un premio, cerrarlo. */
+  el.onclick = e => { if (e.target === el) close(cancel ? onCancel : onOk); };
+  if (tone === 'reward') rewardSound();
+  else if (tone === 'lose' && typeof sfxFail === 'function') sfxFail();
+}
+
+/* Sonido de prueba del premio: un arpegio corto hacia arriba (Do-Mi-Sol-Do).
+   tone() vive en juegos.js; se usa recién al tocar algo, nunca al cargar. */
+function rewardSound(){
+  if (typeof tone !== 'function') return;
+  const t0 = (typeof audioNow === 'function' && audioNow()) || 0;
+  [1046.5, 1318.5, 1568, 2093].forEach((freq, i) =>
+    tone({ freq, durationMs: i === 3 ? 260 : 110, type: 'triangle', vol: 0.07, at: t0 + i * 0.08 }));
+}
+
+/* "¿Comprar X por N?" antes de gastar. Si no alcanza, quien llama ya avisó
+   antes y no llega acá. */
+function confirmBuy({ icon, name, price }, onYes){
+  showPopup({
+    tone: 'confirm', icon, title: `¿Comprar ${name}?`,
+    items: [
+      { icon: '💰', text: 'Cuesta', amount: price },
+      { icon: '👛', text: 'Te quedan después', amount: state.coins - price },
+    ],
+    ok: 'Comprar', cancel: 'Cancelar', onOk: onYes,
+  });
+}
+
+/* "¡Compra realizada!" con lo que llegó y lo que se pagó. */
+function boughtPopup({ icon, rowIcon = icon, name, amount = '+1', price, note = '' }){
+  showPopup({
+    icon, title: '¡Compra realizada!', note,
+    items: [
+      { icon: rowIcon, text: name, amount },
+      ...(price ? [{ icon: '💰', text: 'Pagaste', amount: `-${price}`, neg: true }] : []),
+    ],
+  });
 }
 
 let pickedSpecies = DEFAULT_SPECIES;

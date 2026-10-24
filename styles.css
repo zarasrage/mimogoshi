@@ -771,6 +771,84 @@ body{
 .overlay.hidden{display:none;}
 
 @keyframes fadeIn{ from{opacity:0;} to{opacity:1;} }
+
+/* Pop-up de compra y de premio (showPopup en app.js): una tarjeta al centro,
+   encima de todo, incluso de la hoja abierta. */
+.popup{
+  position:absolute;
+  inset:0;
+  z-index:20;
+  border-radius:inherit;
+  display:grid;
+  place-items:center;
+  padding:20px;
+  background:rgba(12,6,26,.6);
+  animation:fadeIn .18s ease;
+}
+.popup.hidden{display:none;}
+.popup-card{
+  position:relative;
+  width:min(320px, 100%);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:12px;
+  padding:22px 18px 16px;
+  border-radius:26px;
+  background:linear-gradient(180deg, var(--sheet-2), var(--sheet) 70%);
+  border:1px solid rgba(255,255,255,.12);
+  box-shadow:0 24px 60px -12px rgba(0,0,0,.7);
+  color:var(--text);
+  font-family:var(--font-ui);
+  text-align:center;
+  animation:popIn .36s var(--ease-spring);
+}
+@keyframes popIn{ from{transform:scale(.7); opacity:0;} to{transform:scale(1); opacity:1;} }
+.popup-card h3{margin:0; font-size:21px; font-weight:900;}
+.popup-icon{
+  position:relative;
+  width:84px; height:84px;
+  margin-top:-56px;          /* asoma por arriba de la tarjeta */
+  display:grid; place-items:center;
+  font-size:44px; line-height:1;
+  border-radius:50%;
+  background:radial-gradient(circle at 50% 40%, #3a2c63, #241a40);
+  box-shadow:0 0 0 4px var(--sheet), 0 10px 24px -8px rgba(0,0,0,.7);
+}
+.popup-icon .swatch, .popup-icon .gacha-swatch{margin:0;}
+/* En un premio, rayos que giran detrás del ícono. */
+.popup.reward .popup-icon::before{
+  content:'';
+  position:absolute;
+  inset:-26px;
+  z-index:-1;
+  border-radius:50%;
+  background:repeating-conic-gradient(rgba(255,214,92,.55) 0 10deg, transparent 10deg 30deg);
+  -webkit-mask:radial-gradient(circle, #000 35%, transparent 70%);
+  mask:radial-gradient(circle, #000 35%, transparent 70%);
+  animation:popRays 6s linear infinite;
+}
+@keyframes popRays{ to{transform:rotate(360deg);} }
+.popup.lose .popup-icon{filter:grayscale(.3);}
+.popup-items{width:100%; display:flex; flex-direction:column; gap:6px;}
+.popup-item{
+  display:flex; align-items:center; gap:10px;
+  padding:8px 12px;
+  border-radius:var(--r-md);
+  background:var(--surface);
+  box-shadow:0 0 0 1px var(--stroke) inset;
+  text-align:left;
+}
+.pi-icon{width:28px; display:grid; place-items:center; font-size:20px; line-height:1; flex:none;}
+.pi-icon .swatch, .pi-icon .gacha-swatch{width:24px; height:24px; margin:0; border-radius:7px; font-size:9px;}
+.pi-icon .swatch.shell{border-radius:50%;}
+.pi-icon .swatch.emoji, .pi-icon .gacha-swatch.emoji{width:auto; height:auto; font-size:20px; box-shadow:none; background:none;}
+.pi-text{flex:1; font-size:14px; font-weight:800; min-width:0;}
+.pi-amount{font-size:15px; font-weight:900; color:#ffd65c; font-variant-numeric:tabular-nums;}
+.pi-amount.neg{color:#ff8a96;}
+.popup-note{margin:0; font-size:12.5px; font-weight:700; color:var(--text-soft);}
+.popup-actions{width:100%; display:flex; gap:8px;}
+.popup-actions .overlay-btn{flex:1; min-height:48px;}
 @keyframes sheetIn{
   from{transform:translateY(40px); opacity:.4;}
   to{transform:translateY(0); opacity:1;}
@@ -1846,7 +1924,7 @@ body{
 }
 
 @media (prefers-reduced-motion: reduce){
-  .device, .led, .overlay, .overlay-card, .gc-mega, .result-score, .result-badge, .night-sky::before, .night-sky::after, .creature-floor.party::before, .stat.charging .stat-fill, .stat.charging .stat-icon, .stat.charging .stat-spark, .stat.low .stat-ring svg, .wheel-entry.ready{animation:none;}
+  .device, .led, .overlay, .overlay-card, .gc-mega, .result-score, .result-badge, .night-sky::before, .night-sky::after, .creature-floor.party::before, .stat.charging .stat-fill, .stat.charging .stat-icon, .stat.charging .stat-spark, .stat.low .stat-ring svg, .wheel-entry.ready, .popup.reward .popup-icon::before{animation:none;}
   .xp-fill{transition:none;}
 }
 

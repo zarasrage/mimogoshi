@@ -251,11 +251,16 @@ function openGamesMenu(aviso){
         openGamesMenu(`Te faltan ${coinsLabel(g.price - state.coins)} para ${g.name}`);
         return;
       }
-      state.coins -= g.price;
-      if (!state.unlockedGames) state.unlockedGames = [];
-      state.unlockedGames.push(g.id);
-      saveState(); render();
-      openGameDetail(g.id, `¡Desbloqueado! Te quedan ${coinsLabel(state.coins)}`);
+      confirmBuy({ icon: g.emoji, name: g.name, price: g.price }, () => {
+        state.coins -= g.price;
+        if (!state.unlockedGames) state.unlockedGames = [];
+        state.unlockedGames.push(g.id);
+        saveState(); render();
+        openGameDetail(g.id);
+        showPopup({ icon: g.emoji, title: '¡Juego desbloqueado!', note: 'Es tuyo para siempre. ¡A jugar!',
+          items: [{ icon: g.emoji, text: g.name, amount: 'Nuevo' },
+                  { icon: '💰', text: 'Pagaste', amount: `-${g.price}`, neg: true }] });
+      });
     });
   });
   document.getElementById('btnCloseGames').addEventListener('click', hideOverlay);
