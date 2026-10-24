@@ -271,12 +271,24 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   confirmación destructiva lleva su Cancelar (la de Reiniciar no tenía y no
   había forma de salir).
 - `.controls` en dos niveles: el **dock** (`.dock`) con los cuatro cuidados
-  de todos los días —Comer, Jugar, Limpiar, Dormir—, tarjetas blancas con el
+  de todos los días —Dormir, Limpiar, Jugar, Comer, en el mismo orden que
+  los relojes de la pantalla (ver "Relojes" abajo)—, tarjetas blancas con el
   ícono en un "squircle" de color propio (`--tint` por id), y debajo
   **píldoras** (`.pill`) con lo de vez en cuando: Tienda, Personalizar, y
   como íconos chicos la Ruleta 🎡 (late en amarillo cuando hay giro, `.ready`)
   y Reiniciar (destructivo, no tiene por qué estar a mano). Las cuatro entran
   en 360 px de ancho (340 medidos); si se suma otra, medir.
+- **Relojes** (`#stats`, abajo de la pantalla): las cinco estadísticas son
+  anillos en fila en vez de barras, en el orden **energía, higiene, salud,
+  felicidad, hambre**: cada cuidado queda encima de su botón del dock
+  (Dormir, Limpiar, Jugar, Comer) y la salud, que no tiene botón porque es
+  la consecuencia de las otras, va al medio y más grande (58 px contra 50).
+  Cada anillo es un SVG con `pathLength="100"`: `render()` pone el valor tal
+  cual en `stroke-dasharray`, el color de `statColor()` en `stroke` y el
+  número debajo (`#num-<stat>`). En 0 se esconde el arco (`.empty`), si no
+  la punta redondeada deja un puntito. Antes eran cinco barras finas iguales
+  que trataban igual a la salud que a la higiene; se eligió esto entre una
+  veintena de propuestas capturadas en la app real.
 - **Los botones avisan** (`updateDock()`, desde `render()`, solo toca el DOM
   si algo cambió): anillo de su color alrededor del ícono (`.need`) y globito
   arriba (`data-badge`): 💊 en Comer si está enferma (anillo también con
@@ -456,12 +468,10 @@ barra entera en **45 minutos reales**, y con cama (`FURNI_BED_ENERGY_MULT`,
 x1.5) en 30. Se fue acelerando por pedido: 100/212 (~3.5 h), 100/106
 (~1 h 45 min), 100/60 (1 h) y ahora esto.
 
-Mientras duerme, la barra de energía **se ve cargando**: `render()` le pone
-`.charging` a su `.stat` (franjas que corren hacia la derecha sobre el
-relleno, un brillo que late en la punta y el ⚡ latiendo). Hacía falta porque
-sube ~0.15 por tick y el ancho solo no se ve moverse. Por eso `render()` pinta
-el color de las barras con `backgroundColor` y no con `background`: el
-atajo inline borraba el `background-image` de las franjas.
+Mientras duerme, el reloj de energía **se ve cargando**: `render()` le pone
+`.charging` a su `.stat` (un destello, `.stat-spark`, que da vueltas por el
+anillo, el anillo que brilla y el ⚡ latiendo). Hacía falta porque sube
+~0.15 por tick y el largo del arco solo no se ve moverse.
 
 Antes el candado era 25 y el sueño empezaba en 35: pasaba mucho rato dormida
 sin que se pudiera hacer nada. Ahora el candado es corto y la franja de 7 a 15

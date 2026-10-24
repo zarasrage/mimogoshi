@@ -629,60 +629,76 @@ body{
   transform:translateX(-50%) scale(1);
 }
 
-/* Las cinco barras juntas se comían buena parte del alto de la pantalla y son
-   información de apoyo, no el centro: el centro es la mascota. Achicadas de 8 a
-   5px de alto y con menos aire entre ellas liberan ~25px para el personaje. */
+/* Las estadísticas son cinco relojes en fila, en el mismo orden que los
+   botones del dock (cada uno queda encima del suyo) y con la salud al medio,
+   más grande: es la consecuencia de las otras cuatro y la que más importa.
+   Reemplazan a cinco barras finas iguales, que trataban igual a la salud que
+   a la higiene. El anillo es un SVG con pathLength=100: render() pone el
+   valor tal cual en stroke-dasharray y el color en stroke. */
 .stats{
   margin-top:auto;
   display:flex;
-  flex-direction:column;
-  gap:3px;
-  padding-top:6px;
+  justify-content:space-around;
+  align-items:flex-start;
+  padding-top:8px;
 }
 
 .stat{
   display:flex;
+  flex-direction:column;
   align-items:center;
-  gap:6px;
+  gap:4px;
 }
 
-.stat-icon{font-size:11px; width:14px; text-align:center;}
-
-.stat-bar{
-  flex:1;
-  height:5px;
-  background:rgba(0,0,0,.35);
-  border-radius:4px;
-  overflow:hidden;
-  box-shadow:0 0 0 1px rgba(var(--screen-lit-rgb),.15) inset;
-}
-
+.stat-ring{position:relative; width:50px; height:50px;}
+.stat.main .stat-ring{width:58px; height:58px;}
+.stat-ring svg{width:100%; height:100%; transform:rotate(-90deg); overflow:visible;}
+.stat-track, .stat-fill, .stat-spark{fill:none; stroke-width:6;}
+.stat-track{stroke:rgba(0,0,0,.4);}
 .stat-fill{
-  height:100%;
-  width:100%;
-  border-radius:4px;
-  background:var(--good);
-  transition:width .5s ease, background-color .5s ease;
+  stroke:var(--good);
+  stroke-linecap:round;
+  stroke-dasharray:100 100;
+  transition:stroke-dasharray .5s ease, stroke .5s ease;
+}
+/* En 0 la punta redondeada dejaría un puntito: mejor nada. */
+.stat-fill.empty{opacity:0;}
+.stat-spark{display:none;}
+
+.stat-icon{
+  position:absolute;
+  inset:0;
+  display:grid;
+  place-items:center;
+  font-size:16px;
+}
+.stat.main .stat-icon{font-size:20px;}
+
+.stat-num{
+  font-family:var(--font-pixel);
+  font-size:7px;
+  color:var(--screen-lit);
+  opacity:.85;
 }
 
-/* Energía cargando (durmiendo): franjas que corren hacia la derecha sobre el
-   relleno, un brillo que late en la punta (hacia donde crece) y el rayo que
-   late. Todo adentro de la barra, que mide lo mismo que las otras. El color
-   del relleno lo pone render() en background-color; las franjas van en
-   background-image para no pisarlo. */
-.stat.charging .stat-fill{
-  background-image:repeating-linear-gradient(115deg,
-    rgba(255,255,255,0) 0 6px, rgba(255,255,255,.45) 6px 9px);
-  background-size:18px 100%;
-  animation:statCharge .7s linear infinite, statTip 1.2s ease-in-out infinite;
+/* Energía cargando (durmiendo): un destello que da vueltas por el anillo,
+   el anillo que brilla y el rayo que late. Sube ~0.15 por tick y el
+   largo del arco solo no se ve moverse. */
+.stat.charging .stat-spark{
+  display:block;
+  stroke:rgba(255,255,255,.75);
+  stroke-linecap:round;
+  stroke-dasharray:8 92;
+  animation:statSpark 1.4s linear infinite;
 }
+.stat.charging .stat-fill{animation:statGlow 1.2s ease-in-out infinite;}
 .stat.charging .stat-icon{animation:statPulse 1.2s ease-in-out infinite;}
-@keyframes statCharge{ from{background-position:0 0;} to{background-position:18px 0;} }
-@keyframes statTip{
-  0%,100%{box-shadow:2px 0 3px 0 rgba(var(--screen-lit-rgb),.25);}
-  50%{box-shadow:9px 0 8px 1px rgba(var(--screen-lit-rgb),.85);}
+@keyframes statSpark{ from{stroke-dashoffset:0;} to{stroke-dashoffset:-100;} }
+@keyframes statGlow{
+  0%,100%{filter:drop-shadow(0 0 1px rgba(var(--screen-lit-rgb),.2));}
+  50%{filter:drop-shadow(0 0 5px rgba(var(--screen-lit-rgb),.8));}
 }
-@keyframes statPulse{ 0%,100%{transform:scale(1); opacity:.7;} 50%{transform:scale(1.35); opacity:1;} }
+@keyframes statPulse{ 0%,100%{transform:scale(1); opacity:.7;} 50%{transform:scale(1.25); opacity:1;} }
 
 /* ---------- menús: hoja que sube desde abajo ----------
    El overlay cubre el aparato entero (no solo la pantalla LCD): metido en los
@@ -1790,7 +1806,7 @@ body{
 }
 
 @media (prefers-reduced-motion: reduce){
-  .device, .led, .overlay, .overlay-card, .gc-mega, .result-score, .result-badge, .night-sky::before, .night-sky::after, .creature-floor.party::before, .stat.charging .stat-fill, .stat.charging .stat-icon{animation:none;}
+  .device, .led, .overlay, .overlay-card, .gc-mega, .result-score, .result-badge, .night-sky::before, .night-sky::after, .creature-floor.party::before, .stat.charging .stat-fill, .stat.charging .stat-icon, .stat.charging .stat-spark{animation:none;}
   .xp-fill{transition:none;}
 }
 

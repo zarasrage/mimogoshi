@@ -1279,12 +1279,17 @@ function render(){
   document.getElementById('petCoins').textContent = coinsLabel(state.coins);
 
   [...CARE_STATS, 'health'].forEach(k => {
+    const v = clamp(state[k]);
     const fill = document.getElementById('fill-'+k);
-    fill.style.width = clamp(state[k]) + '%';
-    fill.style.backgroundColor = statColor(state[k], k);
+    fill.style.strokeDasharray = v + ' 100';   // el anillo tiene pathLength=100
+    fill.style.stroke = statColor(state[k], k);
+    fill.classList.toggle('empty', v < 1);
+    const num = document.getElementById('num-'+k);
+    const txt = Math.round(v) + '%';
+    if (num.textContent !== txt) num.textContent = txt;
   });
-  /* Durmiendo, la barra de energía se ve cargando (franjas que avanzan y
-     una flechita): sube tan poco por tick (~0.15) que el ancho solo no lo
+  /* Durmiendo, el reloj de energía se ve cargando (un destello que da
+     vueltas): sube tan poco por tick (~0.15) que el arco solo no lo
      muestra. */
   const charging = !!state.sleeping && !gameOver && state.energy < 100;
   if (render._charging !== charging){
