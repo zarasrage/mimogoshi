@@ -320,7 +320,11 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   la hoja del resultado (el chip de felicidad usa la carita). **Nunca
   escalarlos con `transform`**: por eso el latido de carga y el de "bajo"
   son de brillo y halo, no de tamaño. Para sumar uno: agregarlo a
-  `PX_ICONS` y usar `<i class="px-icon px-nombre">`.
+  `PX_ICONS` y usar `<i class="px-icon px-nombre">`. Revisar que el arte
+  tenga las filas que corresponde (9x9 los de los relojes, 7x7 los de
+  arriba): una fila de más no da error, solo agrega un borde raro abajo, y
+  así pasó con la gota (se veía como una base que no dejaba entender que
+  era una gota), la moneda, el sol, la luna y el muslito.
 - **Los botones avisan** (`updateDock()`, desde `render()`, solo toca el DOM
   si algo cambió): anillo de su color alrededor del ícono (`.need`) y globito
   arriba (`data-badge`): 💊 en Comer si está enferma (anillo también con
