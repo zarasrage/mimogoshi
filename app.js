@@ -726,6 +726,12 @@ function loadState(){
     if (s.pantry.simple === undefined) s.pantry.simple = FOOD_START_STOCK;
     // saves de cuando la medicina era un botón gratis: arrancan con lo mismo que una partida nueva
     if (s.pantry[MEDICINE.id] === undefined) s.pantry[MEDICINE.id] = MED_START_STOCK;
+    // se cerró la app mientras iba a comer: lo que faltaba se suma de una
+    if (s.meal){
+      s.hunger = clamp((s.hunger || 0) + (s.meal.hunger || 0));
+      s.energy = clamp((s.energy || 0) + (s.meal.energy || 0));
+      delete s.meal;
+    }
     delete s.unlockedFoods;  // el modelo viejo era desbloqueo permanente; ahora son porciones
     if (!s.species || !SPECIES[s.species]) s.species = DEFAULT_SPECIES; // saves de especies que ya no existen
     if (!s.records || typeof s.records !== 'object') s.records = {};    // saves anteriores a los récords
@@ -1560,6 +1566,7 @@ function loopRender(t){
   const dt = Math.min(0.05, (t - (lastFrameT || t)) / 1000);
   lastFrameT = t;
   updateWalker(dt);
+  digestMeal(dt);
   if (typeof updateBuddy === 'function') updateBuddy(dt);
   render();
   animFrame = requestAnimationFrame(loopRender);
@@ -1707,8 +1714,11 @@ function feedFood(id){
   if (!tryWake()) return false;
   catchUp();
   state.pantry[food.id] = (state.pantry[food.id] || 0) - 1;
-  state.hunger = clamp(state.hunger + food.restore);
-  state.energy = clamp(state.energy + (food.energy ?? FOOD_ENERGY_DEFAULT));
+  /* La porción se gasta ya, pero las barras suben recién mientras se la
+     come (digestMeal()): si no, el hambre se llenaba antes de que llegara. */
+  flushMeal();
+  const hunger = food.restore, energy = food.energy ?? FOOD_ENERGY_DEFAULT;
+  state.meal = { hunger, energy, total: { hunger, energy } };
   state.selectedFood = food.id;
   say(food.restore ? '¡Ñam ñam!' : '¡Con pilas! ⚡');
   serveFood(food);
@@ -1719,13 +1729,14 @@ function feedFood(id){
 /* La comida cae al piso en un lugar al azar de la pieza y la mascota va a
    comérsela; mientras come se achica de a mordiscos y al final desaparece.
    Con plato puesto se sirve en el plato, como antes (para eso está). Las
-   barras ya se movieron al tocarla: esto es solo lo que se ve. Si algo la
-   corta (un mimo, dormirse, un minijuego), la comida se va igual. */
+   barras suben mientras come (digestMeal(), ver abajo) y mientras tanto no
+   se puede hacer nada más (mealBusy()). Si algo igual la corta (dormirse
+   de agotada), la comida se va y lo que faltaba se suma de una. */
 const FOOD_REACH_PX = 26;   // de la comida al centro de la mascota cuando come
 function serveFood(food){
-  if (activeMinigame || gameOver || displayStage() === 'egg') return;
+  if (activeMinigame || gameOver || displayStage() === 'egg'){ flushMeal(); return; }
   petAction = null;
-  if (startFurniRoutine('eat')) return;
+  if (startFurniRoutine('eat')){ walker.activity.meal = true; return; }
   const floor = document.getElementById('creatureFloor');
   floor.querySelectorAll('.floor-food').forEach(e => e.remove());   // una a la vez
   let fx = 0.15 + Math.random() * 0.7;
@@ -1742,7 +1753,63 @@ function serveFood(food){
     { anim: 'eat', ms: 1800, dir: -side, fx: ['😋'], fxEvery: 850, start: () => el.classList.add('eating') },
     { anim: 'happy', ms: 600, dir: -side, fx: ['💖'] },
   ], { kind: 'eat', onEnd: () => { el.classList.add('gone'); setTimeout(() => el.remove(), 260); } });
+  walker.activity.meal = true;
 }
+
+/* La comida que está yendo a comerse (state.meal: lo que falta sumar y el
+   total). Va en el save: si se cierra la app a mitad, loadState() la suma. */
+function flushMeal(){
+  const m = state && state.meal;
+  if (!m) return;
+  state.hunger = clamp(state.hunger + m.hunger);
+  state.energy = clamp(state.energy + m.energy);
+  state.meal = null;
+}
+
+/* Mientras va a la comida y se la come no se puede hacer nada más: ni los
+   botones de abajo ni tocar la pantalla (la mascota, el acompañante, los
+   muebles, la caca, el regalo, las flechas de las piezas). */
+function mealBusy(){
+  return !!(state && state.meal && walker.activity && walker.activity.meal);
+}
+
+/* Cada frame (loopRender): las barras suben al ritmo de los pasos `eat` de
+   la rutina (en el piso o en el plato), así terminan de llenarse justo
+   cuando termina de comer. Si la rutina se cortó, se suma lo que faltaba. */
+function digestMeal(dt){
+  const m = state && state.meal;
+  const busy = mealBusy();
+  const controls = document.getElementById('controls');
+  if (controls.classList.contains('busy') !== busy) controls.classList.toggle('busy', busy);
+  if (!m) return;
+  if (!busy){ flushMeal(); saveState(); return; }
+  if (walker.anim !== 'eat') return;
+  const act = walker.activity;
+  if (!act.mealMs) act.mealMs = act.steps.reduce((t, st) => t + (st.anim === 'eat' ? (st.ms || 0) : 0), 0) || 1800;
+  const k = dt * 1000 / act.mealMs;
+  for (const stat of ['hunger', 'energy']){
+    const bite = Math.min(m[stat], m.total[stat] * k);
+    state[stat] = clamp(state[stat] + bite);
+    m[stat] -= bite;
+  }
+  if (m.hunger <= 1e-6 && m.energy <= 1e-6){ state.meal = null; saveState(); }
+}
+
+/* Corta cualquier toque mientras come (captura en window: corre antes que
+   todos los demás listeners, también el de los muebles). */
+let mealBusySaidAt = 0;
+window.addEventListener('DOMContentLoaded', () => {
+  const block = e => {
+    if (!mealBusy() || !e.target.closest || !e.target.closest('#controls, #screen')) return;
+    e.stopPropagation();
+    e.preventDefault();
+    if (e.type === 'click' && performance.now() - mealBusySaidAt > 1500){
+      mealBusySaidAt = performance.now();
+      say('¡Déjala comer tranquila! 😋');
+    }
+  };
+  for (const type of ['pointerdown', 'click']) window.addEventListener(type, block, true);
+});
 
 const btnClean = () => {
   if (!tryWake()) return;
