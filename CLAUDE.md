@@ -8,7 +8,7 @@ progreso vive en `localStorage`.
 en seis scripts clásicos que comparten el ámbito global:
 - `app.js`: el núcleo (estado, simulación, bitácora, render, tienda,
   Personalizar, panel de prueba).
-- `juegos.js`: el menú de Jugar (`GAMES`, niveles, Megajuego, resultado), lo
+- `juegos.js`: el menú de Jugar (`GAMES`, niveles, desafío diario, resultado), lo
   que comparten todos los minijuegos (canvas, mandos, sonido, premio) y los
   minijuegos de uno.
 - `premios.js`: la ruleta y el gacha.
@@ -710,29 +710,54 @@ más alto, pero no rompe.
 
 #### Ruleta y gacha (`premios.js`)
 
-La ruleta **da y quita monedas**: trozos de +2, +5, +10, +25, +50 y +100
-(mientras más grande, más raro: +100 sale el 2.5% de las veces) y trozos
-que quitan -2, -5 y -10 (nunca más de 10, y nunca bajo cero: `giveCoins()`
-quita solo lo que haya). Con los pesos de hoy se ganan monedas el 40% de
-las veces, se pierden el 15%, y en promedio un giro deja ~+6.4, algo menos
-que una partida buena (~7): es un extra, no un reemplazo de jugar. Los
-trozos de monedas llevan el número escrito a lo largo del radio (`label`)
-en vez de un emoji, y cada trozo angosto va entre dos anchos (dos angostos
-seguidos encimaban sus emojis). El gacha no da monedas (se paga con
-ellas).
+La ruleta **da y quita monedas**: trozos de +1, +2, +3, +5, +7, +10, +15,
++25, +50 y +100 (mientras más grande, más raro: +100 sale el 1.8% de las
+veces) y trozos que quitan -2, -5 y -10 (nunca más de 10, y nunca bajo
+cero: `giveCoins()` quita solo lo que haya). Con los pesos de hoy (suman
+113, 21 trozos) se ganan monedas el 55% de las veces, se pierden el 11%, y
+en promedio un giro deja ~+5.7, algo menos que una partida buena (~7): es
+un extra, no un reemplazo de jugar. Ningún trozo pesa menos de 2 (6.4°) y
+los emojis van solo en trozos de 3 o más; van intercalados para que los
+que quitan no queden juntos ni dos angostos seguidos. El gacha no da
+monedas (se paga con ellas).
+
+**Cómo se dibuja** (`wheelHtml()`): un aro dorado fijo con 20 ampolletas
+que pestañean (`wheelRimSvg()`, más rápido mientras gira), adentro la
+rueda en **SVG** (`wheelSvg()`, viewBox 200x200: nítida a cualquier
+tamaño) que gira entera, un botón dorado al centro y una lengüeta roja
+arriba (`#wheelPointer`). Los trozos son arcos con línea blanca entre ellos
+y un clavito en cada borde. El número de las monedas va a lo largo del
+radio y los emojis paraditos hacia afuera, **con el tamaño que deja el
+ancho de su trozo** (la primera versión, con `conic-gradient` y etiquetas
+HTML a tamaño fijo, se veía chica y desordenada: los emojis se salían de
+los trozos angostos). Los números se orientan según el ángulo en que quedó
+la rueda (`wheelSvg(winId, rot)`): los de la mitad izquierda van del borde
+al centro, así ninguno queda de cabeza; al detenerse la hoja se vuelve a
+armar con el ángulo final y el trozo ganador pestañea (`.wheel-win`). La
+rueda mide `min(290px, 100% - 40px, 40vh)`: en 360x640 baja a 256 y la
+hoja entra sin scroll.
 
 - **Ruleta** (`openWheel()`, se entra desde la fila 🎡 de arriba del menú de
   Juegos, `wheelEntryHtml()`, que se pone amarilla con el giro gratis; el
   botón de la hoja vuelve a Juegos): un giro gratis cada
   `WHEEL_CYCLE_MS` (12 h **reales**, `state.wheel.last`; un reloj que vuelve
-  atrás deja girar, igual que el Megajuego). Premios en `WHEEL_PRIZES` (17
+  atrás deja girar, igual que el desafío diario). Premios en `WHEEL_PRIZES` (21
   trozos): monedas (y monedas que se pierden), comida, medicina, +15 de
   felicidad o fichas para el gacha. Cada trozo de la
   rueda mide **lo que pesa su probabilidad** (`w`): lo que se ve es lo que
   hay. El premio se sortea, se aplica y se guarda al tocar Girar, no al
   terminar la animación (cerrar la hoja a mitad no lo pierde); la rueda gira
-  hasta dejar el trozo bajo el puntero y guarda su ángulo
-  (`state.wheel.angle`) para que el próximo giro arranque de ahí.
+  hasta dejar el trozo bajo la lengüeta y guarda su ángulo
+  (`state.wheel.angle`) para que el próximo giro arranque de ahí. El giro
+  lo anima `wheelSpinLoop()` con `requestAnimationFrame` (no una transición
+  CSS): sabe en cada cuadro qué trozo está bajo la lengüeta, y **cada clavo
+  que pasa suena y hace saltar la lengüeta** (antes el tic-tic iba a ritmo
+  fijo, sin relación con la rueda; a toda velocidad se salta tics, uno cada
+  45 ms como mucho). `wheelEase()` arranca suave (lo que dura el tirón de la
+  mascota) y frena largo, en `WHEEL_SPIN_MS` (4.8 s) después de
+  `WHEEL_PULL_MS` (0.6 s). Si se cierra la hoja a mitad, sigue contando sin
+  dibujar ni sonar y al terminar sale igual el pop-up del premio, pero la
+  ruleta no se vuelve a abrir sola (`wheelVisible()`).
   **Tickets de ruleta** 🎫 (`state.wheelTickets`, salen en los regalos):
   cada uno es un giro extra que **no toca el reloj del gratis**, van aparte
   (`spinWheel(true)` gasta el ticket y no escribe `state.wheel.last`). Con
@@ -742,15 +767,23 @@ ellas).
   cualquiera de los dos botones) mientras la rueda gira. El giro gratis se
   avisa con un globito 🎡 en el botón Jugar (`updateDock()`), solo por el
   gratis: con un ticket guardado estaría siempre. **La mascota gira la
-  ruleta**: está parada junto a la rueda (`#wheelPet`, un actor de juego con
-  su especie que no toca su animación en la pieza), al girar toma vuelo y
-  la empuja, salta de los nervios mientras da vueltas y con el premio
-  celebra o se pone triste si perdió monedas (`wheelPetLoop()`). Canvas en
-  píxeles físicos, escala entera en píxeles físicos (objetivo 2.6 px CSS) y
-  calzado con `snapPixelIcons()`. El panel de
+  ruleta**: está parada a la derecha, encima del borde de abajo y mirando a
+  la rueda (`#wheelPet`, un actor de juego con su especie que no toca su
+  animación en la pieza, dado vuelta con un `scale(-1, 1)` entero). Al
+  girar (`wheelPetPose()`): se echa para atrás, salta hasta el aro, lo
+  agarra arriba y **tira hacia abajo** con su peso —la rueda arranca justo
+  ahí—, cae y trastabilla; mientras gira salta de los nervios **al ritmo de
+  la rueda** (`wheelSpeedNow()`) y cuando va frenando se queda quieta y se
+  acerca a mirar. Con el premio celebra, con uno mayor salta de alegría, y
+  si perdió monedas se pone triste. Para agarrar y tirar se deja quieto el
+  cuadro `pet_1` (la mano arriba, `gaPin()`): la animación `pet` entera
+  saca corazones, que no tienen nada que ver con hacer fuerza. La primera
+  versión solo se corría unos píxeles y saltaba al lado: no se entendía que
+  la estaba girando. Canvas en píxeles físicos, escala entera en píxeles
+  físicos (objetivo 2.3 px CSS) y calzado con `snapPixelIcons()`. El panel de
   prueba tiene "+1 ticket de ruleta" y "Ruleta gratis ya". La cuenta
   regresiva se refresca sola (`[data-wheel-clock]`, mismo esquema que los
-  relojes del Megajuego).
+  relojes del desafío diario).
 - **Gacha** (pestaña "Gacha" de la tienda): una cápsula = un objeto de
   `GACHA_ITEMS`, un catálogo **exclusivo** (no se vende en la tienda:
   `styleRows('shop')` salta los `gacha`) de accesorios, adornos, carcasas y
@@ -1031,7 +1064,7 @@ con las dos combinaciones de tamaño: 0 errores, 0 trabados.
 Seis más en `duo-juegos.js` (`DUO_GAMES`, que se suman a `GAMES` con `duo:
 true`): en el menú de Jugar van en su propia sección, "De a dos", debajo de los
 otros (`.game-grid-head`). Mismo sistema que el resto: precio, niveles,
-récords, Megajuego, mérito. Los dos personajes los maneja **la misma persona**:
+récords, desafío diario, mérito. Los dos personajes los maneja **la misma persona**:
 la gracia de cada uno es coordinar a los dos. Si no hay acompañante, viene una
 visita de otra especie solo para esa partida (`duoGuest()`).
 
@@ -1171,7 +1204,7 @@ ellos (`REMOVED_GAMES`) y borra sus récords y su xp.
 Los seis suman felicidad y disparan `triggerPetAction('celebrate')` si el
 puntaje fue positivo.
 
-### Desbloqueo y Megajuego
+### Desbloqueo y desafío diario
 
 Los seis juegos del menú viven en `GAMES` (id, nombre, precio y `start`): el
 menú de Jugar se arma solo desde ahí. Se desbloquean con monedas tocándolos en
@@ -1182,16 +1215,19 @@ deja desbloqueados en saves viejos los juegos que ya tienen récord. El panel de
 prueba se salta el bloqueo. El cansancio (`energy < GAME_MIN_ENERGY`, 10) se revisa al lanzar,
 no al abrir el menú, para poder comprar igual.
 
-**Megajuego** (`state.mega`): una partida por juego desbloqueado cada
-`MEGA_CYCLE_MS` (12 h **reales**, `Date.now()`) que paga `MEGA_COIN_MULT` (x3)
+**Desafío diario (x3)** (`state.mega`; antes se llamaba "Megajuego" o
+"MEGA" y en el código sigue con ese nombre: `mega*`, `MEGA_*`; en pantalla
+se cambió porque "MEGA" no decía qué era): una partida por juego
+desbloqueado cada `MEGA_CYCLE_MS` (**24 h reales**, `Date.now()`; antes 12)
+que paga `MEGA_COIN_MULT` (x3)
 las monedas — solo monedas, la felicidad no. Jugar el de todos los
 desbloqueados da al instante `MEGA_BONUS_PER_GAME` (10) por juego, una vez por
-ciclo. El ciclo es uno solo para todos, arranca con el primer Megajuego jugado
+ciclo. El ciclo es uno solo para todos, arranca con el primer desafío jugado
 y `megaState()` lo renueva entero al vencer. Se gasta en `finishMinigame()`
 (lee `megaRun`), así que una partida cortada por `forceCloseMinigames()` no lo
 consume.
 
-El Megajuego se juega **siempre en el nivel más difícil desbloqueado**
+El desafío se juega **siempre en el nivel más difícil desbloqueado**
 (`maxLevelFor()`), no en el elegido en la ficha: es la partida especial del
 ciclo, así que va con todo, y su x3 se multiplica con el `LEVEL_COIN_MULT` de
 ese nivel. Lo fija `launchGame()`.
@@ -1201,13 +1237,15 @@ La cuenta regresiva del ciclo se ve en vivo: cualquier elemento con
 `tickMegaClocks()`, un solo `setInterval` global de 1 s que no hace nada si no
 hay relojes a la vista — ninguna hoja tiene que arrancarlo ni pararlo. Aparece
 en el banner de la grilla (con barra que se vacía), en la etiqueta de las
-tarjetas cuyo MEGA ya se jugó y en la ficha ("MEGA usado · vuelve en").
+tarjetas cuyo desafío ya se jugó y en la ficha ("Desafío de hoy listo ·
+vuelve en"). La etiqueta de las tarjetas con desafío pendiente dice
+"DESAFÍO x3".
 
 ### Niveles
 
 Cada juego del menú tiene niveles 1 a `GAME_MAX_LEVEL` (5). La experiencia
 (`state.gameXp[id]`) es el **mérito** de cada partida tal cual, sin multiplicar
-por nivel ni por Megajuego. `LEVEL_XP` está en "partidas buenas" acumuladas
+por nivel ni por desafío diario. `LEVEL_XP` está en "partidas buenas" acumuladas
 (`GOOD_GAME_MERIT = 45`): 10 para el nivel 2, 30 para el 3, 50 para el 4, 150
 para el 5. El nivel **no sube solo**: la experiencia desbloquea y se elige en
 la ficha del juego entre los desbloqueados (`state.gameLevelPick`), para
@@ -1216,7 +1254,7 @@ elegido de una. Cada nivel tiene nombre (`LEVEL_NAMES`: Fácil, Normal,
 Difícil, Experto, Leyenda).
 
 Más nivel = más difícil, así que paga más: `LEVEL_COIN_MULT` (x1 a x2) multiplica
-solo las monedas y se suma al x3 del Megajuego. Sin eso subir sería un castigo.
+solo las monedas y se suma al x3 del desafío diario. Sin eso subir sería un castigo.
 El récord es por nivel (`recordKey()`; el nivel 1 usa la clave de siempre, así
 los récords viejos quedan como de nivel 1).
 
@@ -1285,14 +1323,14 @@ Tres hojas, como la tienda de una app:
 1. **Grilla** (`openGamesMenu()`): tarjetas de 2 columnas con el color propio
    de cada juego (`--g1`/`--g2` por `data-g` en el CSS — al sumar un juego hay
    que darle su par), puntitos de nivel (`levelDots()`), récord del nivel
-   elegido y la etiqueta MEGA si le queda. Arriba, `megaBanner()` con un punto
+   elegido y la etiqueta "DESAFÍO x3" si le queda. Arriba, `megaBanner()` con un punto
    por juego desbloqueado. Los bloqueados se compran tocándolos y, al
    comprarlos, abren su ficha.
 2. **Ficha** (`openGameDetail(id)`): los cinco niveles a la vista (antes era
    un botón chico que giraba 1→2→3→1 sin mostrar a dónde iba). Tocar uno
    desbloqueado lo elige; uno bloqueado dice cuánta xp le falta. Debajo, récord
    del nivel, multiplicador de monedas y barra de xp (`levelProgress()`). Si
-   queda Megajuego, "Jugar MEGA · <nivel máx.>" va como botón principal y
+   queda desafío, "Desafío diario (x3) · <nivel máx.>" va como botón principal y
    "Jugar" como secundario; si ya se usó, en su lugar va el reloj de cuánto
    falta. El cansancio se avisa dentro de la ficha.
 3. **Resultado** (`showGameResult()`): reemplaza al `say()` de una línea que

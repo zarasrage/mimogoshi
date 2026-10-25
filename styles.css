@@ -1967,7 +1967,7 @@ body{
 }
 
 @media (prefers-reduced-motion: reduce){
-  .device, .led, .overlay, .overlay-card, .gc-mega, .result-score, .result-badge, .night-sky::before, .night-sky::after, .creature-floor.party::before, .stat.charging .stat-fill, .stat.charging .stat-icon, .stat.charging .stat-spark, .stat.low .stat-ring svg, .wheel-entry.ready, .popup.reward .popup-icon::before, .floor-food, .floor-food.eating{animation:none;}
+  .device, .led, .overlay, .overlay-card, .gc-mega, .result-score, .result-badge, .night-sky::before, .night-sky::after, .creature-floor.party::before, .stat.charging .stat-fill, .stat.charging .stat-icon, .stat.charging .stat-spark, .stat.low .stat-ring svg, .wheel-entry.ready, .popup.reward .popup-icon::before, .floor-food, .floor-food.eating, .wheel-rim .bulb, .wheel .wheel-win{animation:none;}
   .xp-fill{transition:none;}
 }
 
@@ -2010,78 +2010,75 @@ body{
 .wheel-entry.ready small, .wheel-entry.ready .we-go{color:#6b4a00;}
 @keyframes wheelEntry{ 50%{box-shadow:0 6px 22px -2px rgba(255,190,60,.95);} }
 
-/* La mascota al lado de la rueda: la empuja al girar, la mira dar vueltas
-   y celebra o se pone triste con el premio (wheelPetLoop en premios.js).
-   El canvas va en píxeles físicos y se calza con snapPixelIcons(). */
-.wheel-stage{position:relative; width:min(280px, 74vw); margin:6px auto 14px; flex-shrink:0;}
-.wheel-stage .wheel-wrap{margin:0 0 0 auto; width:calc(100% - 26px);}
-.wheel-pet{
-  position:absolute;
-  left:-34px;
-  bottom:-4px;
-  z-index:3;
-  width:120px;
-  height:112px;
-  pointer-events:none;
-  image-rendering:pixelated;
-}
-
-.wheel-wrap{
+/* La ruleta (wheelHtml en premios.js): un aro dorado fijo con ampolletas,
+   la rueda en SVG que gira adentro, el botón del centro y la lengüeta roja
+   arriba. La mascota va a la derecha, encima del borde de abajo: salta,
+   agarra el aro y tira (wheelPetLoop). Su canvas va en píxeles físicos y se
+   calza con snapPixelIcons(). El tamaño de la rueda se topa por el alto
+   para que la hoja siga entrando en un teléfono chico. */
+.wheel-stage{
+  --wd:min(290px, calc(100% - 40px), 40vh);
   position:relative;
-  width:min(280px, 74vw);
-  aspect-ratio:1;
-  margin:6px auto 14px;
+  width:100%;
+  margin:4px 0 10px;
+  padding-top:14px;   /* lugar para la lengüeta */
   flex-shrink:0;
 }
+.wheel-wrap{
+  position:relative;
+  width:var(--wd);
+  aspect-ratio:1;
+  margin-left:max(0px, calc(50% - var(--wd) / 2 - 22px));
+}
+.wheel-rim{position:absolute; inset:0; width:100%; height:100%; filter:drop-shadow(0 10px 18px rgba(0,0,0,.55));}
+.wheel-rim .bulb{fill:#fff7d6; animation:wheelBulb 1.2s steps(1) infinite;}
+.wheel-rim .bulb.b{animation-delay:-.6s;}
+.wheel-wrap.spinning .wheel-rim .bulb{animation-duration:.24s;}
+.wheel-wrap.spinning .wheel-rim .bulb.b{animation-delay:-.12s;}
+@keyframes wheelBulb{ 50%{fill:#ff9d3d; opacity:.75;} }
 .wheel{
   position:absolute;
-  inset:0;
+  inset:4.55%;   /* 10 de 220: el aro */
   border-radius:50%;
-  border:6px solid #fff;
-  box-shadow:0 10px 30px -10px rgba(0,0,0,.7), 0 0 0 3px rgba(0,0,0,.15) inset;
+  overflow:hidden;
+  will-change:transform;
 }
-/* Cada emoji va en el centro de su trozo (left/top los calcula wheelHtml). */
-.wheel-label{
-  position:absolute;
-  width:30px; height:30px;
-  margin:-15px 0 0 -15px;
-  display:grid; place-items:center;
-  font-size:18px;
-  line-height:1;
-}
-/* El número de los trozos de monedas, a lo largo del radio (wheelHtml). */
-.wheel-label.txt{
-  width:40px; height:18px;
-  margin:-9px 0 0 -20px;
-  font-family:var(--font-ui);
-  font-size:12.5px;
-  font-weight:900;
-  color:#4a3300;
-  letter-spacing:-.2px;
-}
-.wheel-label.txt.lose{color:#fff;}
-.wheel-hint{margin:0; font-size:11.5px; color:var(--text-soft); text-align:center;}
-.wheel-pointer{
-  position:absolute;
-  left:50%; top:-12px;
-  z-index:2;
-  width:0; height:0;
-  margin-left:-12px;
-  border-left:12px solid transparent;
-  border-right:12px solid transparent;
-  border-top:22px solid #ff5d6c;
-  filter:drop-shadow(0 2px 2px rgba(0,0,0,.4));
-}
+.wheel svg{display:block; width:100%; height:100%;}
+.wheel .wheel-lines line{stroke:rgba(255,255,255,.7); stroke-width:.9;}
+.wheel .wheel-pegs circle{fill:#fff; stroke:rgba(0,0,0,.35); stroke-width:.6;}
+.wheel .wl{font-family:var(--font-ui); font-weight:900; fill:#5a3700; letter-spacing:-.3px;}
+.wheel .wl.lose, .wheel .wl.big{fill:#fff;}
+.wheel .wl.big{paint-order:stroke; stroke:rgba(0,0,0,.25); stroke-width:1.2px;}
+.wheel .wheel-win{fill:#fff; opacity:.4; animation:wheelWin .5s ease-in-out 6 alternate both;}
+@keyframes wheelWin{ from{opacity:0;} to{opacity:.55;} }
 .wheel-hub{
   position:absolute;
   left:50%; top:50%;
-  width:46px; height:46px;
-  margin:-23px 0 0 -23px;
-  display:grid; place-items:center;
+  width:15%; aspect-ratio:1;
+  transform:translate(-50%, -50%);
   border-radius:50%;
-  background:#fff;
-  font-size:22px;
-  box-shadow:0 3px 8px rgba(0,0,0,.35);
+  background:radial-gradient(circle at 35% 30%, #fff8d6, #ffc53d 45%, #c77700);
+  box-shadow:0 0 0 3px #fff, 0 3px 8px rgba(0,0,0,.45);
+}
+.wheel-pointer{
+  position:absolute;
+  left:50%; top:-14px;
+  z-index:2;
+  width:30px; height:40px;
+  margin-left:-15px;
+  transform-origin:15px 11px;   /* gira en el clavo de arriba */
+  filter:drop-shadow(0 2px 2px rgba(0,0,0,.45));
+}
+.wheel-hint{margin:0; font-size:11.5px; color:var(--text-soft); text-align:center;}
+.wheel-pet{
+  position:absolute;
+  right:-6px;
+  bottom:-6px;
+  z-index:3;
+  width:112px;
+  height:170px;
+  pointer-events:none;
+  image-rendering:pixelated;
 }
 
 .gacha-machine{display:flex; flex-direction:column; align-items:center; gap:8px; padding:4px 2px 2px;}

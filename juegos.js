@@ -74,17 +74,18 @@ function pickedLevel(id){
    niveles quedan como récord de nivel 1. */
 function recordKey(id, level){ return level > 1 ? `${id}:${level}` : id; }
 
-/* Megajuego: una partida por juego desbloqueado cada MEGA_CYCLE_MS de tiempo
+/* Desafío diario (en el código sigue llamándose "mega", su nombre de antes):
+   una partida por juego desbloqueado cada MEGA_CYCLE_MS de tiempo
    REAL (Date.now(), no ageHours: es un ritmo para quien juega, igual que el
    modo nocturno). Paga MEGA_COIN_MULT veces las monedas — solo las monedas, la
    felicidad queda igual para no tapar el descuido. Jugar el Megajuego de todos
    los desbloqueados da de una MEGA_BONUS_PER_GAME por juego, una vez por ciclo.
 
-   El ciclo arranca con el primer Megajuego jugado y se renueva entero 12 horas
+   El ciclo arranca con el primer desafío jugado y se renueva entero 24 horas
    después, no por juego: así hay una sola cuenta regresiva que mostrar y el
    bonus de "completarlos todos" tiene un plazo claro. Un juego desbloqueado a
    mitad de ciclo entra en la cuenta de ese mismo ciclo. */
-const MEGA_CYCLE_MS = 12 * 60 * 60 * 1000;
+const MEGA_CYCLE_MS = 24 * 60 * 60 * 1000;
 const MEGA_COIN_MULT = 3;
 const MEGA_BONUS_PER_GAME = 10;
 
@@ -186,12 +187,12 @@ function megaBanner(){
       <span class="mega-clock">⏳ <span data-mega-clock>${megaClockLabel(ms)}</span></span>
       <div class="mega-track"><div data-mega-bar style="width:${(ms / MEGA_CYCLE_MS * 100).toFixed(2)}%"></div></div>`;
   if (m.bonusPaid){
-    return `<div class="mega-banner done"><b>MEGA</b><span>Completos · vuelven en</span>${reloj}</div>`;
+    return `<div class="mega-banner done"><b>Desafío diario</b><span>Completo · vuelve en</span>${reloj}</div>`;
   }
   const pips = abiertos.map(g => `<i class="${m.played[g.id] ? 'on' : ''}"></i>`).join('');
   return `
     <div class="mega-banner">
-      <b>MEGA x${MEGA_COIN_MULT}</b>
+      <b>Desafío diario (x${MEGA_COIN_MULT})</b>
       <span class="mega-pips">${pips}</span>
       <span>${jugados}/${abiertos.length} · todos ${coinsLabel('+' + MEGA_BONUS_PER_GAME * abiertos.length)}</span>
       ${reloj}
@@ -216,7 +217,7 @@ function openGamesMenu(aviso){
     const best = bestScore(recordKey(g.id, pickedLevel(g.id)));
     return `
       <button class="game-card" data-g="${g.id}" data-open-game="${g.id}">
-        ${megaAvailable(g.id) ? '<span class="gc-mega">MEGA</span>'
+        ${megaAvailable(g.id) ? `<span class="gc-mega">DESAFÍO x${MEGA_COIN_MULT}</span>`
           : megaMsLeft() !== null ? `<span class="gc-mega used">⏳ <span data-mega-clock="short">${megaClockLabel(megaMsLeft(), true)}</span></span>` : ''}
         <span class="gc-emoji">${g.emoji}</span>
         <b class="gc-name">${escapeHtml(g.name)}</b>
@@ -334,10 +335,10 @@ function openGameDetail(id, aviso){
       </div>
     </div>
     <div class="overlay-actions">
-      ${mega ? `<button class="overlay-btn mega" id="btnPlayMega"><span>Jugar MEGA · ${LEVEL_NAMES[max - 1]}</span><small>Tu nivel más difícil · x${MEGA_COIN_MULT} monedas · 1 vez cada 12 h</small></button>`
+      ${mega ? `<button class="overlay-btn mega" id="btnPlayMega"><span>Desafío diario (x${MEGA_COIN_MULT}) · ${LEVEL_NAMES[max - 1]}</span><small>Tu nivel más difícil · x${MEGA_COIN_MULT} monedas · 1 vez cada 24 h</small></button>`
         : megaMsLeft() !== null ? `
         <div class="mega-wait">
-          <div class="mega-wait-row"><b>MEGA usado</b><span>vuelve en ⏳ <span data-mega-clock>${megaClockLabel(megaMsLeft())}</span></span></div>
+          <div class="mega-wait-row"><b>Desafío de hoy listo</b><span>vuelve en ⏳ <span data-mega-clock>${megaClockLabel(megaMsLeft())}</span></span></div>
           <div class="mega-track"><div data-mega-bar style="width:${(megaMsLeft() / MEGA_CYCLE_MS * 100).toFixed(2)}%"></div></div>
         </div>` : ''}
       <button class="overlay-btn ${mega ? 'secondary' : ''}" id="btnPlayGame">Jugar · ${LEVEL_NAMES[pick - 1]}</button>
@@ -375,8 +376,8 @@ function showGameResult(r){
   const g = gameById(r.id);
   const chips = [
     r.happinessGain > 0 ? `<span class="chip"><i class="px-icon px-happiness"></i> +${r.happinessGain}</span>` : '',
-    r.coins > 0 ? `<span class="chip gold">${coinsLabel('+' + r.coins)}${r.mega ? ' · MEGA' : ''}</span>` : '',
-    r.bonus > 0 ? `<span class="chip gold">Megajuegos completos ${coinsLabel('+' + r.bonus)}</span>` : '',
+    r.coins > 0 ? `<span class="chip gold">${coinsLabel('+' + r.coins)}${r.mega ? ' · desafío x' + MEGA_COIN_MULT : ''}</span>` : '',
+    r.bonus > 0 ? `<span class="chip gold">Desafío diario completo ${coinsLabel('+' + r.bonus)}</span>` : '',
   ].join('');
   const xp = g ? `
     <div class="xp-row">

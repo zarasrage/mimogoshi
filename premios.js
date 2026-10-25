@@ -194,38 +194,44 @@ function wireGachaTab(reopen){
 /* ---------- Ruleta ---------- */
 
 const WHEEL_CYCLE_MS = 12 * 60 * 60 * 1000;
-const WHEEL_SPIN_MS = 4200;
+const WHEEL_PULL_MS = 600;    // la mascota salta, agarra el borde y tira: recién ahí arranca
+const WHEEL_SPIN_MS = 4800;
+const WHEEL_TURNS = 5;
 
 /* Cada premio ocupa en la rueda un trozo proporcional a su probabilidad
    (`w`): lo que se ve es lo que hay. `give()` lo aplica y devuelve el texto.
 
-   Las monedas van de varios tamaños (+2 a +100, mientras más grande más
-   raro) y también hay trozos que QUITAN monedas (-2, -5, -10; nunca más de
-   10): le dan suspenso al giro. Cuentas con los pesos de abajo (suman 120):
-   se ganan monedas el 40% de las veces, se pierden el 15%, y en promedio un
-   giro deja ~+6.4 monedas, algo menos que una partida buena (~7).
-   Los trozos de monedas llevan el número escrito (`label`) en vez de un
-   emoji: con 17 trozos no se distinguiría cuál es cuál. Van intercalados
-   con el resto para que los que quitan no queden todos juntos, y cada trozo
-   angosto va entre dos anchos: dos angostos seguidos encimaban sus emojis. */
+   Las monedas van en diez tamaños (+1, +2, +3, +5, +7, +10, +15, +25, +50
+   y +100: mientras más grande, más raro) y también hay trozos que QUITAN
+   monedas (-2, -5, -10; nunca más de 10): le dan suspenso al giro. Cuentas
+   con los pesos de abajo (suman 113): se ganan monedas el 55% de las veces,
+   se pierden el 11%, y en promedio un giro deja ~+5.7 monedas, algo menos
+   que una partida buena (~7). Ningún trozo pesa menos de 2 (6.4°): ahí
+   todavía cabe el número escrito a lo largo del radio, y los emojis van
+   en trozos de 3 o más. Van intercalados para que los que quitan no queden
+   juntos, ni dos angostos seguidos. */
 const WHEEL_PRIZES = [
-  { id: 'm5',       label: '+5',   w: 12, color: '#ffd25a', give: () => giveCoins(5) },
-  { id: 'rica',     emoji: '🍗',   w: 9,  color: '#ffb36b', give: () => giveFood('rica', 2) },
-  { id: 'm-2',      label: '-2',   w: 8,  color: '#7a6c96', give: () => giveCoins(-2), lose: true },
-  { id: 'm10',      label: '+10',  w: 10, color: '#ffe27a', give: () => giveCoins(10) },
-  { id: 'fichas3',  emoji: '💎',   w: 3,  color: '#b39cff', give: () => giveTickets(3), big: true },
-  { id: 'ficha',    emoji: '🎟️',   w: 7,  color: '#8fd3ff', give: () => giveTickets(1) },
-  { id: 'm2',       label: '+2',   w: 12, color: '#ffd25a', give: () => giveCoins(2) },
-  { id: 'banquete', emoji: '🍱',   w: 5,  color: '#8fcf7f', give: () => giveFood('banquete', 1) },
-  { id: 'feliz',    emoji: '⭐',   w: 8,  color: '#fff0a0', give: () => { state.happiness = clamp(state.happiness + 15); return '+15 de felicidad'; } },
-  { id: 'm-5',      label: '-5',   w: 6,  color: '#6a5a8a', give: () => giveCoins(-5), lose: true },
-  { id: 'm25',      label: '+25',  w: 7,  color: '#ffc93c', give: () => giveCoins(25) },
-  { id: 'cafe',     emoji: '☕',   w: 8,  color: '#c99a6b', give: () => giveFood('cafe', 2) },
-  { id: 'm50',      label: '+50',  w: 4,  color: '#ffb13d', give: () => giveCoins(50), big: true },
-  { id: 'medicina', emoji: '💊',   w: 7,  color: '#ff7b8a', give: () => giveFood(MEDICINE.id, 1) },
-  { id: 'm-10',     label: '-10',  w: 4,  color: '#4f416c', give: () => giveCoins(-10), lose: true },
-  { id: 'especial', emoji: '🍰',   w: 7,  color: '#ff9ec4', give: () => giveFood('especial', 1) },
-  { id: 'm100',     label: '+100', w: 3,  color: '#5ccf7a', give: () => giveCoins(100), big: true },
+  { id: 'm5',       label: '+5',   w: 9,  color: '#ffcd57', give: () => giveCoins(5) },
+  { id: 'rica',     emoji: '🍗',   w: 7,  color: '#ff8fab', give: () => giveFood('rica', 2) },
+  { id: 'm1',       label: '+1',   w: 10, color: '#ffeaa6', give: () => giveCoins(1) },
+  { id: 'm-2',      label: '-2',   w: 6,  color: '#5d4b8a', give: () => giveCoins(-2), lose: true },
+  { id: 'm15',      label: '+15',  w: 4,  color: '#ffa62b', give: () => giveCoins(15) },
+  { id: 'cafe',     emoji: '☕',   w: 6,  color: '#b9a0ff', give: () => giveFood('cafe', 2) },
+  { id: 'm3',       label: '+3',   w: 9,  color: '#ffdc78', give: () => giveCoins(3) },
+  { id: 'fichas3',  emoji: '💎',   w: 3,  color: '#6fd2ff', give: () => giveTickets(3), big: true },
+  { id: 'm7',       label: '+7',   w: 7,  color: '#ffc23d', give: () => giveCoins(7) },
+  { id: 'feliz',    emoji: '😊',   w: 6,  color: '#ff9ed8', give: () => { state.happiness = clamp(state.happiness + 15); return '+15 de felicidad'; } },
+  { id: 'm-5',      label: '-5',   w: 4,  color: '#4b3b76', give: () => giveCoins(-5), lose: true },
+  { id: 'm2',       label: '+2',   w: 9,  color: '#ffe38f', give: () => giveCoins(2) },
+  { id: 'banquete', emoji: '🍱',   w: 3,  color: '#8fe0a0', give: () => giveFood('banquete', 1) },
+  { id: 'm10',      label: '+10',  w: 6,  color: '#ffb52e', give: () => giveCoins(10) },
+  { id: 'm100',     label: '+100', w: 2,  color: '#2fc985', give: () => giveCoins(100), big: true },
+  { id: 'medicina', emoji: '💊',   w: 5,  color: '#ff7b7b', give: () => giveFood(MEDICINE.id, 1) },
+  { id: 'm25',      label: '+25',  w: 3,  color: '#ff9330', give: () => giveCoins(25) },
+  { id: 'ficha',    emoji: '🎟️',   w: 5,  color: '#86c8ff', give: () => giveTickets(1) },
+  { id: 'm-10',     label: '-10',  w: 2,  color: '#3a2c60', give: () => giveCoins(-10), lose: true },
+  { id: 'especial', emoji: '🍰',   w: 4,  color: '#ffb8d4', give: () => giveFood('especial', 1) },
+  { id: 'm50',      label: '+50',  w: 3,  color: '#ff7a3d', give: () => giveCoins(50), big: true },
 ];
 
 /* La fila del pop-up para un premio de la ruleta: el nombre a la izquierda y
@@ -245,7 +251,7 @@ function wheelPrizeRow(p, texto){
 function giveCoins(n){
   if (n >= 0){
     state.coins += n;
-    return `${coinsLabel('+' + n)} monedas`;
+    return `${coinsLabel('+' + n)} moneda${n === 1 ? '' : 's'}`;
   }
   const quita = Math.min(-n, state.coins);
   state.coins -= quita;
@@ -289,29 +295,88 @@ function wheelSlices(){
   return WHEEL_PRIZES.map(p => { const a0 = acc / tot * 360; acc += p.w; return { p, a0, a1: acc / tot * 360 }; });
 }
 
-function wheelHtml(){
+/* Un punto del borde a `r` del centro (100, 100), con el ángulo desde arriba
+   en sentido horario: las coordenadas del SVG de la rueda. */
+function wheelPt(deg, r){
+  const a = deg * Math.PI / 180;
+  return [(100 + r * Math.sin(a)).toFixed(2), (100 - r * Math.cos(a)).toFixed(2)];
+}
+
+/* La rueda es un SVG (viewBox 200x200, todo en esas unidades, así se ve
+   igual de nítida en cualquier tamaño) que gira entera. Los trozos son
+   arcos de verdad con una línea blanca entre ellos y un clavito en cada
+   borde (los que hacen sonar la lengüeta). El número de las monedas va a lo
+   largo del radio y los emojis paraditos hacia afuera, los dos con el
+   tamaño que deja el ancho de su trozo: antes iban a un tamaño fijo y en
+   los trozos angostos se salían. `winId` ilumina el trozo que salió.
+
+   Los números se escriben para que se lean de izquierda a derecha con la
+   rueda girada en `rot` (el ángulo en que quedó): los de la mitad izquierda
+   van del borde hacia el centro y los de la derecha al revés. Con un solo
+   sentido para todos, los de abajo quedaban de cabeza. Mientras gira no
+   importa; al detenerse, la hoja se vuelve a armar con el ángulo final. */
+function wheelSvg(winId, rot = 0){
+  const arc = (s, r) => {
+    const [x0, y0] = wheelPt(s.a0, r), [x1, y1] = wheelPt(s.a1, r);
+    return `M100 100 L${x0} ${y0} A${r} ${r} 0 ${s.a1 - s.a0 > 180 ? 1 : 0} 1 ${x1} ${y1}Z`;
+  };
   const slices = wheelSlices();
-  const grad = slices.map(s => `${s.p.color} ${s.a0.toFixed(2)}deg ${s.a1.toFixed(2)}deg`).join(', ');
+  const trozos = slices.map(s => `<path d="${arc(s, 100)}" fill="${s.p.color}"/>`).join('');
   const labels = slices.map(s => {
-    /* En el centro de su trozo, hacia afuera (en % de la rueda, así vale
-       para cualquier tamaño). El número de las monedas va escrito a lo
-       largo del radio, como en una ruleta de verdad: atravesado no cabe en
-       los trozos angostos. En la mitad izquierda se da vuelta para que no
-       quede de cabeza. */
-    const midDeg = (s.a0 + s.a1) / 2, mid = midDeg * Math.PI / 180;
-    const r = s.p.label ? 37 : s.p.w <= 5 ? 38 : 35;   // los angostos, más afuera: ahí el trozo es más ancho
-    const left = 50 + r * Math.sin(mid), top = 50 - r * Math.cos(mid);
-    const pos = `left:${left.toFixed(2)}%; top:${top.toFixed(2)}%`;
-    if (!s.p.label) return `<span class="wheel-label" style="${pos}">${s.p.emoji}</span>`;
-    const rot = midDeg <= 180 ? midDeg - 90 : midDeg + 90;
-    return `<span class="wheel-label txt ${s.p.lose ? 'lose' : ''}" style="${pos}; transform:rotate(${rot.toFixed(1)}deg)">${s.p.label}</span>`;
+    const mid = (s.a0 + s.a1) / 2, ancho = rad => rad * (s.a1 - s.a0) * Math.PI / 180;
+    if (s.p.label){
+      const fs = Math.min(13, Math.max(8.5, ancho(78) * 0.86));
+      const cls = s.p.lose ? 'lose' : s.p.big ? 'big' : '';
+      const enPantalla = ((mid + rot) % 360 + 360) % 360;
+      const izq = enPantalla > 180;
+      return `<g transform="rotate(${mid.toFixed(2)} 100 100)"><text class="wl ${cls}" transform="translate(100 9) rotate(${izq ? 90 : -90})" text-anchor="${izq ? 'start' : 'end'}" dominant-baseline="central" font-size="${fs.toFixed(1)}">${s.p.label}</text></g>`;
+    }
+    const r = s.p.w <= 3 ? 80 : 74;
+    const fs = Math.min(17, ancho(r) * 0.8);
+    return `<g transform="rotate(${mid.toFixed(2)} 100 100)"><text class="we" x="100" y="${100 - r}" text-anchor="middle" dominant-baseline="central" font-size="${fs.toFixed(1)}">${s.p.emoji}</text></g>`;
   }).join('');
+  const clavos = slices.map(s => { const [x, y] = wheelPt(s.a0, 95); return `<circle cx="${x}" cy="${y}" r="1.9"/>`; }).join('');
+  const lineas = slices.map(s => { const [x, y] = wheelPt(s.a0, 100); return `<line x1="100" y1="100" x2="${x}" y2="${y}"/>`; }).join('');
+  const win = slices.find(s => s.p.id === winId);
+  return `<svg viewBox="0 0 200 200" aria-hidden="true">
+    <defs><radialGradient id="wheelShade"><stop offset=".55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".22"/></radialGradient></defs>
+    ${trozos}
+    ${win ? `<path class="wheel-win" d="${arc(win, 100)}"/>` : ''}
+    <g class="wheel-lines">${lineas}</g>
+    <circle cx="100" cy="100" r="100" fill="url(#wheelShade)"/>
+    ${labels}
+    <g class="wheel-pegs">${clavos}</g>
+  </svg>`;
+}
+
+/* El aro de afuera no gira: dorado, con ampolletas que pestañean (más rápido
+   mientras gira). Encima, la lengüeta roja, que salta al pasar cada clavo
+   (la mueve wheelSpinLoop). */
+function wheelRimSvg(){
+  const n = 20;
+  const bulbs = Array.from({ length: n }, (_, i) => {
+    const a = i / n * 2 * Math.PI;
+    return `<circle class="bulb ${i % 2 ? 'b' : 'a'}" cx="${(110 + 105 * Math.sin(a)).toFixed(2)}" cy="${(110 - 105 * Math.cos(a)).toFixed(2)}" r="2.6"/>`;
+  }).join('');
+  return `<svg class="wheel-rim" viewBox="0 0 220 220" aria-hidden="true">
+    <defs><linearGradient id="wheelGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe9a0"/><stop offset=".45" stop-color="#ffc23d"/><stop offset="1" stop-color="#c77700"/></linearGradient></defs>
+    <circle cx="110" cy="110" r="110" fill="url(#wheelGold)"/>
+    <circle cx="110" cy="110" r="101.5" fill="#2a1d4a"/>
+    ${bulbs}
+  </svg>`;
+}
+
+function wheelHtml(winId){
   return `
     <div class="wheel-stage">
-      <div class="wheel-wrap">
-        <div class="wheel-pointer"></div>
-        <div class="wheel" id="wheel" style="background:conic-gradient(${grad}); transform:rotate(${wheelState().angle || 0}deg)">${labels}</div>
-        <div class="wheel-hub">🎡</div>
+      <div class="wheel-wrap" id="wheelWrap">
+        ${wheelRimSvg()}
+        <div class="wheel" id="wheel" style="transform:rotate(${wheelState().angle || 0}deg)">${wheelSvg(winId, wheelState().angle || 0)}</div>
+        <div class="wheel-hub"></div>
+        <svg class="wheel-pointer" id="wheelPointer" viewBox="0 0 30 40" aria-hidden="true">
+          <path d="M15 38 L4 13 A11.5 11.5 0 1 1 26 13 Z" fill="#ff4d6d" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/>
+          <circle cx="15" cy="11" r="4" fill="#fff"/>
+        </svg>
       </div>
       <canvas class="wheel-pet" id="wheelPet"></canvas>
     </div>`;
@@ -330,19 +395,27 @@ function wheelEntryInner(){
 }
 
 /* ---------- La mascota que gira la ruleta ----------
-   Está parada al lado de la rueda: al girar toma vuelo, la empuja y se queda
-   saltando de los nervios mientras da vueltas; con el premio celebra (o se
-   pone triste si perdió monedas). Es un actor de juego (gameActor, de
-   duo-juegos.js) con la especie de la mascota, así no toca su animación en
-   la pieza. El canvas va en píxeles físicos y la escala es entera en
-   píxeles físicos (ver "La regla de oro"); el movimiento también se redondea
-   a píxeles físicos. */
-const WHEEL_PET_SCALE = 2.6;   // objetivo en px CSS por píxel del arte (8 físicos en un 3x)
-const wheelPet = { ga: null, mode: 'idle', t0: 0, raf: 0 };
+   Está parada a la derecha de la rueda, mirándola. Al girar: se agacha,
+   salta hasta el borde, lo agarra arriba y tira hacia abajo con todo su
+   peso (la rueda arranca justo ahí, WHEEL_PULL_MS después de tocar Girar);
+   cae, trastabilla para atrás y se queda mirando: salta de los nervios al
+   ritmo de la rueda y, cuando la rueda va frenando, se queda quieta,
+   inclinada hacia adelante. Con el premio celebra, con un premio mayor
+   salta de alegría y si perdió monedas se pone triste.
+
+   Es un actor de juego (gameActor, de duo-juegos.js) con la especie de la
+   mascota, así no toca su animación en la pieza. El canvas va en píxeles
+   físicos, la escala es entera en píxeles físicos (ver "La regla de oro"),
+   darla vuelta es un scale(-1, 1) entero y el movimiento se redondea a
+   píxeles físicos. */
+const WHEEL_PET_SCALE = 2.3;   // objetivo en px CSS por píxel del arte (7 físicos en un 3x)
+const wheelPet = { ga: null, mode: 'idle', t0: 0, raf: 0, ph: 0, lean: 0, last: 0 };
 
 function setWheelPetMode(mode){
   wheelPet.mode = mode;
   wheelPet.t0 = performance.now();
+  wheelPet.ph = 0;
+  wheelPet.lean = 0;
   if (!wheelPet.ga) return;
   if (mode === 'win' || mode === 'big') gaOnce(wheelPet.ga, 'celebrate');
 }
@@ -359,29 +432,67 @@ function startWheelPet(mode){
   wheelPet.raf = requestAnimationFrame(wheelPetLoop);
 }
 
+const easeOut = u => 1 - (1 - u) * (1 - u);
+
+/* Deja quieto un cuadro de una animación: pet_1 (la mano arriba) para
+   agarrar y tirar del aro; si corre la animación entera salen corazones. */
+function gaPin(ga, name, ms){ ga.anim = name; ga.animT0 = performance.now() - ms; }
+
+/* Dónde va y qué hace en el instante `t` del modo actual. dx: px CSS hacia
+   la rueda; dy: px CSS hacia arriba. */
+function wheelPetPose(t, dt){
+  const ga = wheelPet.ga;
+  const JUMP = 46;   // alto del salto hasta el borde
+  switch (wheelPet.mode){
+    case 'spin': {
+      if (t < 200){ gaLoop(ga, 'idle'); return { dx: -4 * (t / 200), dy: 0 }; }   // se echa para atrás: toma impulso
+      if (t < 460){ const u = (t - 200) / 260; gaLoop(ga, 'happy'); return { dx: -4 + 24 * u, dy: JUMP * easeOut(u) }; }   // salta al borde
+      if (t < WHEEL_PULL_MS){ gaPin(ga, 'pet', 60); return { dx: 20, dy: JUMP + 2 * Math.sin((t - 460) / 140 * Math.PI) }; }   // lo agarra
+      if (t < 900){ const u = (t - WHEEL_PULL_MS) / (900 - WHEEL_PULL_MS); gaPin(ga, 'pet', 60); return { dx: 20 - 6 * u, dy: JUMP * (1 - u * u) }; }   // tira para abajo
+      if (t < 1150){ const u = (t - 900) / 250; gaLoop(ga, 'walk'); return { dx: 14 - 20 * easeOut(u), dy: 6 * Math.sin(u * Math.PI) }; }   // trastabilla
+      /* Mirando: los saltitos siguen la velocidad de la rueda. */
+      const v = wheelSpeedNow();
+      if (v > 0.18){
+        wheelPet.ph += dt * (0.008 + 0.01 * v);
+        gaLoop(ga, 'happy');
+        return { dx: -6 + 2 * Math.min(1, (t - 1150) / 300), dy: Math.abs(Math.sin(wheelPet.ph)) * (3 + 8 * v) };
+      }
+      /* Ya va frenando: se queda quieta y se acerca de a poco a mirar. */
+      gaLoop(ga, 'idle');
+      wheelPet.lean = Math.min(1, (wheelPet.lean || 0) + dt / 700);
+      return { dx: -4 + 7 * wheelPet.lean, dy: 0 };
+    }
+    case 'win':
+      if (t > 1300 && t < 2700){ gaLoop(ga, 'happy'); return { dx: 3, dy: Math.abs(Math.sin((t - 1300) / 1400 * 3 * Math.PI)) * 7 }; }
+      gaLoop(ga, 'idle'); return { dx: 3, dy: 0 };
+    case 'big':
+      gaLoop(ga, 'happy');
+      return { dx: 3, dy: t < 1300 ? 0 : Math.abs(Math.sin((t - 1300) / 210)) * 12 };
+    case 'lose':
+      gaLoop(ga, 'sad'); return { dx: 3, dy: 0 };
+    default: {
+      gaLoop(ga, 'idle');
+      const u = (t % 5200) / 320;   // cada tanto, un saltito impaciente
+      return { dx: 0, dy: u < 1 ? 5 * Math.sin(u * Math.PI) : 0 };
+    }
+  }
+}
+
 function wheelPetLoop(now){
   const c = document.getElementById('wheelPet');
-  if (!c || !c.isConnected){ wheelPet.raf = 0; return; }   // se cerró la hoja
-  const ga = wheelPet.ga, t = now - wheelPet.t0;
-  let dx = 0, dy = 0;   // en px CSS: a la derecha (hacia la rueda) y hacia arriba
-  switch (wheelPet.mode){
-    case 'spin':
-      if (t < 260){ gaLoop(ga, 'walk'); dx = -6 * (t / 260); }             // toma vuelo
-      else if (t < 420){ gaLoop(ga, 'pet'); dx = -6 + 18 * ((t - 260) / 160); } // empujón
-      else if (t < 900){ gaLoop(ga, 'happy'); dx = 12 * (1 - (t - 420) / 480); }
-      else { gaLoop(ga, 'happy'); dy = Math.abs(Math.sin((t - 900) / 230)) * 7; } // saltitos de nervios
-      break;
-    case 'lose': gaLoop(ga, 'sad'); break;
-    case 'big': if (t > 1400) gaLoop(ga, 'happy'), dy = Math.abs(Math.sin(t / 200)) * 5; break;
-    default: gaLoop(ga, 'idle');
-  }
+  if (!c || !c.isConnected || !wheelVisible()){ wheelPet.raf = 0; return; }   // se cerró la hoja
+  const dt = Math.min(50, now - (wheelPet.last || now));
+  wheelPet.last = now;
+  const { dx, dy } = wheelPetPose(now - wheelPet.t0, dt);
   const dpr = window.devicePixelRatio || 1;
   const k = Math.max(1, Math.round(WHEEL_PET_SCALE * dpr));
   const ctx = c.getContext('2d');
   ctx.clearRect(0, 0, c.width, c.height);
   ctx.save();
-  ctx.translate(Math.round(dx * dpr), -Math.round(dy * dpr));
-  drawSprite(ctx, 'adult', 'normal', 0, true, k, { w: c.width, h: c.height }, ga);
+  /* Mira a la izquierda (a la rueda): "hacia la rueda" es x negativa. */
+  ctx.translate(c.width - Math.round(dx * dpr), -Math.round(dy * dpr));
+  ctx.scale(-1, 1);
+  drawSprite(ctx, 'adult', 'normal', 0, true, k, { w: c.width, h: c.height }, wheelPet.ga);
   ctx.restore();
   wheelPet.raf = requestAnimationFrame(wheelPetLoop);
 }
@@ -391,7 +502,7 @@ function wheelPetLoop(now){
    van aparte. Con el gratis disponible, ese va primero (es el botón
    principal) y el del ticket queda de secundario, así no se gasta un ticket
    sin querer. */
-function openWheel(aviso, petMode = 'idle'){
+function openWheel(aviso, petMode = 'idle', winId = null){
   const ready = wheelReady();
   const tickets = wheelTickets();
   const nota = aviso ? escapeHtml(aviso)
@@ -402,7 +513,7 @@ function openWheel(aviso, petMode = 'idle'){
   showOverlay(`
     <h3>🎡 Ruleta</h3>
     <p class="sheet-note" id="wheelNote">${nota}</p>
-    ${wheelHtml()}
+    ${wheelHtml(winId)}
     <div class="overlay-actions">
       ${ready ? '<button class="overlay-btn" id="btnSpin">¡Girar gratis!</button>'
         : `<div class="mega-wait"><div class="mega-wait-row"><b>Próximo giro gratis</b><span>⏳ <span data-wheel-clock>${megaClockLabel(wheelMsLeft())}</span></span></div></div>`}
@@ -423,6 +534,66 @@ function openWheel(aviso, petMode = 'idle'){
   if (spinT) spinT.addEventListener('click', () => spinWheel(true));
 }
 
+/* El giro lo anima wheelSpinLoop (no una transición CSS): así se sabe en
+   cada cuadro qué trozo está bajo la lengüeta, y cada clavo que pasa suena
+   y la hace saltar, como una ruleta de verdad (antes el tic-tic iba a ritmo
+   fijo, sin relación con la rueda). Arranca despacio (la mascota la está
+   tirando) y frena largo. */
+let wheelAnim = null;
+
+/* La hoja de la ruleta está a la vista (hideOverlay solo la esconde: el
+   #wheel sigue en el DOM). */
+function wheelVisible(){
+  return !!document.getElementById('wheel') && !document.getElementById('overlay').classList.contains('hidden');
+}
+
+function wheelEase(t){
+  const a = 0.12;   // el arranque suave: lo que dura el tirón
+  const g = (t < a ? t * t / (2 * a) : t - a / 2) / (1 - a / 2);
+  return 1 - Math.pow(1 - g, 4);
+}
+
+/* Velocidad de la rueda de 0 (quieta) a 1 (la máxima), para la mascota. */
+function wheelSpeedNow(){
+  const a = wheelAnim;
+  if (!a) return 0;
+  const t = (performance.now() - a.t0) / WHEEL_SPIN_MS;
+  if (t <= 0 || t >= 1) return 0;
+  return Math.min(1, (wheelEase(Math.min(1, t + 0.005)) - wheelEase(t)) / 0.005 / 3.5);
+}
+
+function wheelSliceAt(rot, slices){
+  const p = ((-rot % 360) + 360) % 360;   // el ángulo de la rueda que queda bajo la lengüeta
+  return slices.findIndex(s => p >= s.a0 && p < s.a1);
+}
+
+function wheelSpinLoop(now){
+  const a = wheelAnim;
+  if (!a) return;
+  /* Si cierran la hoja (o abren otra) sigue contando sin dibujar ni sonar:
+     al terminar sale igual el pop-up con el premio. */
+  const el = wheelVisible() ? document.getElementById('wheel') : null;
+  const t = Math.max(0, Math.min(1, (now - a.t0) / WHEEL_SPIN_MS));
+  const rot = a.from + (a.to - a.from) * wheelEase(t);
+  if (el) el.style.transform = `rotate(${rot.toFixed(2)}deg)`;
+  const i = wheelSliceAt(rot, a.slices);
+  if (i !== a.idx){
+    a.idx = i;
+    a.kick = 1;
+    if (el && now - a.lastTone > 45){   // a toda velocidad pasan demasiados clavos para un tic cada uno
+      a.lastTone = now;
+      tone({ freq: 1250 + Math.random() * 150, durationMs: 14, type: 'square', vol: 0.03 });
+    }
+  }
+  a.kick *= Math.pow(0.8, Math.min(50, now - (a.last || now)) / 16.7);
+  a.last = now;
+  const ptr = document.getElementById('wheelPointer');
+  if (ptr) ptr.style.transform = `rotate(${(-26 * a.kick).toFixed(1)}deg)`;
+  if (t < 1){ requestAnimationFrame(wheelSpinLoop); return; }
+  wheelAnim = null;
+  a.done();
+}
+
 /* El premio se sortea y se aplica (y se guarda) al tocar Girar, no al
    terminar la animación: si se cierra la hoja a mitad del giro, el premio
    igual queda. La animación solo lo muestra. Con ticket, se gasta el ticket
@@ -438,11 +609,11 @@ function spinWheel(conTicket){
   const w = wheelState();
   if (conTicket) state.wheelTickets = wheelTickets() - 1;
   else w.last = Date.now();
-  /* Para que el puntero (arriba) quede sobre el trozo, la rueda gira hasta
-     que el centro del trozo (con un poco de azar adentro) llegue a 0°. */
+  /* Para que la lengüeta (arriba) quede sobre el trozo, la rueda gira hasta
+     que un punto del trozo (al azar, lejos de los bordes) llegue a 0°. */
+  const desde = w.angle || 0;
   const dentro = pick.a0 + (pick.a1 - pick.a0) * (0.2 + Math.random() * 0.6);
-  const base = Math.ceil((w.angle || 0) / 360) * 360;
-  w.angle = base + 5 * 360 + (360 - dentro);
+  w.angle = Math.ceil(desde / 360) * 360 + WHEEL_TURNS * 360 + (360 - dentro);
   saveState(); render();
   setWheelPetMode('spin');
 
@@ -451,26 +622,33 @@ function spinWheel(conTicket){
   document.querySelectorAll('#btnSpin, #btnSpinTicket').forEach(b => { b.disabled = true; });
   const btn = document.getElementById(conTicket ? 'btnSpinTicket' : 'btnSpin');
   if (btn) btn.textContent = 'Girando…';
-  const wheel = document.getElementById('wheel');
-  wheel.style.transition = `transform ${WHEEL_SPIN_MS}ms cubic-bezier(.12,.7,.12,1)`;
-  requestAnimationFrame(() => { wheel.style.transform = `rotate(${w.angle}deg)`; });
-  const ticks = setInterval(() => tone({ freq: 1200, durationMs: 18, type: 'square', vol: 0.03 }), 140);
-  setTimeout(() => {
-    clearInterval(ticks);
+  const wrap = document.getElementById('wheelWrap');
+  if (wrap) wrap.classList.add('spinning');
+  const now = performance.now();
+  wheelAnim = { t0: now + WHEEL_PULL_MS, from: desde, to: w.angle, slices, idx: wheelSliceAt(desde, slices), kick: 0, lastTone: 0, last: 0, done: terminar };
+  requestAnimationFrame(wheelSpinLoop);
+
+  function terminar(){
     wheelSpinning = false;
-    if (!document.getElementById('wheel')) return;   // cerraron la hoja: el premio ya está dado
-    const pago = conTicket ? [{ icon: '🎫', text: 'Ticket de ruleta', amount: '-1', neg: true }] : [];
-    if (pick.p.lose){
-      openWheel(`¡Uy! ${texto}`, 'lose');
-      showPopup({ tone: 'lose', icon: '💸', title: '¡Uy!', ok: 'Ni modo',
-        items: [{ icon: '💰', text: texto }, ...pago] });
-      return;
-    }
-    if (pick.p.big) triggerPetAction('celebrate');
-    openWheel(`${pick.p.big ? '¡Premio mayor! ' : '¡Ganaste! '}${texto}`, pick.p.big ? 'big' : 'win');
-    const icono = pick.p.emoji || '💰';
-    showPopup({ icon: icono, title: pick.p.big ? '¡Premio mayor!' : '¡Ganaste!', items: [wheelPrizeRow(pick.p, texto), ...pago] });
-  }, WHEEL_SPIN_MS + 120);
+    if (wheelVisible()) tone({ freq: 880, durationMs: 60, type: 'triangle', vol: 0.05 });
+    setTimeout(() => {
+      /* Si cerraron la hoja mientras giraba, igual sale el pop-up con lo
+         que tocó (ya está dado), pero la ruleta no se vuelve a abrir sola. */
+      const abierta = wheelVisible();
+      const reabrir = (...a) => { if (abierta) openWheel(...a); };
+      const pago = conTicket ? [{ icon: '🎫', text: 'Ticket de ruleta', amount: '-1', neg: true }] : [];
+      if (pick.p.lose){
+        reabrir(`¡Uy! ${texto}`, 'lose', pick.p.id);
+        showPopup({ tone: 'lose', icon: '💸', title: '¡Uy!', ok: 'Ni modo',
+          items: [{ icon: '💰', text: texto }, ...pago] });
+        return;
+      }
+      if (pick.p.big) triggerPetAction('celebrate');
+      reabrir(`${pick.p.big ? '¡Premio mayor! ' : '¡Ganaste! '}${texto}`, pick.p.big ? 'big' : 'win', pick.p.id);
+      const icono = pick.p.emoji || '💰';
+      showPopup({ icon: icono, title: pick.p.big ? '¡Premio mayor!' : '¡Ganaste!', items: [wheelPrizeRow(pick.p, texto), ...pago] });
+    }, 450);   // un respiro con la rueda quieta antes del pop-up
+  }
 }
 
 let wheelSpinning = false;
