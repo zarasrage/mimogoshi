@@ -471,7 +471,8 @@ juntos, con el mismo factor (~3.54x), para que una mascota totalmente
 descuidada muriera en una mediana de ~12 horas reales. Después, **a propósito
 y por pedido**, se rompió esa proporción en dos lugares:
 - hambre, felicidad e higiene bajan **al doble** de rápido (hay que atenderla
-  más seguido): 100/424.5, 100/530.5 y 100/212 h de juego;
+  más seguido): 100/424.5, 100/530.5 y 100/212 h de juego (el hambre después
+  pasó a depender de la etapa, ver "Hambre por etapa" más abajo);
 - la salud baja **2.5 veces más lento** (`HEALTH_DECAY_PER_HOUR` = 100/1060):
   las barras se vacían antes, pero morirse por eso tarda más.
 
@@ -578,6 +579,32 @@ baja tan lento (~56 h la barra) que en esa simulación nunca llega a 20.
   `adult` cualquier etapa que ya no exista (`grown`, de antes de esta
   escalera, o una etapa fantasma más vieja todavía), si no los saves viejos
   quedan con una etapa fantasma.
+- **Hambre por etapa** (`HUNGER_CAP`, `HUNGER_PER_REAL_HOUR`, junto a
+  `STAGE_CSS_PX`): la panza crece y come más. Niño 70 / adolescente 110 /
+  adulto 180 puntos de panza, que bajan 9.4 / 13.8 / 27.9 puntos por hora
+  real. **`state.hunger` se sigue guardando en %**: anillos, umbrales,
+  avisos y saves no cambian; lo que cambia por etapa es cuánto % llena una
+  comida (`hungerFillPct()`: sus puntos sobre la panza; la comida rica, +30,
+  llena 43% a un niño y 17% a un adulto) y cuánto % baja por hora
+  (`hungerDecayPerHour()`, que lee `decayRate()`). El huevo cuenta como niño
+  y al crecer se mantiene el % (crecer no le da hambre de golpe). El
+  Banquete lleva `fill:true` y llena entero en cualquier etapa (con
+  `restore:100` solo, a un adulto lo dejaba a la mitad). La tienda dice
+  cuánto llena cada comida en la etapa de ahora (`foodDesc()`).
+  **Por qué:** el gasto en comida tiene que crecer junto con lo que se gana
+  (más juegos comprados, más niveles y, sobre todo, más desafíos diarios).
+  Antes costaba igual en todas las etapas: el primer día se llevaba ~59% de
+  lo que ganaba alguien que juega 10 partidas al día, y de adulto ~25%. Con
+  esto, medido con una simulación de la economía (partidas de mérito 40,
+  desafíos diarios, ruleta, regalos, comprando juegos apenas sobra un día de
+  comida, comiendo bocadillos): ~35 monedas al día de niño, ~60 de
+  adolescente y ~140 de adulto, o sea ~33% de lo que gana ese jugador de
+  niño y ~60% de adulto; ~30% de adulto para uno de 15 partidas al día, y
+  ~90% para uno de 6 (se eligió a propósito la versión exigente). Medido
+  contra `applyDecay()` real: de lleno a vacío 6.95 h de niño, 7.4 h de
+  adolescente y 6.0 h de adulto (bajo `DISTRESS_AT` se acelera); la muerte
+  por descuido total sigue en una mediana de ~18 h en las tres etapas. Las
+  demás barras todavía no cambian por etapa.
 - **Ánimos** (`ALL_MOODS`): `normal, happy, sad, sick, sleepy, dead`.
 
 `careGood` / `careBad` se siguen acumulando pero **hoy no los lee nadie**: eran
