@@ -273,8 +273,16 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
 - `.controls` en dos niveles: el **dock** (`.dock`) con los cuatro cuidados
   de todos los días —Dormir, Limpiar, Jugar, Comer, en el mismo orden que
   los relojes de la pantalla (ver "Relojes" abajo)—, tarjetas blancas con el
-  ícono en un "squircle" de color propio (`--tint` por id), y debajo
-  dos **píldoras** (`.pill`, del mismo ancho) con lo de vez en cuando:
+  ícono en un "squircle" lleno del **color exacto de su reloj** (con el
+  mismo relieve que el anillo) y la etiqueta en un tono oscuro del mismo.
+  Los colores de relojes y botones salen de los mismos tokens de `:root`
+  (`--c-energy`, `--c-hygiene`, `--c-health`, `--c-happiness`, `--c-hunger`,
+  más `-hi` y `-ink`): antes los botones iban en pastel y no calzaban con los
+  anillos (Dormir era azul marino al lado de un reloj violeta). Dormida,
+  Despertar sigue violeta (el sol sobre amarillo no se leía). Debajo
+  dos **píldoras** (`.pill`, del mismo ancho, blancas con el ícono en un
+  círculo de color, `.pill-icon`: rosa-violeta Personalizar, dorado Tienda;
+  antes eran un velo translúcido que se veía lavado) con lo de vez en cuando:
   Personalizar a la izquierda y Tienda a la derecha. Antes también estaban
   la Ruleta 🎡 (ahora dentro de Juegos, ver "Ruleta y gacha") y Reiniciar
   (ahora en la configuración, el ⚙️ de arriba junto al 🧪 del modo prueba,
@@ -296,8 +304,8 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   daría verde): el reloj late, el canal se pone rojizo y el número rojo. Y
   van con **relieve** (canal hundido, esfera oscura, filo claro adentro,
   brillo fino sobre el arco y sombra), que fue el "toque final" elegido.
-  El botón de cada cuidado lleva el mismo color que su reloj (Jugar pasó de
-  lila a amarillo para calzar con la felicidad). Antes eran cinco barras finas iguales
+  El botón de cada cuidado lleva el mismo color que su reloj (mismos tokens
+  `--c-*`). Antes eran cinco barras finas iguales
   que trataban igual a la salud que a la higiene; se eligió esto entre una
   veintena de propuestas capturadas en la app real.
 - **Íconos pixel en la pantalla** (`PX_ICONS` en `app.js`): todo lo que
