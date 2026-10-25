@@ -304,10 +304,10 @@ const FOODS = [
   { id:'rica',     name:'Comida rica',      emoji:'🍗', restore:30, price: 12 },
   { id:'especial', name:'Comida especial',  emoji:'🍰', restore:50, price: 25 },
   { id:'redbull',  name:'Red Bull',         emoji:'⚡', restore: 2, energy: 20, price: 20 },
-  /* El banquete llena la barra entera, sea cual sea: restore 100 alcanza
-     porque clamp() la topa. Cuesta más que dos especiales a propósito: es la
-     forma cómoda, no la barata. */
-  { id:'banquete', name:'Banquete',         emoji:'🍱', restore:100, price: 55 },
+  /* El banquete llena la barra entera, sea cual sea la panza (fill: con
+     restore 100 solo, a un adulto de 180 lo dejaba a medias). Cuesta más que
+     dos especiales a propósito: es la forma cómoda, no la barata. */
+  { id:'banquete', name:'Banquete',         emoji:'🍱', restore:100, fill:true, price: 55 },
   /* Solo energía (restore 0): para cuando está cansada y no se la quiere
      acostar. Ninguna llega a la de una siesta: la cama sigue siendo lo que
      llena la barra. */
@@ -332,7 +332,9 @@ const FOOD_ENERGY_DEFAULT = 4;
 function foodDesc(f){
   const energy = f.energy ?? FOOD_ENERGY_DEFAULT;
   if (!f.restore) return `Solo energía: +${energy}`;
-  const hambre = f.restore >= 100 ? 'Llena el hambre' : `+${f.restore} de hambre`;
+  /* En puntos, con cuánto de SU panza llena según la etapa de ahora. */
+  const pct = Math.round(hungerFillPct(f));
+  const hambre = f.fill ? 'Llena el hambre' : `+${f.restore} de hambre (llena ${pct}%)`;
   return hambre + (energy !== FOOD_ENERGY_DEFAULT ? ` · +${energy} de energía` : '');
 }
 
@@ -520,6 +522,34 @@ const TEEN_HOURS = 4 * 24 * 60;      // 4 días reales en total (3 más de adole
    px CSS; stageDeviceScale() redondea al entero de píxeles físicos más
    cercano. En un teléfono 3x da 53 / 64 / 75px; en uno 2x, 48 / 64 / 80. */
 const STAGE_CSS_PX = { child: 50, teen: 64, adult: 78 };
+
+/* Hambre por etapa: la panza crece y come más. state.hunger se sigue
+   guardando en % (los anillos, los umbrales y los avisos no cambian); lo que
+   cambia es cuánto % llena cada comida (sus puntos sobre la panza) y cuánto %
+   baja por hora (los puntos por hora real sobre la panza). La comida cuesta
+   en puntos, así que alimentar a un adulto cuesta ~4 veces lo que a un niño:
+   la idea es que el gasto crezca junto con lo que se gana (más juegos, más
+   niveles, más desafíos diarios). Calibrado contra una simulación de la
+   economía para que la comida se lleve ~35% de lo que gana alguien que juega
+   10 partidas al día de niño y ~60% de adulto. De lleno a vacío: 7.4 h de
+   niño, 8 h de adolescente y 6.4 h de adulto (horas reales). El huevo cuenta
+   como niño. Al crecer se mantiene el %: crecer no le da hambre de golpe. */
+const HUNGER_CAP = { child: 70, teen: 110, adult: 180 };
+const HUNGER_PER_REAL_HOUR = { child: 9.4, teen: 13.8, adult: 27.9 };
+function hungerStage(){
+  const st = state && state.stage;
+  return HUNGER_CAP[st] ? st : 'child';
+}
+function hungerCap(){ return HUNGER_CAP[hungerStage()]; }
+/* % de la barra que baja por hora de juego (60 por hora real). */
+function hungerDecayPerHour(){
+  const st = hungerStage();
+  return HUNGER_PER_REAL_HOUR[st] / 60 / HUNGER_CAP[st] * 100;
+}
+/* % de la barra que llena una comida en la etapa de ahora. */
+function hungerFillPct(food){
+  return food.fill ? 100 : food.restore / hungerCap() * 100;
+}
 const DPR = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
 
 function stageDeviceScale(stage){
@@ -573,7 +603,8 @@ function isExhausted(){ return !state.sleeping && state.energy < EXHAUSTED_AT; }
    pero morirse por eso tarda más. Ver CLAUDE.md para el tiempo hasta la muerte
    que da esta combinación. */
 const DECAY_PER_HOUR = {
-  hunger:    100 / 424.5,  // 424.5 h de juego ≈ 7.1 horas reales (antes 849, el doble)
+  /* El hambre ya no va acá: depende de la etapa (hungerDecayPerHour(), junto
+     a HUNGER_CAP). Antes era 100 / 424.5 para todas, 7.1 horas reales. */
   happiness: 100 / 530.5,  // 530.5 h de juego ≈ 8.8 horas reales (antes 1061)
   energy:    100 / 3395,   // 3395 h de juego ≈ 56.6 horas reales
   hygiene:   100 / 212,    // 212 h de juego ≈ 3.5 horas reales, pero solo si hay caca (antes 424)
@@ -841,7 +872,7 @@ function stageFor(ageHours){
 
 /* Velocidad a la que baja una barra, ya con el castigo por estar en apuro. */
 function decayRate(stat, value){
-  const base = DECAY_PER_HOUR[stat];
+  const base = stat === 'hunger' ? hungerDecayPerHour() : DECAY_PER_HOUR[stat];
   const umbral = DISTRESS_AT[stat];
   return (umbral !== undefined && value < umbral) ? base * DISTRESS_MULT : base;
 }
@@ -1717,7 +1748,7 @@ function feedFood(id){
   /* La porción se gasta ya, pero las barras suben recién mientras se la
      come (digestMeal()): si no, el hambre se llenaba antes de que llegara. */
   flushMeal();
-  const hunger = food.restore, energy = food.energy ?? FOOD_ENERGY_DEFAULT;
+  const hunger = hungerFillPct(food), energy = food.energy ?? FOOD_ENERGY_DEFAULT;
   state.meal = { hunger, energy, total: { hunger, energy } };
   state.selectedFood = food.id;
   say(food.restore ? '¡Ñam ñam!' : '¡Con pilas! ⚡');
