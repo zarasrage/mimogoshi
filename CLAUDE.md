@@ -364,14 +364,23 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   cerrada), y no tapa la pantalla: se ve comer y la barra de hambre. Todas
   las comidas con su stock, más la medicina en la misma fila (antes eran dos
   botones —Comer daba la elegida y Menú la elegía— y el botiquín era una
-  sección del menú). Tocar una se la da en el acto (`feedFood()`: las barras
-  suben al tocarla) y **la comida cae al piso** en un lugar al azar de la
+  sección del menú). Tocar una gasta la porción en el acto (`feedFood()`) y **la comida cae al piso** en un lugar al azar de la
   pieza (`serveFood()`, `.floor-food`, lejos de la mascota si se puede): la
   mascota camina hasta ella con una rutina sin mueble (`startActivity()`,
   `kind:'eat'`, que no se corta por estar triste o enferma), se para al lado
   (`FOOD_REACH_PX`) y la come mientras se achica de a mordiscos. La rutina
-  lleva `onEnd`, que saca la comida termine sola o se corte (un mimo,
-  dormirse). Con plato puesto se sirve en el plato, como antes. La última
+  lleva `onEnd`, que saca la comida termine sola o se corte (dormirse de
+  agotada). **Las barras suben mientras come, no al tocarla**: lo que da la
+  comida queda en `state.meal` y `digestMeal()` (cada frame, desde
+  `loopRender()`) lo suma al ritmo de los pasos `eat` de la rutina (en el
+  piso o en el plato), así terminan de llenarse justo cuando termina de
+  comer. Antes el hambre se llenaba antes de que llegara a la comida. Si la
+  rutina se corta, lo que faltaba se suma de una (`flushMeal()`); si se
+  cierra la app a mitad, lo suma `loadState()`. **Mientras va a la comida y
+  se la come no se puede hacer nada más** (`mealBusy()`): un listener de
+  captura en `window` se come todo toque en `#controls` y `#screen`
+  (botones, mascota, acompañante, muebles, caca, regalo, flechas) y avisa
+  con `say()`; los botones se ven apagados (`.controls.busy`). Con plato puesto se sirve en el plato, como antes. La última
   queda marcada (`state.selectedFood`); una en 0 sale apagada y tocarla abre
   la tienda en Comida. Se cierra con Cerrar, tocando afuera o al entrar a un
   minijuego (`showGameControls()`). Mientras está abierta se esconden los

@@ -1737,6 +1737,11 @@ body{
 .menu-item.urgent{border-color:#ff8a96; background:rgba(255,93,108,.14);}
 .overlay-card .style-empty{font-size:12px; color:var(--text-soft); margin:0 0 4px; text-align:left;}
 
+/* Mientras va a comer no se puede tocar nada (mealBusy()): los botones se
+   apagan para que se note que es a propósito y no que no responden. */
+.controls .dock, .controls .dock-sec{transition:opacity .2s ease, filter .2s ease;}
+.controls.busy .dock, .controls.busy .dock-sec{opacity:.5; filter:saturate(.5);}
+
 .dock-sec{
   display:flex;
   justify-content:center;
