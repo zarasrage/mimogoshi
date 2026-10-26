@@ -316,24 +316,37 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   `--c-*`). Antes eran cinco barras finas iguales
   que trataban igual a la salud que a la higiene; se eligió esto entre una
   veintena de propuestas capturadas en la app real.
-- **Cada reloj se toca** y abre su ficha (`openStatInfo(stat)`, una hoja
-  como las demás): arriba el valor **real** (el hambre en puntos de panza,
-  "83 / 180 pts"; el resto con un decimal) y una barra con los umbrales
-  marcados (en rojo los que ya cruzó). Debajo, el ritmo de **ahora** por
-  hora real (la salud, que va lento, por día) con lo que falta para el próximo umbral (`statRateNow()`,
-  `statEta()`, que integra con el x1.5 de apuro), y las listas "Lo que la
-  sube", "Lo que la baja" y "Umbrales", cada fila con su valor y la
-  etiqueta AHORA en lo que está pasando (dormida, de noche, caca, cama
-  puesta, seguro activado...). El hambre suma la tabla de panzas por etapa
-  y la salud, la probabilidad de enfermarse por hora. **Todo sale de las
-  constantes de la simulación** (`statInfoData()`), nada escrito a mano:
-  si se recalibra algo, la ficha queda al día sola. Lo único a mano son los
-  costos de higiene y energía de los minijuegos (van en cada
-  `finishMinigame()`): al cambiarlos, actualizar esas dos filas. Se refresca
-  cada 2 s mientras está abierta (solo el contenido, sin perder el scroll).
-  El toque frena la propagación (el listener de `#screen` limpia caca) y
-  el reloj apretado brilla con `filter`, no se achica (el ícono es pixel
-  art).
+- **Cada reloj se toca** y abre su ficha (`openStatInfo(stat, tab)`, una
+  hoja a todo el alto del color de su reloj, `--si`/`--si-rgb`). Arriba, el
+  **anillo grande** con el valor real adentro (el hambre en puntos de
+  panza, "43 de 180 pts"; el resto con un decimal) y cómo está en una
+  palabra (Bien / Atención / Mal, los mismos umbrales que pintan el reloj,
+  `statColor()`). Debajo, dos pestañas:
+  - **Ahora** (la que abre): solo lo que la está afectando. Una tarjeta con
+    el ritmo neto (verde si sube, roja si baja; la salud, que va lento, por
+    día) y fichitas con cuánto falta para lo próximo (`statRateNow()`,
+    `statEta()`, que integra con el x1.5 de apuro); "Lo que la está
+    moviendo" (las filas con `fx` y `on`: efectos que corren solos, como
+    dormida, de noche, la caca, la vacuna que falta); "Puedes hacer ahora"
+    (las filas sin `fx` pero `on`: limpiar si hay caca, la medicina si está
+    enferma, abrir el regalo) y los umbrales que ya cruzó. Abajo, "Ver todo
+    lo que puede afectarla" con cuántas cosas son.
+  - **Todo**: el catálogo entero (lo que la sube, lo que la baja, con lo de
+    ahora marcado AHORA) y los umbrales como una escala de arriba a abajo
+    con "aquí está ahora" en su lugar, más lo propio de cada reloj (la
+    tabla de panzas, la probabilidad de enfermarse).
+  Al sumar una fila nueva en `statInfoData()`: `fx: true` si es algo que
+  pasa solo (y `on` cuando está pasando), sin `fx` si es algo que se hace
+  (y `on` cuando conviene hacerlo ya). **Todo sale de las constantes de la
+  simulación**, nada escrito a mano: si se recalibra algo, la ficha queda
+  al día sola. Lo único a mano son los costos de higiene y energía de los
+  minijuegos (van en cada `finishMinigame()`): al cambiarlos, actualizar
+  esas dos filas. Se refresca cada 2 s mientras está abierta (solo el
+  contenido, sin perder el scroll ni la pestaña). Los colores van en
+  `rgba()` con el RGB de cada reloj y no con `color-mix()`, que en
+  teléfonos un poco viejos invalida el fondo entero. El toque frena la
+  propagación (el listener de `#screen` limpia caca) y el reloj apretado
+  brilla con `filter`, no se achica (el ícono es pixel art).
 - **Íconos pixel en la pantalla** (`PX_ICONS` en `app.js`): todo lo que
   vive en la LCD es pixel art, así que los íconos de los relojes (rayo,
   gota, corazón, carita, muslito), los de la barra de arriba (sol/luna,

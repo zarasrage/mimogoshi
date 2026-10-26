@@ -2360,13 +2360,15 @@ function statEta(stat, target){
   return h / GAME_H;
 }
 
-/* Fila de una lista: e emoji, t título, d detalle, v valor, up/down el
-   color del valor, on = está pasando ahora. */
-function siRow({ e, t, d = '', v = '', up = false, down = false, on = false }){
-  return `<div class="si-row ${on ? 'on' : ''}">
-      <span class="si-e">${e}</span>
-      <div class="si-t"><b>${t}${on ? ' <i class="si-now">ahora</i>' : ''}</b>${d ? `<small>${d}</small>` : ''}</div>
-      ${v ? `<span class="si-v ${up ? 'up' : down ? 'down' : ''}">${v}</span>` : ''}
+/* Una fila: e emoji, t título, d detalle, v valor; up/down pinta el ícono
+   y el valor de verde o rojo (lo que la sube o la baja); on = está pasando
+   ahora (en la pestaña Todo lleva la etiqueta AHORA). */
+function siRow({ e, t, d = '', v = '', up = false, down = false, on = false }, tag = true){
+  const tono = up ? 'up' : down ? 'down' : 'flat';
+  return `<div class="si-item ${tono} ${on ? 'on' : ''}">
+      <span class="si-ico">${e}</span>
+      <div class="si-txt"><b>${t}${on && tag ? ' <i class="si-now">ahora</i>' : ''}</b>${d ? `<small>${d}</small>` : ''}</div>
+      ${v ? `<span class="si-val">${v}</span>` : ''}
     </div>`;
 }
 
@@ -2375,9 +2377,9 @@ function siRow({ e, t, d = '', v = '', up = false, down = false, on = false }){
    extra } */
 function statInfoData(stat){
   const night = isNightMode(), sleeping = !!state.sleeping;
-  const nightRow = { e: '🌙', t: 'De noche (00:00 a 06:00)', d: 'Hora del teléfono', v: `×${nf(NIGHT_DECAY_FACTOR)}`, up: true, on: night };
-  const distressRow = (lim) => ({ e: '📉', t: `En apuro (bajo ${lim}%)`, d: 'Cuando ya va mal, baja más rápido', v: `×${nf(DISTRESS_MULT)}`, down: true, on: state[stat] < lim });
-  const sleepRow = { e: '💤', t: 'Dormida', d: 'Baja a un cuarto del ritmo', v: '×0,25', up: true, on: sleeping };
+  const nightRow = { e: '🌙', t: 'Es de noche', d: 'De 00:00 a 06:00 todo baja a la mitad', v: `×${nf(NIGHT_DECAY_FACTOR)}`, up: true, fx: true, on: night };
+  const distressRow = (lim) => ({ e: '📉', t: `En apuro (bajo ${lim}%)`, d: 'Cuando ya va mal, baja más rápido', v: `×${nf(DISTRESS_MULT)}`, down: true, fx: true, on: state[stat] < lim });
+  const sleepRow = { e: '💤', t: 'Está dormida', d: 'Baja a un cuarto del ritmo', v: '×0,25', up: true, fx: true, on: sleeping };
   const riskMark = { v: HEALTH_RISK_AT, t: 'Empieza a dañar la salud' };
   const sadMark = { v: 25, t: 'Se pone triste' };
   const distMark = lim => ({ v: lim, t: `Apuro: baja ×${nf(DISTRESS_MULT)} más rápido` });
@@ -2398,7 +2400,7 @@ function statInfoData(stat){
     return {
       big: nf(pts, 0), unit: `/ ${cap} pts`, sub: `${nf(state.hunger, 0)}% de su panza de ${STAGE_NAME[st]}`,
       down: [
-        { e: '⏳', t: 'Sola, con el tiempo', d: `De lleno a vacío en ${fmtHours(full(cap) / ptsH)} siendo ${STAGE_NAME[st]}`, v: `−${nf(ptsH)} pts/h`, down: true, on: true },
+        { e: '⏳', t: 'Se le va pasando', d: `De lleno a vacío en ${fmtHours(full(cap) / ptsH)} siendo ${STAGE_NAME[st]}`, v: `−${nf(ptsH)} pts/h`, down: true, fx: true, on: true },
         sleepRow, nightRow, distressRow(DISTRESS_AT.hunger),
       ],
       up: foods,
@@ -2415,7 +2417,7 @@ function statInfoData(stat){
     return {
       big: nf(state.happiness, 1), unit: '/ 100', sub: 'Puntos de felicidad',
       down: [
-        { e: '⏳', t: 'Sola, con el tiempo', d: `De llena a vacía en ~${fmtHours(100 / base)}`, v: `−${nf(base)}/h`, down: true, on: true },
+        { e: '⏳', t: 'Se aburre con el tiempo', d: `De llena a vacía en ~${fmtHours(100 / base)}`, v: `−${nf(base)}/h`, down: true, fx: true, on: true },
         sleepRow, nightRow, distressRow(DISTRESS_AT.happiness),
         { e: '💩', t: 'Comer caca en Atrapa estrellas', d: 'Una partida mala puede restar', v: `hasta −${Math.abs(HAPPINESS_MIN_GAIN)}`, down: true },
       ],
@@ -2424,7 +2426,7 @@ function statInfoData(stat){
         { e: '💗', t: 'Hacerle cariño', d: 'Tocar a la mascota', v: '+6', up: true },
         { e: '🎁', t: 'Abrir un regalo', d: 'Aparecen solos, ~1 cada 12 h', v: `+${GIFT_HAPPINESS}`, up: true, on: !!state.gift },
         { e: '🎡', t: 'Trozo de felicidad en la ruleta', d: 'Un premio posible del giro', v: '+15', up: true },
-        { e: '🛋️', t: 'Muebles, objetos y jugar de a dos', d: `Cada visita o juego juntos · máximo ${FURNI_JOY_PER_HOUR} por hora (esta hora: ${j})`, v: `+${FURNI_JOY}`, up: true, on: j > 0 },
+        { e: '🛋️', t: 'Muebles, objetos y jugar de a dos', d: `Cada visita o juego juntos · máximo ${FURNI_JOY_PER_HOUR} por hora (esta hora: ${j})`, v: `+${FURNI_JOY}`, up: true, fx: true, on: j > 0 },
       ],
       marks: [{ v: 75, t: 'Feliz (si el hambre pasa de 60)', above: true }, riskMark, sadMark, distMark(DISTRESS_AT.happiness)],
     };
@@ -2439,14 +2441,14 @@ function statInfoData(stat){
     return {
       big: nf(state.energy, 1), unit: '/ 100', sub: sleeping ? 'Durmiendo: se está cargando' : 'Puntos de energía',
       down: [
-        { e: '⏳', t: 'Despierta, con el tiempo', d: `De llena a vacía en ~${fmtHours(100 / base)}`, v: `−${nf(base)}/h`, down: true, on: !sleeping },
-        { e: '🌙', t: 'De noche (00:00 a 06:00)', d: 'Hora del teléfono', v: `×${nf(NIGHT_DECAY_FACTOR)}`, up: true, on: night && !sleeping },
+        { e: '⏳', t: 'Se cansa estando despierta', d: `De llena a vacía en ~${fmtHours(100 / base)}`, v: `−${nf(base)}/h`, down: true, fx: true, on: !sleeping },
+        { ...nightRow, on: night && !sleeping },
         distressRow(DISTRESS_AT.energy),
         { e: '🎮', t: 'Cada partida de un minijuego', d: `Según el juego; hace falta ${GAME_MIN_ENERGY} para jugar`, v: '−10 a −20', down: true },
       ],
       up: [
-        { e: '💤', t: 'Dormir', d: `La barra entera en ${fmtHours(100 / rec)}`, v: `+${nf(rec, 0)}/h`, up: true, on: sleeping },
-        { e: '🛏️', t: 'Con cama puesta', d: `En cualquier habitación: la barra en ${fmtHours(100 / rec / FURNI_BED_ENERGY_MULT)}`, v: `×${nf(FURNI_BED_ENERGY_MULT)}`, up: true, on: bed },
+        { e: '💤', t: sleeping ? 'Está durmiendo' : 'Dormir', d: `La barra entera en ${fmtHours(100 / rec)}`, v: `+${nf(rec, 0)}/h`, up: true, fx: true, on: sleeping },
+        { e: '🛏️', t: 'Cama puesta', d: `En cualquier habitación: durmiendo, la barra en ${fmtHours(100 / rec / FURNI_BED_ENERGY_MULT)}`, v: `×${nf(FURNI_BED_ENERGY_MULT)}`, up: true, fx: true, on: bed && sleeping },
         ...foods,
         ...(typeof FRUIT_FOOD !== 'undefined' ? [{ e: FRUIT_FOOD.emoji, t: 'Fruta del árbol frutal', d: 'Objeto mágico', v: `+${FRUIT_FOOD.energy}`, up: true }] : []),
       ],
@@ -2468,16 +2470,16 @@ function statInfoData(stat){
     return {
       big: nf(state.hygiene, 1), unit: '/ 100', sub: state.poop ? 'Hay caca: se está ensuciando' : 'No baja sola: solo con caca',
       down: [
-        { e: '💩', t: 'Caca sin limpiar', d: `Solo mientras esté: de limpia a sucia en ~${fmtHours(100 / base)}`, v: `−${nf(base)}/h`, down: true, on: !!state.poop },
-        { e: '🎲', t: 'Que aparezca caca', d: `${nf(poopH * 100)}% por hora · la primera sale en ~${fmtHours(poopMed)} (mediana)`, v: '' },
+        { e: '💩', t: 'Hay caca sin limpiar', d: `Solo mientras esté: de limpia a sucia en ~${fmtHours(100 / base)}`, v: `−${nf(base)}/h`, down: true, fx: true, on: !!state.poop },
+        { e: '🎲', t: 'Puede hacer caca', d: `La primera sale en ~${fmtHours(poopMed)} (mediana)`, v: `${nf(poopH * 100)}%/h`, fx: true, on: !state.poop },
         nightRow, distressRow(DISTRESS_AT.hygiene),
         { e: '🎮', t: 'Algunos minijuegos', d: 'Atrapa estrellas −5, Carrera en dupla −4, Espejo −3', v: 'hasta −5', down: true },
       ],
       up: [
         { e: '🧹', t: 'Limpiar', d: 'Y saca la caca', v: '+35', up: true, on: !!state.poop },
-        { e: '🛡️', t: 'Seguro de limpieza', d: seguro.owned ? (seguro.armed ? 'Activado: limpia sola la próxima caca' : 'Comprado, pero desactivado (Tienda → Mejoras)') : 'Mejora de la tienda: limpia sola una caca', v: '+35', up: true, on: !!(seguro.owned && seguro.armed) },
-        ...(typeof ROBOT_CLEAN_EVERY_MS !== 'undefined' ? [{ e: '🤖', t: 'Robot aspiradora', d: `Aspira una caca cada ${ROBOT_CLEAN_EVERY_MS / 3600000} h (objeto mágico)`, v: '+35', up: true, on: hasFurniAnywhere('robot') }] : []),
-        ...(typeof NUBE_ART !== 'undefined' ? [{ e: '🌧️', t: 'Lluvia de la nubecita', d: 'Si queda debajo, una vez por lluvia (objeto mágico)', v: '+4', up: true, on: hasFurniAnywhere('nube') }] : []),
+        { e: '🛡️', fx: true, t: 'Seguro de limpieza', d: seguro.owned ? (seguro.armed ? 'Activado: limpia sola la próxima caca' : 'Comprado, pero desactivado (Tienda → Mejoras)') : 'Mejora de la tienda: limpia sola una caca', v: '+35', up: true, on: !!(seguro.owned && seguro.armed) },
+        ...(typeof ROBOT_CLEAN_EVERY_MS !== 'undefined' ? [{ e: '🤖', fx: true, t: 'Robot aspiradora', d: `Aspira una caca cada ${ROBOT_CLEAN_EVERY_MS / 3600000} h (objeto mágico)`, v: '+35', up: true, on: hasFurniAnywhere('robot') }] : []),
+        ...(typeof NUBE_ART !== 'undefined' ? [{ e: '🌧️', fx: true, t: 'Lluvia de la nubecita', d: 'Si queda debajo, una vez por lluvia (objeto mágico)', v: '+4', up: true, on: hasFurniAnywhere('nube') }] : []),
       ],
       marks: [riskMark, sadMark, distMark(DISTRESS_AT.hygiene)],
     };
@@ -2493,21 +2495,21 @@ function statInfoData(stat){
     big: nf(state.health, 1), unit: '/ 100',
     sub: vac && !vacOk ? `Sin vacuna: pierde ${VACCINE_HEALTH_LOSS_PER_DAY} al día` : 'Puntos de salud',
     down: [
-      { e: '⚠️', t: `Hambre, felicidad o higiene bajo ${HEALTH_RISK_AT}%`, d: 'Cuenta una vez, aunque sean varias', v: `−${nf(HEALTH_RISK_LOSS_PER_REAL_HOUR)}/h`, down: true, on: risk },
-      { e: '🤒', t: 'Enferma', d: 'Se suma a lo de arriba', v: `−${nf(SICK_LOSS_PER_REAL_HOUR)}/h`, down: true, on: !!state.sick },
-      { e: '😵', t: `Agotada y despierta (energía bajo ${EXHAUSTED_AT})`, d: 'Dormida no cuesta nada', v: `−${nf(EXHAUSTED_LOSS_PER_REAL_HOUR)}/h`, down: true, on: isExhausted() },
-      { e: '🌙', t: 'De noche (00:00 a 06:00)', d: 'Lo que baja, baja a la mitad', v: `×${nf(NIGHT_DECAY_FACTOR)}`, up: true, on: night && causas > 0 },
-      ...(vac ? [{ e: VACCINE_EMOJI, t: 'Sin la vacuna de su etapa', d: vacOk ? 'Ya la tiene puesta' : `Siempre, aunque esté todo bien, y también de noche`, v: `−${VACCINE_HEALTH_LOSS_PER_DAY}/día`, down: true, on: !vacOk }] : []),
+      { e: '⚠️', t: `Hambre, felicidad o higiene bajo ${HEALTH_RISK_AT}%`, d: 'Cuenta una vez, aunque sean varias', v: `−${nf(HEALTH_RISK_LOSS_PER_REAL_HOUR)}/h`, down: true, fx: true, on: risk },
+      { e: '🤒', t: 'Enferma', d: 'Se suma a lo de arriba', v: `−${nf(SICK_LOSS_PER_REAL_HOUR)}/h`, down: true, fx: true, on: !!state.sick },
+      { e: '😵', t: `Agotada y despierta (energía bajo ${EXHAUSTED_AT})`, d: 'Dormida no cuesta nada', v: `−${nf(EXHAUSTED_LOSS_PER_REAL_HOUR)}/h`, down: true, fx: true, on: isExhausted() },
+      { ...nightRow, d: 'Lo que la daña, la daña a la mitad', on: night && causas > 0 },
+      ...(vac ? [{ e: VACCINE_EMOJI, t: 'Le falta la vacuna de su etapa', d: vacOk ? 'Ya la tiene puesta' : `Siempre, aunque esté todo bien, y también de noche`, v: `−${VACCINE_HEALTH_LOSS_PER_DAY}/día`, down: true, fx: true, on: !vacOk }] : []),
     ],
     up: [
-      { e: '🌿', t: 'Sin ninguna causa', d: vac && !vacOk ? `Se recupera sola, pero sin vacuna le gana la pérdida: ${HEALTH_RECOVER_PER_DAY} − ${VACCINE_HEALTH_LOSS_PER_DAY} = −${VACCINE_HEALTH_LOSS_PER_DAY - HEALTH_RECOVER_PER_DAY} al día` : 'Se recupera sola, despacio, hasta 100', v: `+${HEALTH_RECOVER_PER_DAY}/día`, up: true, on: causas === 0 && state.health < 99.99 },
+      { e: '🌿', t: 'Se recupera sola', d: vac && !vacOk ? `Se recupera sola, pero sin vacuna le gana la pérdida: ${HEALTH_RECOVER_PER_DAY} − ${VACCINE_HEALTH_LOSS_PER_DAY} = −${VACCINE_HEALTH_LOSS_PER_DAY - HEALTH_RECOVER_PER_DAY} al día` : 'Si nada la está dañando, despacio, hasta 100', v: `+${HEALTH_RECOVER_PER_DAY}/día`, up: true, fx: true, on: causas === 0 && state.health < 99.99 },
       { e: '💊', t: 'Medicina', d: `Solo la cura: deja de perder salud y empieza a recuperarse · ${MEDICINE.price} 💰`, v: 'cura', up: true, on: !!state.sick },
-      { e: '🛡️', t: 'Seguro médico', d: medSeguro.owned ? (medSeguro.armed ? 'Activado: cura sola la próxima enfermedad' : 'Comprado, pero desactivado') : 'Mejora de la tienda: cura sola una enfermedad', v: 'cura', up: true, on: !!(medSeguro.owned && medSeguro.armed) },
-      ...(vac ? [{ e: VACCINE_EMOJI, t: vac.name, d: vacOk ? 'Puesta ✓ · la próxima al crecer' : `Deja de perder esos ${VACCINE_HEALTH_LOSS_PER_DAY} y se enferma la mitad · Tienda → Mejoras · ${vac.price} 💰`, v: `+${VACCINE_HEALTH_LOSS_PER_DAY}/día`, up: true, on: vacOk }] : []),
+      { e: '🛡️', t: 'Seguro médico', d: medSeguro.owned ? (medSeguro.armed ? 'Activado: cura sola la próxima enfermedad' : 'Comprado, pero desactivado') : 'Mejora de la tienda: cura sola una enfermedad', v: 'cura', up: true, fx: true, on: !!(medSeguro.owned && medSeguro.armed) },
+      ...(vac ? [{ e: VACCINE_EMOJI, t: vac.name, d: vacOk ? 'Puesta ✓ · la próxima al crecer' : `Deja de perder esos ${VACCINE_HEALTH_LOSS_PER_DAY} y se enferma la mitad · Tienda → Mejoras · ${vac.price} 💰`, v: vacOk ? 'puesta' : `+${VACCINE_HEALTH_LOSS_PER_DAY}/día`, up: true, fx: vacOk, on: vacOk }] : []),
     ],
     marks: [
       { v: SICK_LOW_HEALTH_AT, t: `Se enferma más seguido (${nf(sickH(SICK_CHANCE_PER_HOUR_LOW * mult) * 100)}% por hora)` },
-      { v: 25, t: 'Queda anotado en la bitácora' },
+      { v: 25, t: 'Salud muy baja: queda en la bitácora' },
       { v: 0, t: 'Se muere', zero: true },
     ],
     extra: `<h4>Enfermarse</h4>${siRow({ e: '🎲', t: 'Probabilidad por hora',
@@ -2520,70 +2522,135 @@ function statInfoData(stat){
 /* Un umbral "pasa" bajo su valor; los de arriba (feliz, despertarse), sobre él. */
 const markOn = (m, v) => m.zero ? v <= 0 : m.above ? v >= m.v : v < m.v;
 
-/* La barra con sus umbrales marcados y dónde está ahora. */
-function statGauge(stat, data){
-  const v = clamp(state[stat]);
-  const marks = data.marks.filter(m => m.v > 0 && m.v < 100)
-    .map(m => `<i class="si-mark ${markOn(m, v) ? 'past' : ''}" style="left:${m.v}%"></i>`).join('');
-  return `<div class="si-gauge"><i class="si-fill" style="width:${v}%"></i>${marks}</div>`;
+/* Cómo está, en una palabra: los mismos umbrales que pintan el reloj de
+   rojo (statColor). */
+function statMood(stat){
+  const c = statColor(state[stat], stat);
+  return c === 'var(--good)' ? ['bien', 'Bien'] : c === 'var(--bad)' ? ['bad', 'Mal'] : ['mid', 'Atención'];
 }
 
-/* Lo de "ahora": a qué ritmo va y cuánto le falta para lo próximo. */
-function statNowHtml(stat, data){
+/* El anillo grande de la cabecera: el mismo dibujo que el reloj de la
+   pantalla, en grande y con el valor adentro. */
+function statRingSvg(v){
+  return `<svg viewBox="0 0 50 50" aria-hidden="true">
+      <circle class="sr-track" cx="25" cy="25" r="21" pathLength="100"/>
+      <circle class="sr-fill ${v < 1 ? 'empty' : ''}" cx="25" cy="25" r="21" pathLength="100" style="stroke-dasharray:${clamp(v)} 100"/>
+    </svg>`;
+}
+
+/* El ritmo de ahora, grande, y cuánto falta para lo próximo. */
+function statRateHtml(stat, data){
   const r = statRateNow(stat);
   const k = data.unitPts || 1, u = data.unitPts ? ' pts' : '';
-  let ritmo;
-  if (Math.abs(r) < 0.005) ritmo = stat === 'health' && state.health >= 99.99 ? 'Está entera: no cambia' : 'Quieta: no está cambiando';
-  else if (data.perDay && Math.abs(r) < 1) ritmo = `${r > 0 ? 'Sube' : 'Baja'} ${nf(Math.abs(r) * 24)} por día`;
-  else ritmo = `${r > 0 ? 'Sube' : 'Baja'} ${nf(Math.abs(r) * k)}${u} por hora${data.unitPts ? ` (${nf(Math.abs(r))}%)` : ''}`;
-  const lines = [];
+  let big, label, tono;
+  if (Math.abs(r) < 0.005){
+    tono = 'flat'; big = '—';
+    label = stat === 'health' && state.health >= 99.99 ? 'Está entera' : 'No está cambiando';
+  } else {
+    tono = r > 0 ? 'up' : 'down';
+    const porDia = data.perDay && Math.abs(r) < 1;
+    big = `${r > 0 ? '+' : '−'}${nf(Math.abs(r) * (porDia ? 24 : k))}${u}`;
+    label = `${r > 0 ? 'Sube' : 'Baja'} por ${porDia ? 'día' : 'hora'}${data.unitPts ? ` · ${nf(Math.abs(r))}% de su panza` : ''}`;
+  }
+  const etas = [];
   if (r > 0.005){
-    const tope = 100;
-    lines.push(`Llega a ${stat === 'energy' && state.sleeping ? `${WAKE_AT} (se despierta)` : nf(tope, 0)} en ${fmtHours(((stat === 'energy' && state.sleeping ? WAKE_AT : tope) - state[stat]) / r)}`);
+    const meta = stat === 'energy' && state.sleeping ? WAKE_AT : 100;
+    etas.push([fmtHours((meta - state[stat]) / r), meta === WAKE_AT ? 'se despierta' : 'llega a 100']);
   } else if (r < -0.005){
     const prox = data.marks.filter(m => !m.above).sort((a, b) => b.v - a.v).find(m => m.v < state[stat]);
-    if (prox) lines.push(`${prox.v === 0 ? 'Llega a 0' : `Baja de ${prox.v}${data.pct ? '%' : ''}`} en ${fmtHours(statEta(stat, prox.v))}: ${prox.t.toLowerCase()}`);
-    if (stat !== 'health' && (!prox || prox.v > 0)) lines.push(`Se vacía en ${fmtHours(statEta(stat, 0))}`);
+    if (prox) etas.push([fmtHours(statEta(stat, prox.v)), prox.t.charAt(0).toLowerCase() + prox.t.slice(1)]);
+    if (stat !== 'health' && (!prox || prox.v > 0)) etas.push([fmtHours(statEta(stat, 0)), 'se vacía']);
   }
-  const flags = [];
-  if (state.sleeping) flags.push('💤 dormida');
-  if (isNightMode()) flags.push('🌙 noche');
-  return `<div class="si-now-box">
-      <b>${ritmo}</b>
-      ${lines.map(l => `<small>${l}</small>`).join('')}
-      ${flags.length ? `<div class="si-flags">${flags.map(f => `<span>${f}</span>`).join('')}</div>` : ''}
-    </div>`;
+  return `<div class="si-rate ${tono}">
+      <span class="si-arrow">${tono === 'up' ? '▲' : tono === 'down' ? '▼' : '●'}</span>
+      <div class="si-rate-main"><b>${big}</b><small>${label}</small></div>
+    </div>
+    ${etas.length ? `<div class="si-etas">${etas.map(([t, q]) =>
+      `<div class="si-eta"><b>${t}</b><small>${escapeHtml(q)}</small></div>`).join('')}</div>` : ''}`;
+}
+
+/* Pestaña Ahora: solo lo que la está moviendo en este momento (los
+   efectos que corren, lo que se puede hacer ya y los umbrales que ya
+   cruzó). */
+function statNowTab(stat, data){
+  const rows = [...data.down, ...data.up];
+  const fx = rows.filter(r => r.fx && r.on);
+  const act = rows.filter(r => !r.fx && r.on);
+  const marks = data.marks.filter(m => markOn(m, state[stat]));
+  const total = rows.length + data.marks.length;
+  const pct = data.pct ? '%' : '';
+  return `
+    ${statRateHtml(stat, data)}
+    <h4>Lo que la está moviendo</h4>
+    ${fx.length ? fx.map(r => siRow(r, false)).join('') : '<p class="si-empty">Nada la está moviendo ahora 👌</p>'}
+    ${act.length ? `<h4>Puedes hacer ahora</h4>${act.map(r => siRow(r, false)).join('')}` : ''}
+    ${marks.length ? `<h4>Umbrales</h4>${marks.map(m => siRow({
+      e: `<span class="si-num">${m.v}${pct}</span>`, t: m.t,
+      d: m.above ? `Está sobre ${m.v}${pct}` : m.zero ? '' : `Está bajo ${m.v}${pct}`,
+      up: !!m.above, down: !m.above })).join('')}` : ''}
+    <button class="si-more" data-si-tab="todo">Ver todo lo que puede afectarla <span>${total}</span></button>`;
+}
+
+/* Pestaña Todo: el catálogo entero, con lo de ahora marcado. Los umbrales
+   van como una escala de arriba hacia abajo, con "aquí está" en su lugar. */
+function statAllTab(stat, data){
+  const v = state[stat], pct = data.pct ? '%' : '';
+  const escala = [...data.marks].sort((a, b) => b.v - a.v);
+  const aqui = escala.findIndex(m => m.v <= v);
+  const filas = escala.map(m => `<div class="si-step ${markOn(m, v) ? (m.above ? 'good' : 'past') : ''}">
+      <span class="si-num">${m.v}${pct}</span><span>${escapeHtml(m.t)}</span></div>`);
+  const yo = `<div class="si-step here"><span class="si-num">${nf(v, 0)}${pct}</span><span>Aquí está ahora</span></div>`;
+  filas.splice(aqui < 0 ? filas.length : aqui, 0, yo);
+  return `
+    <h4>Lo que la sube</h4>${data.up.map(r => siRow(r)).join('')}
+    <h4>Lo que la baja</h4>${data.down.map(r => siRow(r)).join('')}
+    <h4>Umbrales${data.pct ? ' (en % de la panza)' : ''}</h4>
+    <div class="si-scale">${filas.join('')}</div>
+    ${data.extra || ''}`;
 }
 
 let statInfoTimer = null;
+let statInfoTab = 'ahora';
 function statInfoParts(stat){
   const m = STAT_META[stat], d = statInfoData(stat);
+  const [moodCls, moodTxt] = statMood(stat);
   return {
     head: `
-      <div class="si-head">
-        <span class="si-badge">${m.emoji}</span>
-        <div class="si-title"><small>${m.name}</small><div><b class="si-big">${d.big}</b> <span class="si-unit">${d.unit}</span></div><small>${escapeHtml(d.sub)}</small></div>
-      </div>
-      ${statGauge(stat, d)}`,
-    body: `
-      ${statNowHtml(stat, d)}
-      <h4>Lo que la sube</h4>${d.up.map(siRow).join('')}
-      <h4>Lo que la baja</h4>${d.down.map(siRow).join('')}
-      <h4>Umbrales${d.pct ? ' (en % de la panza)' : ''}</h4>${d.marks.map(mk => siRow({ e: `<span class="si-num">${mk.v}</span>`, t: mk.t, on: markOn(mk, state[stat]) })).join('')}
-      ${d.extra || ''}`,
+      <div class="si-hero">
+        <div class="si-ring">${statRingSvg(state[stat])}
+          <span class="si-ring-val"><b>${d.big}</b><small>${escapeHtml(d.unit.replace('/ ', 'de '))}</small></span>
+        </div>
+        <div class="si-title">
+          <small>${m.emoji} ${m.name}</small>
+          <b class="si-mood ${moodCls}">${moodTxt}</b>
+          <span>${escapeHtml(d.sub)}</span>
+        </div>
+      </div>`,
+    body: statInfoTab === 'todo' ? statAllTab(stat, d) : statNowTab(stat, d),
   };
 }
 
-function openStatInfo(stat){
+function openStatInfo(stat, tab = 'ahora'){
   if (!STAT_META[stat] || !state || state.stage === 'egg') return;
   catchUp();
+  statInfoTab = tab;
   const p = statInfoParts(stat);
   showOverlay(`
     <div class="stat-info" data-si="${stat}">${p.head}</div>
-    <div class="menu-list si-body">${p.body}</div>
+    <div class="shop-tabs si-tabs" data-si="${stat}">
+      <button class="shop-tab ${tab === 'ahora' ? 'active' : ''}" data-si-tab="ahora">Ahora</button>
+      <button class="shop-tab ${tab === 'todo' ? 'active' : ''}" data-si-tab="todo">Todo</button>
+    </div>
+    <div class="menu-list si-body" data-si="${stat}">${p.body}</div>
     <button class="overlay-btn secondary" id="btnCloseStat">Cerrar</button>
   `, closeStatInfo);
+  document.getElementById('overlayCard').classList.add('sheet-full');
   document.getElementById('btnCloseStat').addEventListener('click', closeStatInfo);
+  /* Las pestañas y el "Ver todo" de abajo (delegado: el cuerpo se rearma). */
+  document.getElementById('overlayCard').onclick = e => {
+    const b = e.target.closest('[data-si-tab]');
+    if (b) openStatInfo(stat, b.dataset.siTab);
+  };
   /* Se refresca sola mientras está abierta (los números se mueven): solo el
      contenido, sin volver a armar la hoja ni perder el scroll. */
   clearInterval(statInfoTimer);
@@ -3036,6 +3103,7 @@ function showOverlay(html, onDismiss){
   const overlay = document.getElementById('overlay');
   const card = document.getElementById('overlayCard');
   card.innerHTML = html;
+  card.onclick = null;   // lo que una hoja delega en la tarjeta no pasa a la siguiente
   card.classList.remove('sheet-full', 'sheet-tall');
   overlay.onclick = onDismiss ? (e => { if (e.target === overlay) onDismiss(); }) : null;
   overlay.classList.remove('hidden', 'clear');
