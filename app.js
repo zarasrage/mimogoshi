@@ -334,6 +334,30 @@ const MEDICINE = { id:'medicina', name:'Medicina', emoji:'💊', price: 15 };
 const MED_START_STOCK = 2;
 const MED_HEALTH = 20;
 
+/* Vacunas: una por etapa (niño, adolescente, adulto), cada una más cara.
+   Sin la vacuna de su etapa, el TOPE de la salud (state.healthMax) baja de a
+   poco, VACCINE_CAP_LOSS_PER_DAY por día real: la barra no puede subir más
+   allá, la cuide como la cuide. No baja la salud misma porque sin ninguna
+   causa la salud se recupera sola (~25 por hora) y una bajada lenta se
+   taparía. Al vacunarla el tope vuelve a 100 y deja de bajar, hasta que
+   crece y le toca la de la etapa nueva. Vacunada, además, se enferma la
+   mitad (VACCINE_SICK_MULT). Se compran en la tienda (pestaña Comida, solo
+   la de su etapa) y se ponen desde la bandeja de Comer, como la medicina. Si
+   el tope llega a 0, se muere: a 5 por día son 20 días sin vacunarla. */
+const VACCINES = {
+  child: { id: 'vac_child', name: 'Vacuna de niño',        price: 20 },
+  teen:  { id: 'vac_teen',  name: 'Vacuna de adolescente', price: 50 },
+  adult: { id: 'vac_adult', name: 'Vacuna de adulto',      price: 100 },
+};
+const VACCINE_EMOJI = '💉';
+const VACCINE_CAP_LOSS_PER_DAY = 5;
+const VACCINE_SICK_MULT = 0.5;
+function vaccineFor(stage = state.stage){ return VACCINES[stage] || null; }
+function isVaccinated(stage = state.stage){ return !!(state.vaccinated && state.vaccinated[stage]); }
+function healthMax(){ return clamp(state.healthMax ?? 100); }
+/* Toda subida de salud pasa por acá: nunca más allá del tope. */
+function capHealth(){ state.health = Math.min(clamp(state.health), healthMax()); }
+
 function foodById(id){ return FOODS.find(f => f.id === id) || FOODS[0]; }
 
 const FOOD_ENERGY_DEFAULT = 4;
@@ -733,6 +757,8 @@ function freshState(name, species){
     selectedFood: 'simple',
     coins: 0,
     pantry: { simple: FOOD_START_STOCK, [MEDICINE.id]: MED_START_STOCK },  // porciones en la mochila
+    healthMax: 100,      // tope de la salud: baja sin la vacuna de su etapa (ver VACCINES)
+    vaccinated: {},      // { child, teen, adult }: qué vacunas tiene puestas
     records: {},   // mejor puntaje por minijuego
     upgrades: freshUpgrades(),
     unlockedGames: [],   // los gratis (price 0) no hace falta anotarlos
@@ -767,6 +793,9 @@ function loadState(){
     if (s.pantry.simple === undefined) s.pantry.simple = FOOD_START_STOCK;
     // saves de cuando la medicina era un botón gratis: arrancan con lo mismo que una partida nueva
     if (s.pantry[MEDICINE.id] === undefined) s.pantry[MEDICINE.id] = MED_START_STOCK;
+    // saves de antes de las vacunas: tope entero y ninguna puesta
+    if (typeof s.healthMax !== 'number' || !isFinite(s.healthMax)) s.healthMax = 100;
+    if (!s.vaccinated || typeof s.vaccinated !== 'object') s.vaccinated = {};
     // se cerró la app mientras iba a comer: lo que faltaba se suma de una
     if (s.meal){
       s.hunger = clamp((s.hunger || 0) + (s.meal.hunger || 0));
@@ -892,7 +921,8 @@ function decayRate(stat, value){
    y 72 * 0.1 daría 7.2 — o sea "seguro", además de ser una probabilidad > 1.
    Compuesta, el resultado siempre queda entre 0 y 1 y respeta la tasa por hora. */
 function sickChance(hours){
-  const porHora = state.health < SICK_LOW_HEALTH_AT ? SICK_CHANCE_PER_HOUR_LOW : SICK_CHANCE_PER_HOUR;
+  let porHora = state.health < SICK_LOW_HEALTH_AT ? SICK_CHANCE_PER_HOUR_LOW : SICK_CHANCE_PER_HOUR;
+  if (isVaccinated()) porHora *= VACCINE_SICK_MULT;
   return 1 - Math.pow(1 - porHora, hours);
 }
 
@@ -975,6 +1005,13 @@ function applyDecay(hours){
   const careDelta = (state.hunger>60?1:-1) + (state.happiness>60?1:-1) + (state.hygiene>60?1:-1);
   if (careDelta > 0) state.careGood += hours * careDelta * 0.5;
   if (careDelta < 0) state.careBad += hours * -careDelta * 0.5;
+
+  /* Sin la vacuna de su etapa, el tope de la salud baja de a poco (ver
+     VACCINES). El huevo no necesita vacuna. */
+  if (vaccineFor() && !isVaccinated()){
+    state.healthMax = Math.max(0, healthMax() - hours * VACCINE_CAP_LOSS_PER_DAY / (24 * 60));
+  }
+  capHealth();
 
   state.ageHours += hours;
   state.stage = stageFor(state.ageHours);
@@ -1113,7 +1150,7 @@ function logSnapshot(){
   return {
     poop: state.poop, sick: state.sick, gift: state.gift, stage: state.stage,
     hunger: state.hunger, happiness: state.happiness, hygiene: state.hygiene,
-    energy: state.energy, health: state.health, sleeping: state.sleeping,
+    energy: state.energy, health: state.health, sleeping: state.sleeping, healthMax: healthMax(),
     clean: upgradeState('autoClean').timesUsed || 0, med: upgradeState('autoMed').timesUsed || 0,
   };
 }
@@ -1141,7 +1178,9 @@ function logChanges(a, t, away){
   if (ALL_STAGES.indexOf(b.stage) > ALL_STAGES.indexOf(a.stage)){
     const nombres = { child: 'Nació', teen: 'Creció: ya es adolescente', adult: 'Creció: ya es adulto' };
     if (nombres[b.stage]) logEvent(b.stage === 'child' ? '🐣' : '🌱', nombres[b.stage], t, away);
+    if (b.stage !== 'child' && vaccineFor(b.stage)) logEvent(VACCINE_EMOJI, `Le toca la ${vaccineFor(b.stage).name.toLowerCase()}`, t, away);
   }
+  if (a.healthMax >= 90 && b.healthMax < 90) logEvent(VACCINE_EMOJI, 'Le falta su vacuna: su salud máxima empezó a bajar', t, away);
   for (const [k, umbral, e, m] of LOG_LOW){
     if (a[k] >= umbral && b[k] < umbral && !(k === 'energy' && b.sleeping)) logEvent(e, m, t, away);
   }
@@ -1376,7 +1415,16 @@ function render(){
     const txt = Math.round(v) + '%';
     if (num.textContent !== txt) num.textContent = txt;
   });
-  /* Durmiendo, el reloj de energía se ve cargando (un destello que da
+  /* El tope de la salud que se perdió por no tener la vacuna: el final del
+     anillo se ve apagado, de healthMax a 100. */
+  const capV = Math.round(healthMax() * 10) / 10;
+  if (render._cap !== capV){
+    render._cap = capV;
+    const cap = document.getElementById('cap-health');
+    cap.style.strokeDasharray = `0 ${capV} ${100 - capV} 0`;
+    cap.classList.toggle('hidden', capV >= 99.9);
+  }
+    /* Durmiendo, el reloj de energía se ve cargando (un destello que da
      vueltas): sube tan poco por tick (~0.15) que el arco solo no lo
      muestra. */
   const charging = !!state.sleeping && !gameOver && state.energy < 100;
@@ -2012,6 +2060,24 @@ const collectGift = () => {
   });
 };
 
+/* Ponerle la vacuna de su etapa (de la despensa). Devuelve el aviso si no
+   se pudo, igual que giveMedicine(). */
+function giveVaccine(){
+  const v = vaccineFor();
+  if (!v) return 'Todavía es un huevo…';
+  if (isVaccinated()) return 'Ya tiene su vacuna de esta etapa';
+  if (foodStock(v.id) <= 0) return `No tienes la ${v.name.toLowerCase()}: cómprala en la tienda`;
+  catchUp();
+  state.pantry[v.id] -= 1;
+  state.vaccinated = { ...(state.vaccinated || {}), [state.stage]: true };
+  state.healthMax = 100;
+  floatFx(VACCINE_EMOJI);
+  say('¡Vacuna lista! Su salud ya no se gasta 💪', 2200);
+  triggerPetAction('medicine');
+  saveState(); render();
+  return null;
+}
+
 /* Dar una medicina de la despensa. Devuelve el aviso si no se pudo (no está
    enferma, no quedan), para que la bandeja de Comer lo muestre. */
 function giveMedicine(){
@@ -2021,6 +2087,7 @@ function giveMedicine(){
   state.pantry[MEDICINE.id] -= 1;
   state.sick = false;
   state.health = clamp(state.health + MED_HEALTH);
+  capHealth();
   floatFx('💊');
   say('Se siente mejor');
   triggerPetAction('medicine');
@@ -2057,10 +2124,18 @@ const btnSleep = () => {
 
 /* Los botones de abajo avisan cuando hacen falta (ver .need y data-badge en
    el CSS). Corre en cada render(), así que solo toca el DOM si algo cambió. */
+/* Le falta la vacuna de su etapa y ya se le nota (el tope bajó un poco):
+   el botón Comer lo avisa con un 💉, salvo que esté enferma (va el 💊). */
+function vaccineDue(){
+  return !state.sick && !!vaccineFor() && !isVaccinated() && healthMax() < 97;
+}
+
 function updateDock(){
   const sleepy = !state.sleeping && state.energy < SLEEPY_THRESHOLD;
   const want = {
-    btnFeed:  { need: state.hunger < 30 || !!state.sick, badge: state.sick ? '💊' : '' },
+    btnFeed:  vaccineDue()
+      ? { need: state.hunger < 30 || healthMax() < 85, badge: VACCINE_EMOJI, soft: healthMax() >= 85 }
+      : { need: state.hunger < 30 || !!state.sick, badge: state.sick ? '💊' : '' },
     btnClean: { need: !!state.poop, badge: state.poop ? '💩' : '' },
     btnSleep: { need: sleepy, badge: sleepy ? 'zZ' : '', soft: !isExhausted(), asleep: !!state.sleeping },
     /* La ruleta vive dentro de Juegos: el giro gratis se avisa en Jugar. */
@@ -2121,16 +2196,31 @@ function renderFoodTray(aviso){
   const meds = foodStock(MEDICINE.id);
   const med = tile(MEDICINE.id, MEDICINE.emoji, MEDICINE.name, meds,
     'med ' + (meds <= 0 ? 'out ' : '') + (state.sick ? 'urgent' : ''));
+  /* La vacuna de su etapa, mientras no la tenga puesta. Con ella son nueve
+     y la bandeja pasa a cinco columnas: sigue en dos filas (una tercera
+     subía la bandeja encima de la pantalla). */
+  const v = vaccineFor();
+  const vacN = v ? foodStock(v.id) : 0;
+  const vac = v && !isVaccinated() ? tile('vaccine', VACCINE_EMOJI, 'Vacuna', vacN,
+    'med ' + (vacN <= 0 ? 'out ' : '') + (healthMax() < 85 ? 'urgent' : '')) : '';
   const sub = aviso
     ? `<small class="warn">${escapeHtml(aviso)}</small>`
-    : `<small>${state.sick ? '¡Está enferma! Dale una medicina' : 'Toca varias: caen todas juntas'}</small>`;
+    : `<small>${state.sick ? '¡Está enferma! Dale una medicina'
+      : vaccineDue() ? 'Le falta su vacuna 💉' : 'Toca varias: caen todas juntas'}</small>`;
   tray.innerHTML = `
     <div class="tray-head"><span><b>¿Qué come?</b>${sub}</span>
       <button class="tray-close" id="trayClose">Cerrar</button></div>
-    <div class="tray-foods">${foods}${med}</div>`;
+    <div class="tray-foods ${vac ? 'five' : ''}">${foods}${med}${vac}</div>`;
   tray.querySelector('#trayClose').addEventListener('click', closeFoodTray);
   tray.querySelectorAll('[data-tray]').forEach(el => el.addEventListener('click', requireAlive(() => {
     const id = el.dataset.tray;
+    if (id === 'vaccine'){
+      if (mealBusy()){ renderFoodTray('Primero que termine de comer'); return; }
+      if (vacN <= 0){ closeFoodTray(); shopTab = 'food'; openShop(`Te falta la ${v.name.toLowerCase()}`); return; }
+      const problema = giveVaccine();
+      if (problema) renderFoodTray(problema); else closeFoodTray();
+      return;
+    }
     if (id === MEDICINE.id){
       if (mealBusy()){ renderFoodTray('Primero que termine de comer'); return; }
       if (meds <= 0){ closeFoodTray(); shopTab = 'food'; openShop('No te quedan medicinas'); return; }
@@ -2293,6 +2383,22 @@ function openShop(aviso, gachaRes){
         <span class="menu-record">${coinsLabel(MEDICINE.price)}</span>
       </div>`;
   const upgradeRows = roomUpgradeRow() + UPGRADES.map(upgradeRow).join('');
+  /* La vacuna: solo la de su etapa (la de antes ya no sirve y la de después
+     todavía no). */
+  const vac = vaccineFor();
+  const vacShopRow = !vac ? '' : isVaccinated() ? `
+      <div class="menu-item locked">
+        <span class="emoji">${VACCINE_EMOJI}</span>
+        <div class="info"><b>${vac.name}</b><small>Ya la tiene puesta ✓ · la próxima, al crecer</small></div>
+      </div>` : `
+      <div class="menu-item ${state.coins >= vac.price ? '' : 'locked'} ${healthMax() < 85 ? 'urgent' : ''}" data-buy-vaccine>
+        <span class="emoji">${VACCINE_EMOJI}</span>
+        <div class="info">
+          <b>${vac.name}</b>
+          <small>Sin ella su salud máxima baja (hoy ${Math.round(healthMax())}%) · tienes ${foodStock(vac.id)}</small>
+        </div>
+        <span class="menu-record">${coinsLabel(vac.price)}</span>
+      </div>`;
 
   showOverlay(`
     <h3>🛒 Tienda</h3>
@@ -2304,7 +2410,7 @@ function openShop(aviso, gachaRes){
       <button class="shop-tab ${shopTab === 'gacha' ? 'active' : ''}" id="shopTabGacha">Gacha</button>
     </div>
     <div class="menu-list ${shopTab === 'style' ? 'style-list' : ''}">${
-      shopTab === 'food' ? foodRows + medShopRow : shopTab === 'upgrades' ? upgradeRows
+      shopTab === 'food' ? vacShopRow + foodRows + medShopRow : shopTab === 'upgrades' ? upgradeRows
         : shopTab === 'gacha' ? gachaTabHtml(gachaRes) : styleRows('shop')}</div>
     <button class="overlay-btn secondary" id="btnCloseShop">Cerrar</button>
   `, hideOverlay);
@@ -2356,6 +2462,20 @@ function openShop(aviso, gachaRes){
       /* Lo ya comprado se pone y se saca en Personalizar, no acá: la tienda
          es solo para comprar. */
       reopen(`${it.name} ya es tuyo: póntelo o sácatelo en Personalizar`);
+    });
+  });
+
+  const buyVac = document.querySelector('[data-buy-vaccine]');
+  if (buyVac) buyVac.addEventListener('click', () => {
+    if (foodStock(vac.id) > 0){ reopen(`Ya tienes la ${vac.name.toLowerCase()}: pónsela desde Comer`); return; }
+    if (state.coins < vac.price){ reopen(`Te faltan ${coinsLabel(vac.price - state.coins)} para la ${vac.name.toLowerCase()}`); return; }
+    confirmBuy({ icon: VACCINE_EMOJI, name: vac.name, price: vac.price }, () => {
+      state.coins -= vac.price;
+      state.pantry[vac.id] = foodStock(vac.id) + 1;
+      saveState(); render();
+      reopen();
+      boughtPopup({ icon: VACCINE_EMOJI, name: vac.name, amount: '+1', price: vac.price,
+        note: 'Pónsela desde Comer: su salud máxima vuelve a 100%.' });
     });
   });
 
@@ -2705,7 +2825,7 @@ function debugTimeInfo(){
   const r = v => Math.round(v);
   return `🕐 ${hh}${adelanto}${isNightMode() ? ' · 🌙 noche' : ''}<br>` +
     `${STAGE_LABELS[state.stage] || state.stage}${state.sleeping ? ' · 😴 dormida' : ''}${gameOver ? ' · 💀' : ''}<br>` +
-    `🍗 ${r(state.hunger)}% · 😊 ${r(state.happiness)}% · ⚡ ${r(state.energy)}% · 🧼 ${r(state.hygiene)}% · ❤️ ${r(state.health)}%`;
+    `🍗 ${r(state.hunger)}% · 😊 ${r(state.happiness)}% · ⚡ ${r(state.energy)}% · 🧼 ${r(state.hygiene)}% · ❤️ ${r(state.health)}% (tope ${r(healthMax())}%${isVaccinated() ? ' 💉' : ''})`;
 }
 
 function renderDebugPanel(){

@@ -728,6 +728,10 @@ body{
   filter:drop-shadow(0 2px 2px rgba(0,0,0,.45));}
 .stat-track, .stat-fill, .stat-spark{fill:none; stroke-width:6;}
 .stat-track{stroke:rgba(0,0,0,.55); transition:stroke .5s ease;}
+/* Tope de salud perdido por falta de vacuna: un tramo gris claro (bloqueado) al
+   final del anillo de salud. */
+.stat-cap{fill:none; stroke-width:6; stroke:rgba(255,255,255,.2); stroke-dasharray:0 100;}
+.stat-cap.hidden{display:none;}
 .stat-disc{fill:rgba(0,0,0,.22);}
 .stat-inner{fill:none; stroke:rgba(var(--screen-lit-rgb),.12); stroke-width:1;}
 .stat-fill{
@@ -1840,6 +1844,9 @@ body{
 /* Siete comidas más la medicina: dos filas de cuatro (con cinco por fila
    quedaban dos filas desparejas y la segunda casi vacía). */
 .tray-foods{display:grid; grid-template-columns:repeat(4, 1fr); gap:5px;}
+/* Con la vacuna son nueve: cinco columnas, sigue en dos filas. */
+.tray-foods.five{grid-template-columns:repeat(5, 1fr); gap:4px;}
+.tray-foods.five .tray-food b{font-size:9.5px;}
 .tray-food{
   position:relative;
   display:flex;

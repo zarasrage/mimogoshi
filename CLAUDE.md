@@ -680,6 +680,25 @@ saves de antes también reciben esas 2, para que la primera enfermedad no pille
 sin monedas. Para que la enfermedad se siga notando sin un botón propio, el botón
 **Comer** lleva un 💊 rojo que late mientras está enferma (`updateDock()`).
 
+**Vacunas** (`VACCINES`, una por etapa: niño 20, adolescente 50, adulto
+100 💰): sin la vacuna de su etapa, el **tope** de la salud
+(`state.healthMax`) baja `VACCINE_CAP_LOSS_PER_DAY` (5) por día real; la
+barra no puede pasar de ahí (`capHealth()`, por donde pasa toda subida de
+salud). No baja la salud misma porque, sin causas, la salud se recupera
+sola ~25 por hora y una bajada lenta se tapaba. Vacunada, el tope vuelve a
+100, deja de bajar y se enferma la mitad (`VACCINE_SICK_MULT`), hasta que
+crece y le toca la de la etapa nueva (`state.vaccinated` =
+`{child, teen, adult}`). Con el tope en 0 se muere: son 20 días sin
+vacunarla. Se compra en la tienda, pestaña Comida (solo la de su etapa,
+arriba de todo; con una guardada no deja comprar otra), y se pone desde la
+bandeja de Comer (`giveVaccine()`), donde aparece mientras no la tenga:
+con ella son nueve y la bandeja pasa a cinco columnas para seguir en dos
+filas. El anillo de salud muestra el tope perdido como un tramo gris
+(`#cap-health`); el botón Comer lleva un 💉 (`vaccineDue()`, desde que el
+tope baja de 97; anillo de aviso bajo 85), y la bitácora anota cuando le
+toca una nueva y cuando el tope baja de 90. Los saves de antes arrancan
+con el tope entero y sin vacunas.
+
 **Los avisos de la tienda van dentro de la tarjeta, no con `say()`**: la burbuja
 tiene `z-index:5` y el overlay `10`, así que un `say()` con un overlay abierto
 queda tapado. Lo mismo vale para cualquier menú nuevo.
@@ -1456,7 +1475,7 @@ teléfono va a llevar el tiempo completo y eso es lo que se quiere probar.
 Lleva un reloj virtual (`debugClockOffsetMs`, que suma `isNightMode()` y
 también `catchUp()`), así la noche cae en la hora simulada aunque se
 adelante varias veces; arriba de los botones se ve la hora simulada, la
-etapa y las cinco barras, y "Hora real" lo vuelve a cero. No se guarda (al
+etapa, las cinco barras y el tope de salud, y "Hora real" lo vuelve a cero. No se guarda (al
 recargar vuelve la hora real) y no mueve los relojes de la ruleta ni del
 desafío diario. Se corta si la mascota muere. Con "Stats al máximo" no baja
 nada (lo avisa). Al sacarlo: `debugSkipTime()`, `debugTimeInfo()`,
