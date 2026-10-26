@@ -146,7 +146,7 @@ function renderBuddy(){
   buddy.drawn = buddy.hidden ? null : drawn;
   c.style.left = (buddy.x * 100) + '%';
   c.style.bottom = (4 + buddy.y) + 'px';
-  c.style.transform = `translateX(-50%) scaleX(${buddy.dir})`;
+  c.style.transform = actorTransform(buddy, drawn);
   c.style.opacity = buddy.hidden ? '0' : '';
   /* El que va más arriba (montado, saltando por encima del otro) se dibuja
      delante. Se reordena el DOM y no el z-index, así el borde de la bañera

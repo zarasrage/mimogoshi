@@ -46,9 +46,19 @@
           <div class="deco-layer" id="decoLayer"></div>
           <div class="furni-layer" id="furniBack"></div>
           <div class="furni-layer" id="furniMid"></div>
+          <!-- Objetos mágicos (objetos.js): la luz ambiente (planetario, lámpara
+               de lava, lluvia) oscurece o tiñe la pieza y los muebles pero no a
+               los personajes; las partículas van en dos canvas, uno detrás de
+               los personajes (estrellas, arcoíris, fuegos) y otro delante
+               (lluvia, nieve, burbujas); el doble del espejo, en su canvas. -->
+          <div class="ambient-layer" id="ambientLayer"></div>
+          <canvas class="fx-canvas" id="fxBack"></canvas>
+          <canvas id="cloneCanvas" class="hidden" width="96" height="96"></canvas>
           <canvas id="buddyCanvas" class="hidden" width="96" height="96"></canvas>
           <canvas id="petCanvas" width="96" height="96"></canvas>
           <div class="furni-layer" id="furniFront"></div>
+          <canvas class="fx-canvas" id="fxFront"></canvas>
+          <div class="magic-flash" id="magicFlash"></div>
           <span class="pet-hat hidden" id="petHat"></span>
           <div class="poop-fx hidden" id="poopFx">💩</div>
           <div class="gift-fx hidden" id="giftFx">🎁</div>
@@ -204,6 +214,7 @@
 <script src="juegos.js"></script>
 <script src="premios.js"></script>
 <script src="muebles.js"></script>
+<script src="objetos.js"></script>
 <script src="duo.js"></script>
 <script src="duo-juegos.js"></script>
 </body>

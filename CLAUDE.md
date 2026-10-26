@@ -5,7 +5,7 @@ backend**: se edita directo y se abre `index.html` en el navegador. Todo el
 progreso vive en `localStorage`.
 
 **Archivos:** `index.html` (esqueleto), `styles.css` (todo el CSS) y la lógica
-en seis scripts clásicos que comparten el ámbito global:
+en siete scripts clásicos que comparten el ámbito global:
 - `app.js`: el núcleo (estado, simulación, bitácora, render, tienda,
   Personalizar, panel de prueba).
 - `juegos.js`: el menú de Jugar (`GAMES`, niveles, desafío diario, resultado), lo
@@ -14,13 +14,16 @@ en seis scripts clásicos que comparten el ámbito global:
 - `premios.js`: la ruleta y el gacha.
 - `muebles.js`: los muebles (catálogo, arte, guiones), las habitaciones y el
   **motor de actores** que también usa el acompañante.
+- `objetos.js`: los 20 objetos mágicos (ver "Objetos mágicos"), que son
+  muebles con ganchos propios, y sus capas de efectos.
 - `duo.js`: el acompañante (`buddy`) y lo que hacen los dos juntos.
 - `duo-juegos.js`: los seis juegos de a dos.
 
 Se cargan en ese orden (`index.html`). Lo de un archivo que usa otro se usa
 recién en tiempo de juego (después de `DOMContentLoaded`), nunca al cargar —
 salvo los `push` a arreglos de otro archivo (`STYLE_ITEMS` y
-`minigameDisposers` de `app.js`, `GAMES` de `juegos.js`), que por eso van
+`minigameDisposers` de `app.js`, `GAMES` de `juegos.js`, `FURNI_ART` de
+`muebles.js`), que por eso van
 después del archivo dueño del arreglo. Dentro de
 `sprites/`, un par `<especie>_spritesheet.png` + `.json` por cada especie (más
 los PNG de personajes todavía sin integrar); se cargan como `new Image()` desde
@@ -38,7 +41,7 @@ sola persona.
 Chequeo de sintaxis (lo mínimo antes de cualquier commit):
 
 ```bash
-node -e "const fs=require('fs'); for (const f of ['app.js','juegos.js','premios.js','muebles.js','duo.js','duo-juegos.js']) { new Function(fs.readFileSync(f,'utf8')); console.log(f, 'syntax OK'); }"
+node -e "const fs=require('fs'); for (const f of ['app.js','juegos.js','premios.js','muebles.js','objetos.js','duo.js','duo-juegos.js']) { new Function(fs.readFileSync(f,'utf8')); console.log(f, 'syntax OK'); }"
 ```
 
 Prueba funcional/visual con Playwright (Chromium ya está instalado en
@@ -1088,6 +1091,134 @@ seno vuelve solo a 0 al final de la ráfaga, sin saltos. Sin estado propio —
 loop. El eje del giro es la **base** del huevo (donde apoya en el piso, en
 `drawEgg()`), no su centro: girar sobre el centro corre también la punta de
 abajo y en vez de tambalearse parece flotar.
+
+
+#### Objetos mágicos (`objetos.js`)
+
+Veinte objetos (`MAGIC_ITEMS`) que se compran, se ponen y se acomodan como
+cualquier mueble (`kind:'furni'`, mismo `FURNI_MAX`, mismos guiones `visits`
+y `duos`, mismo motor), pero que hacen cosas que un mueble no hacía. Van
+marcados `wow:true` y salen en su propia sección de Estilo, "Objetos
+mágicos ✨", la primera (`STYLE_SECTIONS`; `styleRows()` separa por
+`!!it.wow`). Precios de 45 a 130.
+
+**Ganchos nuevos que lee `muebles.js`** (todos opcionales en `FURNI_ART`):
+- `tick(rt, now, dt, k)`: vida propia, cada cuadro, aunque nadie lo use
+  (desde `updateFurniture()`): el robot pasea, la nube flota, el ventilador
+  de la nieve gira.
+- `tap(rt)`: tocar el objeto. Si devuelve `true` se hizo cargo y
+  `commandFurniVisit()` no hace lo de siempre. Corre **antes** del chequeo de
+  bloqueo, así un objeto puede responder aunque la mascota esté ocupada (el
+  árbol dice cuánto falta, el robot su batería). Para mandar a la mascota se
+  usa `magicGo(rt, pasos)`, que hace los mismos chequeos que tocar un mueble.
+- `cleanup(rt, act, a)`: al terminar o cortarse una actividad en el objeto
+  (`endFurniActivity()`): apagar el jetpack, el láser, el clon...
+- `keep: [...]`: campos de `rt` que sobreviven a `resetFurniRt()` (la fruta
+  colgando, dónde quedó el robot, el mono de nieve).
+- `thumb: {w, h, draw}`: la miniatura de la tienda, cuando el arte completo
+  no sirve (el frijol mide 60 de alto).
+
+**Capas** (en `#creatureFloor`, en este orden): `#ambientLayer` (luz de la
+pieza: `setAmbient(id, fondo, rt)`; si el objeto se saca, se apaga sola),
+`canvas#fxBack` (partículas detrás de los personajes), `#cloneCanvas` (el
+reflejo del espejo), los personajes y `#furniFront`, `canvas#fxFront`
+(partículas delante) y `#magicFlash` (destello: fotos, truenos, el cañón).
+Los dos canvas de partículas van en **píxeles físicos** y cada partícula es
+una figurita de pixel art (`PX_SHAPES`) con pixeles del mismo tamaño que
+los de los muebles (`furniDeviceScale()`): nada se ve de otro grano.
+`fxSpawn()` (una), `fxBurst()` (una explosión), `fxEffect()` (un dibujo que
+dura: el arcoíris, la nieve del piso, las estrellas del planetario).
+Posiciones en px CSS del piso con `y` hacia arriba, como `walker.y`.
+
+**Modo piso** (`startFloorMode(id, ms, onTap, onEnd)`): mientras dura, cada
+toque en el piso es una orden para el objeto (el láser, el jetpack), no un
+mimo ni un mueble. Es un listener de **captura en `window`** que corre antes
+que todos los demás y se come el `click` que sigue. Lo mismo, sin modo,
+para reventar burbujas (`popBubbleAt()`).
+
+**Cabeza abajo** (`act.flipY`, el cañón): `actorTransform(act, drawn)` en
+`app.js` arma el `transform` del canvas de cualquier actor (lo usan
+`render()` y `renderBuddy()`) con un `scaleY(-1)` entero, que no rompe la
+regla de oro. `endFurniActivity()` lo vuelve a `false` siempre, y el
+accesorio se esconde mientras va dado vuelta.
+
+**Lo que guardan** va en `state.objData[id]` (`objData()`), en el save.
+
+Los 20:
+- **Puntero láser**: modo piso de 25 s, el punto rojo va donde se toca y
+  la mascota lo persigue y se le tira encima. Sola, el punto anda sin rumbo.
+- **Jetpack**: vuela con inercia (un resorte hacia donde se toca, 20 s de
+  modo piso), con el pack en la espalda echando fuego. Sola hace un ocho. De
+  a dos, el otro va sentado en su cabeza.
+- **Máquina de burbujas**: burbujas que suben bamboleándose; se revientan
+  tocándolas (cada 6, un `furniJoy()`) y la mascota salta a reventarlas.
+- **Cámara instantánea**: cuenta 3-2-1, flash, y la foto va a un **álbum**
+  (tocar la cámara, `openAlbum()`; hasta `ALBUM_MAX` = 18). Las fotos no
+  son capturas: guardan especie, etapa, pose, acompañante y pantalla, y se
+  vuelven a dibujar con el sprite a escala entera. Sola, una selfie cada
+  `ALBUM_AUTO_GAP_MS` (2 h) como mucho.
+- **Bola de cristal**: dice de verdad qué va a pasar
+  (`crystalProphecy()`): qué barra se pone en riesgo primero y en cuánto,
+  con los ritmos reales; o que está enferma, que hay caca, que le falta la
+  vacuna.
+- **Robot aspiradora**: pasea solo y una vez cada `ROBOT_CLEAN_EVERY_MS`
+  (20 h) va hasta la caca y la aspira (como el botón Limpiar; queda en la
+  bitácora). Después se recarga (luz roja). La mascota se le sube encima.
+- **Nubecita** (libre): flota por la pieza y cada tanto llueve; si la
+  mascota queda debajo se moja (+4 de higiene, una vez por lluvia). Tocarla
+  hace un trueno.
+- **Árbol frutal**: una fruta cada `FRUIT_EVERY_MS` (6 h, hasta tres
+  colgando, también con la app cerrada). Tocarlo con fruta: la sacude y se
+  la come, **comida de verdad** (`FRUIT_FOOD`, +15 de hambre) que entra al
+  mismo montón de la bandeja (`serveFood()`).
+- **Frijol mágico**: crece una etapa por riego, un riego cada
+  `BEAN_WATER_EVERY_MS` (20 h), seis etapas. Arriba de todo, tocarlo la
+  manda a trepar y encuentra un huevo de oro (`BEAN_REWARD` = 120 monedas,
+  pop-up) y la planta vuelve a empezar. Es la meta larga: no regarla no
+  castiga, solo no crece.
+- **Fuegos artificiales**: prende la mecha, se tapa los oídos y suben
+  cohetes que revientan en bola, anillo, corazón o sauce, cada uno con su
+  brillo en la luz de la pieza.
+- **Prisma**: sale un arcoíris de seis bandas que cruza la pieza; sube por
+  él y se tira de guata hasta el otro lado.
+- **Planetario**: apaga la luz de la pieza (no la de los personajes) y la
+  llena de estrellas que giran, constelaciones y estrellas fugaces; la
+  mascota se tira de espaldas a mirar. Tocarlo lo prende o lo apaga.
+- **Máquina de nieve**: nieva en toda la pieza, la nieve se junta en el
+  piso (`SNOW`, se derrite sola aunque se saque la máquina) y arma un mono
+  de nieve que dura `SNOWMAN_MS`. De a dos, guerra de bolas.
+- **Lámpara de lava**: siempre prendida, tiñe la pieza del color de su
+  ánimo (rosado feliz, ámbar normal, azul triste, verde enferma, violeta con
+  sueño); tocarla cambia el modo (también rosa, azul, verde o arcoíris fijos).
+- **Portal**: se mete y sale por otro portal que se abre en el aire. Tocado,
+  con más de una habitación, viaja a la siguiente (`portalTravel()`).
+- **Caja musical**: tocada, suena una melodía de verdad (Web Audio): de
+  día "Estrellita", de noche o con sueño la canción de cuna, y al terminar
+  la cuna, si tiene algo de sueño, se duerme (`btnSleep()`). Sola baila sin
+  sonido.
+- **Cañón de circo**: cuenta 3-2-1 y sale volando en un arco enorme, dándose
+  vueltas y cabeza abajo (`flipY`), con estela; aterriza mareada.
+- **Gelatina gigante**: tiembla con un resorte de verdad (`rt.sq`/`rt.sqv`),
+  rebota cada vez más alto y se hunde adentro (la parte `z:'front'` es
+  semitransparente: se la ve adentro) hasta que la escupe.
+- **Patineta** (libre): cruza la pieza con un kickflip a la ida y otro a la
+  vuelta (`skateRide()`); la tabla queda donde se bajó. De a dos, se la
+  pasan.
+- **Espejo mágico**: el reflejo sale del espejo (`CLONE`, un tercer
+  personaje que solo se dibuja, teñido con `filter`) y la imita reflejado y
+  con un poco de retraso; al final vuelve a entrar.
+
+Los efectos de verdad son chicos a propósito, igual que los de los muebles:
+la fruta es poca comida, el robot limpia una caca al día y el frijol paga
+una vez cada ~5 días. La felicidad de jugar con ellos pasa por `furniJoy()`
+(`magicJoy()`), con el mismo tope por hora.
+
+**Probado** con un banco acelerado en Chromium (se parcha `performance.now`,
+se para el loop y se avanza cuadro a cuadro con `updateWalker()`/
+`updateBuddy()`/`render()`): cada guion de cada objeto, solo y de a dos,
+y cada `tap`: 0 errores, todos terminan con los personajes en el piso y sin
+modo piso ni reflejo colgando. También una visita espontánea a cada uno
+(`maybeStartFurniVisit()`). Al sumar o cambiar un guion, repetir eso.
 
 
 ## Acompañante (de a dos)

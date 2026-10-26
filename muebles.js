@@ -179,6 +179,15 @@ function furniThumb(id){
   if (furniThumbCache.has(id)) return furniThumbCache.get(id);
   const art = FURNI_ART[id];
   const c = document.createElement('canvas');
+  /* Un objeto muy alto (el frijol crecido) puede traer su propia miniatura
+     más compacta: `thumb` = { w, h, draw(p) }. */
+  if (art.thumb){
+    c.width = art.thumb.w; c.height = art.thumb.h;
+    art.thumb.draw(pxPainter(c.getContext('2d')));
+    const url = c.toDataURL();
+    furniThumbCache.set(id, url);
+    return url;
+  }
   c.width = art.w; c.height = art.h;
   const ctx = c.getContext('2d');
   const rt = furniRestState(id);
@@ -211,6 +220,9 @@ function resetFurniRt(rt){
   const keep = { id: rt.id, entry: rt.entry, x: rt.x, els: rt.els, users: rt.users, removed: rt.removed,
     ballDx: b.dx, ballY: rt.ballFollow ? b.y : rt.ballY, ballRot: rt.ballRot,
     ballAnim: rt.ballFollow ? null : rt.ballAnim, _bx: rt._bx };
+  /* Lo que un objeto con vida propia no tiene que olvidar al quedar libre
+     (dónde anda el robot, la nube...): su arte lo nombra en `keep`. */
+  for (const k of FURNI_ART[rt.id].keep || []) keep[k] = rt[k];
   for (const k of Object.keys(rt)) delete rt[k];
   Object.assign(rt, furniRestState(keep.id), keep);
   /* Quedó (o iba a quedar) en alto, en una cabeza o en unas manos: se cae. */
@@ -360,6 +372,11 @@ function updateFurniture(now = performance.now()){
   let party = false;
   const front = document.getElementById('furniFront');
   for (const rt of furniRt){
+    /* Objetos con vida propia (objetos.js): `tick` corre cada cuadro, lo
+       esté usando alguien o no (el robot pasea, la nube flota, crecen los
+       frutos). */
+    const art = FURNI_ART[rt.id];
+    if (art.tick) art.tick(rt, now, dt, k);
     const inside = furniOccupied(rt, k);
     for (const { el, part, anchor } of Object.values(rt.els)){
       if (part.z === 'front'){
@@ -379,6 +396,8 @@ function updateFurniture(now = performance.now()){
     }
     if (rt.id === 'disco' && rt.on) party = true;
   }
+  /* Partículas, luces y efectos de los objetos mágicos (objetos.js). */
+  if (typeof updateMagic === 'function') updateMagic(now, dt);
   /* La bola disco prendida llena la pieza de luces de colores (CSS). */
   if (updateFurniture._party !== party){
     updateFurniture._party = party;
@@ -661,6 +680,10 @@ function commandFurniVisit(rt){
     el.classList.remove('poked'); void el.offsetWidth; el.classList.add('poked');
     el.addEventListener('animationend', () => el.classList.remove('poked'), { once: true });
   }
+  /* Objetos con toque propio (objetos.js): abrir el álbum de la cámara,
+     prender el láser, cosechar la fruta... `tap` devuelve true si se hizo
+     cargo; si no, sigue como cualquier mueble (va a usarlo). */
+  if (art.tap && art.tap(rt)) return;
   const no = furniCommandBlocked();
   if (no){ say(no); return; }
   if (!art.visits || !art.visits.length) return;
@@ -841,6 +864,10 @@ function endFurniActivity(act = walker, cascade = true){
   if (a.st){ const s = a.steps[a.i]; if (s && s.end) s.end(a.rt, act, a); }
   /* Limpieza de la rutina entera, termine sola o se corte (la comida del piso). */
   if (a.onEnd) a.onEnd();
+  /* Y la del objeto, si deja algo prendido (el láser, el jetpack, el doble
+     del espejo): `cleanup` en su arte. */
+  if (a.rt && FURNI_ART[a.rt.id].cleanup) FURNI_ART[a.rt.id].cleanup(a.rt, act, a);
+  act.flipY = false;
   act.activity = null;
   act.anim = null;
   act.frame = 0;

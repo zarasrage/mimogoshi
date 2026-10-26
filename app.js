@@ -450,6 +450,7 @@ const STYLE_ITEMS = [
 ];
 
 const STYLE_SECTIONS = [
+  { kind:'furni',  title:'Objetos mágicos ✨', wow: true },   // objetos.js
   { kind:'furni',  title:'Muebles' },
   { kind:'shell',  title:'Carcasa' },
   { kind:'screen', title:'Pantalla' },
@@ -758,6 +759,7 @@ function freshState(name, species){
     coins: 0,
     pantry: { simple: FOOD_START_STOCK, [MEDICINE.id]: MED_START_STOCK },  // porciones en la mochila
     healthMax: 100,      // tope de la salud: baja sin la vacuna de su etapa (ver VACCINES)
+    objData: {},         // lo que guardan los objetos mágicos (objetos.js): fruta, fotos, el frijol...
     vaccinated: {},      // { child, teen, adult }: qué vacunas tiene puestas
     records: {},   // mejor puntaje por minijuego
     upgrades: freshUpgrades(),
@@ -796,6 +798,7 @@ function loadState(){
     // saves de antes de las vacunas: tope entero y ninguna puesta
     if (typeof s.healthMax !== 'number' || !isFinite(s.healthMax)) s.healthMax = 100;
     if (!s.vaccinated || typeof s.vaccinated !== 'object') s.vaccinated = {};
+    if (!s.objData || typeof s.objData !== 'object') s.objData = {};   // objetos.js
     // se cerró la app mientras iba a comer: lo que faltaba se suma de una
     if (s.meal){
       s.hunger = clamp((s.hunger || 0) + (s.meal.hunger || 0));
@@ -1456,7 +1459,7 @@ function render(){
     { w: canvas.width, h: canvas.height });
   canvas.style.left = (walker.x*100) + '%';
   canvas.style.bottom = (4 + walker.y) + 'px';
-  canvas.style.transform = `translateX(-50%) scaleX(${walker.dir})`;
+  canvas.style.transform = actorTransform(walker, drawn);
   canvas.style.opacity = walker.hidden ? '0' : '';
   walker.drawn = walker.hidden ? null : drawn;   // para saber si un toque cae sobre ella (muebles.js)
   updateHat(walker.drawn);
@@ -1471,6 +1474,21 @@ function render(){
 
   document.getElementById('poopFx').classList.toggle('hidden', !state.poop);
   document.getElementById('giftFx').classList.toggle('hidden', !state.gift);
+}
+
+/* Transform del canvas de un personaje: mira a su lado (scaleX) y, si un
+   objeto lo da vuelta (el cañón, objetos.js), cabeza abajo (scaleY(-1)),
+   girando sobre el centro del sprite y no del canvas: el sprite va apoyado
+   abajo y, girado sobre el centro del canvas, saltaba arriba. Escalas de -1
+   y 1: el pixel art no se deforma. */
+function actorTransform(act, drawn){
+  let t = `translateX(-50%) scaleX(${act.dir})`;
+  if (act.flipY && drawn && drawn.frame){
+    const k = drawn.box.h / CANVAS_H;
+    const cy = (drawn.dy + drawn.frame.h * drawn.scale / 2) / k;
+    t += ` translateY(${(cy - CANVAS_H / 2).toFixed(2)}px) scaleY(-1) translateY(${(CANVAS_H / 2 - cy).toFixed(2)}px)`;
+  }
+  return t;
 }
 
 /* El canvas de la mascota mide 96x96 px CSS (eso no cambia) pero su backing
@@ -1779,7 +1797,7 @@ const HAT_SINK = 0.3;
 function updateHat(drawn){
   const el = document.getElementById('petHat');
   const hat = state.style.hat && styleItemById(state.style.hat);
-  if (!hat || !drawn || displayMood() === 'dead'){ el.classList.add('hidden'); return; }
+  if (!hat || !drawn || walker.flipY || displayMood() === 'dead'){ el.classList.add('hidden'); return; }
   /* drawSprite() devuelve todo en píxeles del canvas (físicos); acá se pasa a
      px CSS dividiendo por cuántos píxeles del canvas hay en un px CSS. */
   const { species, frame, scale, dx, dy, box } = drawn;
@@ -2319,8 +2337,9 @@ function styleSwatch(it){
   if (it.kind === 'furni'){
     /* Miniatura a escala entera de px CSS (el pixel art no se reescala raro). */
     const art = FURNI_ART[it.id];
-    const s = Math.min(3, Math.max(1, Math.floor(46 / Math.max(art.w, art.h))));   // tope: la pelota sola salía gigante
-    return `<span class="swatch furni"><img src="${furniThumb(it.id)}" alt="" style="width:${art.w * s}px;height:${art.h * s}px"></span>`;
+    const tw = art.thumb ? art.thumb.w : art.w, th = art.thumb ? art.thumb.h : art.h;
+    const s = Math.min(3, Math.max(1, Math.floor(46 / Math.max(tw, th))));   // tope: la pelota sola salía gigante
+    return `<span class="swatch furni"><img src="${furniThumb(it.id)}" alt="" style="width:${tw * s}px;height:${th * s}px"></span>`;
   }
   return `<span class="swatch emoji">${it.emoji}</span>`;
 }
@@ -2348,7 +2367,7 @@ function styleTile(it, mode){
 function styleRows(mode){
   return STYLE_SECTIONS.map(sec => {
     /* Lo del gacha (premios.js) no se vende: en la tienda no sale. */
-    const items = STYLE_ITEMS.filter(it => it.kind === sec.kind &&
+    const items = STYLE_ITEMS.filter(it => it.kind === sec.kind && !!it.wow === !!sec.wow &&
       (mode === 'shop' ? !it.gacha : state.style.owned[it.id]));
     const grid = items.length
       ? `<div class="style-grid">${items.map(it => styleTile(it, mode)).join('')}</div>`
