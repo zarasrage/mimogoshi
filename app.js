@@ -329,10 +329,11 @@ const FOOD_START_STOCK = 5;
    (pestaña Comida) como cualquier porción y se da desde la bandeja de Comer,
    en la misma fila que las comidas. Se guarda en la misma despensa (state.pantry), con
    su propia clave. Se arranca con MED_START_STOCK para que la primera
-   enfermedad no pille sin monedas. */
+   enfermedad no pille sin monedas. Solo cura: no suma salud (antes daba
+   +20). Lo perdido se recupera de a poco, sola, cuando todo está bien (ver
+   HEALTH_RECOVER_PER_DAY). */
 const MEDICINE = { id:'medicina', name:'Medicina', emoji:'💊', price: 15 };
 const MED_START_STOCK = 2;
-const MED_HEALTH = 20;
 
 /* Vacunas: una por etapa (niño, adolescente, adulto), cada una más cara.
    Sin la vacuna de su etapa la salud pierde VACCINE_HEALTH_LOSS_PER_DAY por
@@ -1014,8 +1015,7 @@ function applyDecay(hours){
     state.sick = true;
     const seguro = upgradeState('autoMed');
     if (seguro.owned && seguro.armed){
-      state.sick = false;
-      state.health = clamp(state.health + MED_HEALTH);   // mismo efecto que darle medicina
+      state.sick = false;   // mismo efecto que darle medicina: solo la cura
       seguro.armed = false;
       seguro.timesUsed = (seguro.timesUsed || 0) + 1;
     }
@@ -2207,7 +2207,6 @@ function giveMedicine(){
   if (foodStock(MEDICINE.id) <= 0) return 'No te quedan medicinas: cómpralas en la tienda';
   state.pantry[MEDICINE.id] -= 1;
   state.sick = false;
-  state.health = clamp(state.health + MED_HEALTH);
   floatFx('💊');
   say('Se siente mejor');
   triggerPetAction('medicine');
@@ -2497,8 +2496,8 @@ function statInfoData(stat){
     ],
     up: [
       { e: '🌿', t: 'Sin ninguna causa', d: vac && !vacOk ? `Se recupera sola, pero sin vacuna le gana la pérdida: ${HEALTH_RECOVER_PER_DAY} − ${VACCINE_HEALTH_LOSS_PER_DAY} = −${VACCINE_HEALTH_LOSS_PER_DAY - HEALTH_RECOVER_PER_DAY} al día` : 'Se recupera sola, despacio, hasta 100', v: `+${HEALTH_RECOVER_PER_DAY}/día`, up: true, on: causas === 0 && state.health < 99.99 },
-      { e: '💊', t: 'Medicina', d: `La cura y suma salud · ${MEDICINE.price} 💰`, v: `+${MED_HEALTH}`, up: true, on: !!state.sick },
-      { e: '🛡️', t: 'Seguro médico', d: medSeguro.owned ? (medSeguro.armed ? 'Activado: cura sola la próxima enfermedad' : 'Comprado, pero desactivado') : 'Mejora de la tienda: cura sola una enfermedad', v: `+${MED_HEALTH}`, up: true, on: !!(medSeguro.owned && medSeguro.armed) },
+      { e: '💊', t: 'Medicina', d: `Solo la cura: deja de perder salud y empieza a recuperarse · ${MEDICINE.price} 💰`, v: 'cura', up: true, on: !!state.sick },
+      { e: '🛡️', t: 'Seguro médico', d: medSeguro.owned ? (medSeguro.armed ? 'Activado: cura sola la próxima enfermedad' : 'Comprado, pero desactivado') : 'Mejora de la tienda: cura sola una enfermedad', v: 'cura', up: true, on: !!(medSeguro.owned && medSeguro.armed) },
       ...(vac ? [{ e: VACCINE_EMOJI, t: vac.name, d: vacOk ? 'Puesta ✓ · la próxima al crecer' : `Deja de perder esos ${VACCINE_HEALTH_LOSS_PER_DAY} y se enferma la mitad · Tienda → Mejoras · ${vac.price} 💰`, v: `+${VACCINE_HEALTH_LOSS_PER_DAY}/día`, up: true, on: vacOk }] : []),
     ],
     marks: [
