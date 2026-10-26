@@ -594,7 +594,7 @@ function stageDeviceScale(stage){
    - bajo ENERGY_LOCK_AT se desploma: se duerme en el acto (aunque esté
      despierta) y nada la despierta hasta que recupere un poco;
    - bajo EXHAUSTED_AT está agotada: se la puede despertar, pero mientras
-     siga despierta pierde salud (EXHAUSTED_LOSS_PER_DAY) y se la ve triste;
+     siga despierta pierde salud (EXHAUSTED_LOSS_PER_REAL_HOUR) y se la ve triste;
    - bajo SLEEPY_THRESHOLD puede quedarse dormida sola, con más probabilidad
      mientras menos energía le quede;
    - con WAKE_AT se despierta sola.
@@ -671,9 +671,9 @@ const DISTRESS_MULT = 1.5;
    de juego) y la agotada el triple, ~17 por hora. De noche bajan a la
    mitad, como todo lo que decae. */
 const HEALTH_RISK_AT = 30;
-const HEALTH_RISK_LOSS_PER_REAL_HOUR = 1;   // hambre, felicidad o higiene bajo HEALTH_RISK_AT
-const SICK_LOSS_PER_REAL_HOUR = 1;          // enferma
-const EXHAUSTED_LOSS_PER_DAY = 5;           // agotada (energía bajo EXHAUSTED_AT) y despierta
+const HEALTH_RISK_LOSS_PER_REAL_HOUR = 3;   // hambre, felicidad o higiene bajo HEALTH_RISK_AT
+const SICK_LOSS_PER_REAL_HOUR = 3;          // enferma
+const EXHAUSTED_LOSS_PER_REAL_HOUR = 1;     // agotada (energía bajo EXHAUSTED_AT) y despierta
 /* Sin ninguna causa activa se recupera sola, despacio: 15 por día real
    (antes 0.424 por hora de juego, ~25 por hora real: cualquier susto se
    borraba en un rato). Así lo que se pierde cuesta recuperarlo, y la
@@ -1003,7 +1003,7 @@ function applyDecay(hours){
   let healthDelta = 0;
   if (enRiesgo)   healthDelta -= HEALTH_RISK_LOSS_PER_REAL_HOUR / 60 * nightFactor;
   if (state.sick) healthDelta -= SICK_LOSS_PER_REAL_HOUR / 60 * nightFactor;
-  if (isExhausted()) healthDelta -= EXHAUSTED_LOSS_PER_DAY / (24 * 60) * nightFactor;
+  if (isExhausted()) healthDelta -= EXHAUSTED_LOSS_PER_REAL_HOUR / 60 * nightFactor;
   if (healthDelta === 0) healthDelta = HEALTH_RECOVER_PER_HOUR;
   /* Sin la vacuna de su etapa pierde siempre lo suyo, aparte de las causas
      y sin frenarse de noche: así cuidada queda justo en 15 − 20 = −5 al día
@@ -2327,7 +2327,7 @@ function statRateNow(stat){
     let d = 0;
     if (healthRiskNow()) d -= HEALTH_RISK_LOSS_PER_REAL_HOUR / 60 * night;
     if (state.sick) d -= SICK_LOSS_PER_REAL_HOUR / 60 * night;
-    if (isExhausted()) d -= EXHAUSTED_LOSS_PER_DAY / (24 * 60) * night;
+    if (isExhausted()) d -= EXHAUSTED_LOSS_PER_REAL_HOUR / 60 * night;
     if (d === 0) d = HEALTH_RECOVER_PER_HOUR;
     if (vaccineFor() && !isVaccinated()) d -= VACCINE_HEALTH_LOSS_PER_DAY / (24 * 60);
     if ((d > 0 && state.health >= 99.99) || (d < 0 && state.health <= 0)) return 0;
@@ -2448,7 +2448,7 @@ function statInfoData(stat){
       marks: [
         { v: WAKE_AT, t: 'Se despierta sola', above: true },
         { v: SLEEPY_THRESHOLD, t: 'Puede quedarse dormida sola' },
-        { v: EXHAUSTED_AT, t: `Agotada: despierta pierde ${EXHAUSTED_LOSS_PER_DAY} de salud al día` },
+        { v: EXHAUSTED_AT, t: `Agotada: despierta pierde ${EXHAUSTED_LOSS_PER_REAL_HOUR} de salud por hora` },
         { v: GAME_MIN_ENERGY, t: `Muy cansada para jugar · apuro ×${nf(DISTRESS_MULT)}` },
         { v: ENERGY_LOCK_AT, t: 'Se desploma: se duerme y no se la puede despertar' },
       ],
@@ -2490,7 +2490,7 @@ function statInfoData(stat){
     down: [
       { e: '⚠️', t: `Hambre, felicidad o higiene bajo ${HEALTH_RISK_AT}%`, d: 'Cuenta una vez, aunque sean varias', v: `−${nf(HEALTH_RISK_LOSS_PER_REAL_HOUR)}/h`, down: true, on: risk },
       { e: '🤒', t: 'Enferma', d: 'Se suma a lo de arriba', v: `−${nf(SICK_LOSS_PER_REAL_HOUR)}/h`, down: true, on: !!state.sick },
-      { e: '😵', t: `Agotada y despierta (energía bajo ${EXHAUSTED_AT})`, d: 'Dormida no cuesta nada', v: `−${EXHAUSTED_LOSS_PER_DAY}/día`, down: true, on: isExhausted() },
+      { e: '😵', t: `Agotada y despierta (energía bajo ${EXHAUSTED_AT})`, d: 'Dormida no cuesta nada', v: `−${nf(EXHAUSTED_LOSS_PER_REAL_HOUR)}/h`, down: true, on: isExhausted() },
       { e: '🌙', t: 'De noche (00:00 a 06:00)', d: 'Lo que baja, baja a la mitad', v: `×${nf(NIGHT_DECAY_FACTOR)}`, up: true, on: night && causas > 0 },
       ...(vac ? [{ e: VACCINE_EMOJI, t: 'Sin la vacuna de su etapa', d: vacOk ? 'Ya la tiene puesta' : `Siempre, aunque esté todo bien, y también de noche`, v: `−${VACCINE_HEALTH_LOSS_PER_DAY}/día`, down: true, on: !vacOk }] : []),
     ],
