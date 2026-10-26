@@ -502,18 +502,20 @@ y por pedido**, se rompió esa proporción en dos lugares:
   más seguido): 100/424.5, 100/530.5 y 100/212 h de juego (el hambre después
   pasó a depender de la etapa, ver "Hambre por etapa" más abajo);
 - la salud dejó de seguir ese escalado: sus ritmos van **en números redondos
-  de tiempo real, por pedido** (ver "Salud que se recupera sola" y "Vacunas" en "Dinero y tienda"): cada causa cuesta
-  **1 por hora** (`HEALTH_RISK_LOSS_PER_REAL_HOUR`: hambre, felicidad o
-  higiene bajo 30, cuenta una vez aunque sean varias;
-  `SICK_LOSS_PER_REAL_HOUR`: enferma), agotada y despierta **5 por día**
-  (`EXHAUSTED_LOSS_PER_DAY`), sin vacuna **20 por día** y se recupera sola
-  **15 por día**. Antes cada causa costaba ~5.7 por hora y la agotada ~17.
+  de tiempo real, por pedido** (ver "Salud que se recupera sola" y "Vacunas" en "Dinero y tienda"): hambre,
+  felicidad o higiene bajo 30 cuesta **3 por hora**
+  (`HEALTH_RISK_LOSS_PER_REAL_HOUR`, cuenta una vez aunque sean varias),
+  enferma **3 por hora** (`SICK_LOSS_PER_REAL_HOUR`), agotada y despierta
+  **1 por hora** (`EXHAUSTED_LOSS_PER_REAL_HOUR`), sin vacuna **20 por día**
+  y se recupera sola **15 por día**. Antes cada causa costaba ~5.7 por hora
+  y la agotada ~17; hubo un paso intermedio de 1 / 1 por hora y 5 al día
+  agotada, con el que el descuido total tardaba ~67 h en matarla.
 
 Resultado, medido por simulación contra `applyDecay()`/`maybeAutoSleep()`
 reales (ticks de 4 s, sin modo nocturno, 100 corridas): totalmente descuidada
 se pone triste por primera vez a las **~3.9 h** reales y muere en una
-mediana de **~67 h** vacunada (p10 55, p90 83) y **~45 h** sin vacuna (p10
-39, p90 50). Antes de pasar la salud a números redondos eran ~19 y ~16 h, y
+mediana de **~30 h** vacunada (p10 22, p90 37) y **~23 h** sin vacuna (p10
+17, p90 26). Antes de pasar la salud a números redondos eran ~19 y ~16 h, y
 antes de las vacunas, 16.8. Los umbrales
 (`DISTRESS_AT`, `HEALTH_RISK_AT`, `SICK_LOW_HEALTH_AT`) no se tocaron: son
 valores de barra, no de tiempo. Si se vuelve a recalibrar, conviene repetir esa
@@ -566,8 +568,8 @@ simulación, no solo cómo se ve.
   dejó sin energía) y nada la despierta, ni de noche. De 0 a 7 recupera en
   ~4 min reales.
 - **< `EXHAUSTED_AT` (15): agotada.** Se la puede despertar (`tryWake()` avisa
-  que está agotada), pero **despierta** pierde `EXHAUSTED_LOSS_PER_DAY` (5)
-  de salud por día real (antes ~17 por hora: pedido así) y se la ve
+  que está agotada), pero **despierta** pierde `EXHAUSTED_LOSS_PER_REAL_HOUR` (1)
+  de salud por hora real (antes ~17: pedido así) y se la ve
   triste (`isExhausted()` → ánimo `sad`; tampoco va a los muebles). Dormida
   no cuesta nada: se está recuperando. Por eso la energía ya **no** entra en
   la regla general de `HEALTH_RISK_AT` (antes, energía bajo 30 costaba salud
