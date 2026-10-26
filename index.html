@@ -66,6 +66,9 @@
                pasó algo mientras no estabas; tocarlo abre la lista. Va dentro
                del piso para que se esconda solo durante los minijuegos. -->
           <button class="log-btn" id="logBtn" title="Bitácora" aria-label="Bitácora"><i class="px-icon px-log"></i></button>
+          <!-- Logros (medallas y Mimodex, logros.js): otra pestañita, debajo de
+               la bitácora, con un globito si hay medallas por reclamar. -->
+          <button class="log-btn logros-btn" id="btnLogros" title="Logros" aria-label="Logros"><i class="px-icon px-trophy"></i></button>
           <!-- Habitaciones: flechas a los costados y puntitos arriba, solo si
                hay más de una (ver goRoom en muebles.js). -->
           <button class="room-arrow prev hidden" id="roomPrev" aria-label="Habitación anterior">‹</button>
@@ -174,10 +177,9 @@
         </button>
       </div>
       <!-- La ruleta vive dentro de Juegos y Reiniciar en la configuración (⚙️ de
-           arriba): aquí quedan solo las cosas de vez en cuando. -->
+           arriba): aquí quedan solo las dos cosas de vez en cuando. -->
       <div class="dock-sec">
         <button class="pill" id="btnStyle" title="Personalizar"><span class="pill-icon">🎨</span>Personalizar</button>
-        <button class="pill" id="btnLogros" title="Logros"><span class="pill-icon">🏆</span>Logros</button>
         <button class="pill" id="btnShop" title="Tienda"><span class="pill-icon">🛒</span>Tienda</button>
       </div>
       <div class="food-tray hidden" id="foodTray"></div>

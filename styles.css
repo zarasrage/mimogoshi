@@ -507,6 +507,19 @@ body{
   touch-action:manipulation;
 }
 .log-btn.blink{animation:logBlink .6s ease-in-out 6;}
+/* Logros: la misma pestañita, justo debajo de la bitácora. Si hay medallas
+   por reclamar lleva un globito con cuántas, al costado (encima tapaba la
+   copa); al ganar una pestañea como la bitácora. */
+.logros-btn{top:38px;}
+.logros-btn[data-badge]::after{
+  content:attr(data-badge);
+  position:absolute; right:-17px; top:7px;
+  min-width:16px; height:16px; padding:0 3px;
+  display:grid; place-items:center;
+  font-family:var(--font-ui); font-size:10px; font-weight:900; color:#fff;
+  border-radius:999px; background:#ff5d6c;
+  box-shadow:0 0 0 2px var(--screen, #9bbc0f);
+}
 @keyframes logBlink{
   0%, 100%{background:rgba(var(--screen-lit-rgb), .14); box-shadow:none;}
   50%{background:#ffce4b; box-shadow:0 0 12px 3px rgba(255,206,75,.8);}
@@ -1945,19 +1958,16 @@ body{
 .pill:active{transform:scale(.95); box-shadow:0 1px 0 #fff inset, 0 4px 10px -8px rgba(70,10,90,.6);}
 #btnStyle{--pill:#c25bff; --pill-hi:#ff8cc8;}
 #btnShop {--pill:#1fbf86; --pill-hi:#8ff0c4;}   /* verde menta: el dorado se confundía con el amarillo de Jugar */
-#btnLogros{--pill:#4d7dff; --pill-hi:#9cc0ff;}  /* azul: los otros colores ya son de un reloj o de otra píldora */
 .pill{position:relative;}
 .controls.tray-open .pill[data-badge]::after{display:none;}
 /* La jeringa de vaccinateFx(): canvas en píxeles físicos, sobre los personajes. */
 .vaccine-fx{position:absolute; z-index:6; pointer-events:none; image-rendering:pixelated; transform-origin:50% 50%;}
-/* Tres píldoras: Personalizar, Logros y Tienda. Cada una mide lo que pide su
-   texto y reparten lo que sobra (con el mismo ancho, "Personalizar" no
-   cabía en un teléfono de 360). */
-.dock-sec .pill{flex:1 1 auto; max-width:180px; justify-content:center; gap:6px; padding:5px 11px 5px 5px;}
-.dock-sec .pill-icon{width:28px; height:28px; font-size:15px;}
-/* En la píldora el globito va sobre el ícono, no en la esquina: con tres,
-   en la esquina tapaba el texto. */
-.dock-sec .pill[data-badge]::after{right:auto; left:19px; top:-9px; min-width:20px; height:20px; padding:0 4px; font-size:11px;}
+/* Dos píldoras del mismo ancho: Personalizar a la izquierda, Tienda a la
+   derecha (Logros estuvo un tiempo como tercera píldora; ahora es una
+   pestañita en la pantalla, debajo de la bitácora). El globito va sobre el
+   ícono, así nunca tapa el texto. */
+.dock-sec .pill{flex:1; max-width:180px; justify-content:center;}
+.dock-sec .pill[data-badge]::after{right:auto; left:21px; top:-9px; min-width:20px; height:20px; padding:0 4px; font-size:11px;}
 
 /* Bandeja de comidas: se abre con Comer y flota encima del dock y las
    píldoras, del mismo tamaño que ellos (posición absoluta): el aparato no

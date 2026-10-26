@@ -285,13 +285,14 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   más `-hi` y `-ink`): antes los botones iban en pastel y no calzaban con los
   anillos (Dormir era azul marino al lado de un reloj violeta). Dormida,
   Despertar sigue violeta (el sol sobre amarillo no se leía). Debajo
-  tres **píldoras** (`.pill`, blancas con el ícono en un círculo de color,
-  `.pill-icon`: rosa-violeta Personalizar, azul Logros, verde menta
-  Tienda —era dorado y se confundía con el amarillo de Jugar—; cada una
-  mide lo que pide su texto, porque con el mismo ancho "Personalizar" no
-  cabía en 360 px, y su globito va sobre el ícono, no en la esquina;
-  antes eran un velo translúcido que se veía lavado) con lo de vez en cuando:
-  Personalizar, Logros y Tienda. Antes también estaban
+  dos **píldoras** (`.pill`, del mismo ancho, blancas con el ícono en un
+  círculo de color, `.pill-icon`: rosa-violeta Personalizar, verde menta
+  Tienda —era dorado y se confundía con el amarillo de Jugar—; su globito
+  va sobre el ícono, no en la esquina; antes eran un velo translúcido que
+  se veía lavado) con lo de vez en cuando: Personalizar a la izquierda y
+  Tienda a la derecha. Logros fue un tiempo una tercera píldora (no cabía
+  bien en 360 px); ahora es una pestañita en la pantalla, debajo de la
+  bitácora (ver "Medallas y Mimodex"). Antes también estaban
   la Ruleta 🎡 (ahora dentro de Juegos, ver "Ruleta y gacha") y Reiniciar
   (ahora en la configuración, el ⚙️ de arriba junto al 🧪 del modo prueba,
   `openSettings()`: destructivo, no tiene por qué estar a mano). Debajo
@@ -1290,15 +1291,21 @@ modo piso ni reflejo colgando. También una visita espontánea a cada uno
 Dos colecciones **de quien juega, no de la mascota**: van en su propia clave
 (`PROFILE_KEY = 'mimogoshi.perfil.v1'`, en try/catch como todo
 `localStorage`), así sobreviven a que se muera o se reinicie (`clearSave()`
-solo borra el save). Se abren con la píldora 🏆 **Logros**: una hoja con dos
-pestañas, Medallas y Mimodex (`openLogros(tab)`).
+solo borra el save). Se abren con la **copa** (`#btnLogros`, `.logros-btn`):
+una pestañita pixel art pegada al borde izquierdo de la pantalla, justo
+debajo de la bitácora y con su misma forma (es `.log-btn` también, así los
+listeners del piso la dejan pasar; su clic frena la propagación para no
+limpiar caca ni mandar a un mueble). El ícono es `px-trophy` de `PX_ICONS`:
+en la LCD todo es pixel art. Lleva al costado un globito con las medallas
+por reclamar (encima tapaba la copa) y pestañea al ganar una. Abre una hoja
+con dos pestañas, Medallas y Mimodex (`openLogros(tab)`).
 
 **Medallas** (`MEDALS`): 20 logros, cada uno con tres niveles (bronce,
 plata, oro; `MEDAL_TIERS`), o sea 60 medallas. Cada nivel paga al
 reclamarlo: **10 / 30 / 80 monedas, y el oro además una ficha del gacha**.
 Se reclaman a mano (botón dorado en la tarjeta, pop-up con el premio): que
 se sienta. Al alcanzar un nivel baja un cartelito arriba (`#medalToast`,
-z-index 25, encima de todo; tocarlo abre la pestaña) y la píldora lleva un
+z-index 25, encima de todo; tocarlo abre la pestaña) y la copa lleva un
 globito con cuántas hay por reclamar. Si llegan varias juntas van en un solo
 cartelito ("¡N medallas nuevas!"). Lo que mide cada una es un contador de
 `profile.stats`:

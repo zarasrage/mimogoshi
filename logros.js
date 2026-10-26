@@ -144,6 +144,9 @@ function nextMedalToast(){
     const t0 = (typeof audioNow === 'function' && audioNow()) || 0;
     [1318.5, 1568, 1975.5].forEach((f, i) => tone({ freq: f, durationMs: 120, type: 'triangle', vol: 0.06, at: t0 + i * 0.07 }));
   }
+  /* La pestañita de Logros pestañea, como la bitácora al volver. */
+  const lb = document.getElementById('btnLogros');
+  if (lb){ lb.classList.remove('blink'); void lb.offsetWidth; lb.classList.add('blink'); }
   clearTimeout(nextMedalToast.timer);
   nextMedalToast.timer = setTimeout(() => {
     el.classList.add('out');
@@ -410,7 +413,13 @@ function openDexEntry(id){
 window.addEventListener('DOMContentLoaded', () => {
   prof();
   const btn = document.getElementById('btnLogros');
-  if (btn) btn.addEventListener('click', () => { if (state && !gameOver && !activeMinigame) openLogros(); });
+  /* Vive en la pantalla: el toque no tiene que seguir de largo (el listener
+     de #screen limpia caca, el de los muebles los manda a usar). */
+  if (btn) btn.addEventListener('click', e => {
+    e.stopPropagation();
+    btn.classList.remove('blink');
+    if (state && !gameOver && !activeMinigame) openLogros();
+  });
   const toast = document.getElementById('medalToast');
   if (toast) toast.addEventListener('click', () => {
     if (!state || gameOver || activeMinigame) return;
