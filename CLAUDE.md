@@ -692,15 +692,25 @@ sola ~25 por hora y una bajada lenta se tapaba. Vacunada, el tope vuelve a
 100, deja de bajar y se enferma la mitad (`VACCINE_SICK_MULT`), hasta que
 crece y le toca la de la etapa nueva (`state.vaccinated` =
 `{child, teen, adult}`). Con el tope en 0 se muere: son 20 días sin
-vacunarla. Se compra en la tienda, pestaña Comida (solo la de su etapa,
-arriba de todo; con una guardada no deja comprar otra), y se pone desde la
-bandeja de Comer (`giveVaccine()`), donde aparece mientras no la tenga:
-con ella son nueve y la bandeja pasa a cinco columnas para seguir en dos
-filas. El anillo de salud muestra el tope perdido como un tramo gris
-(`#cap-health`); el botón Comer lleva un 💉 (`vaccineDue()`, desde que el
-tope baja de 97; anillo de aviso bajo 85), y la bitácora anota cuando le
-toca una nueva y cuando el tope baja de 90. Los saves de antes arrancan
-con el tope entero y sin vacunas.
+vacunarla. **No es comida**: se compra en la tienda, pestaña Mejoras
+(arriba de todo, solo la de su etapa), y se pone **al comprarla**
+(`applyVaccine()`, que la deja puesta en el acto por si se cierra la app a
+mitad), con su animación (`vaccinateFx()`): la tienda se cierra, una
+jeringa de pixel art baja volando junto a la mascota, se echa para atrás,
+la pincha y empuja el émbolo; el líquido verde se vacía y el tramo gris del
+anillo de salud se va llenando a la par (`vaccineFx.cap`, que lee
+`render()`); después un estallido de crucecitas y la jeringa se va hacia
+arriba y se deshace. Recién ahí sale el pop-up de la compra. Mientras, la
+mascota está quieta en una rutina `kind:'vaccine'` (no se corta por estar
+triste o enferma); dormida no se despierta. Primero estaba en la bandeja de
+Comer, como la medicina: se compraba, quedaba guardada y había que ir a
+ponerla; `loadState()` pone la de su etapa si había una guardada y devuelve
+en monedas las que ya no sirven. El anillo de salud muestra el tope perdido
+como un tramo gris (`#cap-health`); la píldora de Tienda lleva un 💉
+(`vaccineDue()`, desde que el tope baja de 97; rojo bajo 85) y entonces
+abre directo en Mejoras, y la bitácora anota cuando le toca una nueva y
+cuando el tope baja de 90. Los saves de antes arrancan con el tope entero y
+sin vacunas.
 
 **Los avisos de la tienda van dentro de la tarjeta, no con `say()`**: la burbuja
 tiene `z-index:5` y el overlay `10`, así que un `say()` con un overlay abierto

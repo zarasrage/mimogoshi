@@ -341,9 +341,10 @@ const MED_HEALTH = 20;
    causa la salud se recupera sola (~25 por hora) y una bajada lenta se
    taparía. Al vacunarla el tope vuelve a 100 y deja de bajar, hasta que
    crece y le toca la de la etapa nueva. Vacunada, además, se enferma la
-   mitad (VACCINE_SICK_MULT). Se compran en la tienda (pestaña Comida, solo
-   la de su etapa) y se ponen desde la bandeja de Comer, como la medicina. Si
-   el tope llega a 0, se muere: a 5 por día son 20 días sin vacunarla. */
+   mitad (VACCINE_SICK_MULT). Se compran en la tienda (pestaña Mejoras, solo
+   la de su etapa) y se ponen en el acto, con su animación (vaccinateFx());
+   no se guardan en la despensa. Si el tope llega a 0, se muere: a 5 por día
+   son 20 días sin vacunarla. */
 const VACCINES = {
   child: { id: 'vac_child', name: 'Vacuna de niño',        price: 20 },
   teen:  { id: 'vac_teen',  name: 'Vacuna de adolescente', price: 50 },
@@ -798,6 +799,15 @@ function loadState(){
     // saves de antes de las vacunas: tope entero y ninguna puesta
     if (typeof s.healthMax !== 'number' || !isFinite(s.healthMax)) s.healthMax = 100;
     if (!s.vaccinated || typeof s.vaccinated !== 'object') s.vaccinated = {};
+    /* Las vacunas se guardaban en la despensa y se ponían desde Comer; ahora
+       se ponen al comprarlas. La de su etapa que estaba guardada se pone, y
+       las que ya no le sirven se devuelven en monedas. */
+    for (const [stage, v] of Object.entries(VACCINES)){
+      let n = Math.max(0, Math.floor(Number(s.pantry[v.id]) || 0));
+      if (n > 0 && stage === s.stage && !s.vaccinated[stage]){ s.vaccinated[stage] = true; s.healthMax = 100; n--; }
+      if (n > 0) s.coins = (Number(s.coins) || 0) + n * v.price;
+      delete s.pantry[v.id];
+    }
     if (!s.objData || typeof s.objData !== 'object') s.objData = {};   // objetos.js
     // se cerró la app mientras iba a comer: lo que faltaba se suma de una
     if (s.meal){
@@ -1420,7 +1430,7 @@ function render(){
   });
   /* El tope de la salud que se perdió por no tener la vacuna: el final del
      anillo se ve apagado, de healthMax a 100. */
-  const capV = Math.round(healthMax() * 10) / 10;
+  const capV = Math.round((vaccineFx ? vaccineFx.cap : healthMax()) * 10) / 10;
   if (render._cap !== capV){
     render._cap = capV;
     const cap = document.getElementById('cap-health');
@@ -2078,22 +2088,131 @@ const collectGift = () => {
   });
 };
 
-/* Ponerle la vacuna de su etapa (de la despensa). Devuelve el aviso si no
-   se pudo, igual que giveMedicine(). */
-function giveVaccine(){
-  const v = vaccineFor();
-  if (!v) return 'Todavía es un huevo…';
-  if (isVaccinated()) return 'Ya tiene su vacuna de esta etapa';
-  if (foodStock(v.id) <= 0) return `No tienes la ${v.name.toLowerCase()}: cómprala en la tienda`;
+/* Ponerle la vacuna de su etapa: se hace al comprarla. Cuenta de una (si
+   se cierra la app a mitad de la animación, ya quedó puesta); lo que se ve
+   llenarse de a poco es solo el anillo (ver vaccinateFx). */
+function applyVaccine(){
   catchUp();
-  state.pantry[v.id] -= 1;
+  const before = healthMax();
   state.vaccinated = { ...(state.vaccinated || {}), [state.stage]: true };
   state.healthMax = 100;
-  floatFx(VACCINE_EMOJI);
-  say('¡Vacuna lista! Su salud ya no se gasta 💪', 2200);
-  triggerPetAction('medicine');
-  saveState(); render();
-  return null;
+  saveState();
+  return before;
+}
+
+/* ---------- la animación de vacunarla ----------
+   Una jeringa de pixel art (escala entera en píxeles físicos: la de los
+   muebles agrandada, para que se lea al lado de la mascota) baja volando junto a la mascota, se echa para atrás, la pincha
+   y empuja el émbolo: el líquido verde se vacía y el tramo gris del anillo
+   de salud se va llenando a la par. Sale, ella celebra con un estallido de
+   crucecitas y la jeringa se va hacia arriba y se deshace en chispas.
+   Dormida no se despierta: la pinchan igual. */
+const VAC_ART_W = 25, VAC_ART_H = 7, VAC_PUSH_MAX = 7;
+const VAC_T = { arrive: 600, windup: 950, jab: 1100, push: 2000, out: 2250, leave: 2800 };
+let vaccineFx = null;   // { cap } mientras se anima: render() dibuja ese tope
+
+function drawSyringe(ctx, push){
+  const p = pxPainter(ctx), O = FP.O;
+  ctx.clearRect(0, 0, VAC_ART_W, VAC_ART_H);
+  const q = Math.round(push);
+  p.r(q, 0, 2, 7, O); p.r(q, 1, 1, 5, '#ff7b8a'); p.r(q + 1, 1, 1, 5, '#e8475a');   // mango
+  p.r(q + 2, 3, 7, 1, '#9aa3b5');                                                   // vástago
+  p.r(7, 0, 2, 1, O); p.r(7, 6, 2, 1, O);                                           // aletas
+  p.box(8, 1, 10, 5, '#e8f6ff');                                                    // cuerpo
+  if (q < VAC_PUSH_MAX) p.r(10 + q, 2, 7 - q, 3, '#5fe39b');                        // la vacuna
+  if (q < VAC_PUSH_MAX) p.r(10 + q, 2, 7 - q, 1, '#b6ffd6');
+  p.r(9 + q, 2, 1, 3, O);                                                           // émbolo
+  p.r(11, 1, 1, 1, '#8fb3cf'); p.r(13, 1, 1, 1, '#8fb3cf'); p.r(15, 1, 1, 1, '#8fb3cf');
+  p.r(18, 2, 2, 3, O); p.r(18, 3, 1, 1, '#cfd8e6');                                 // pico
+  p.r(20, 3, 4, 1, '#cfd8e6'); p.r(24, 3, 1, 1, '#ffffff');                         // aguja
+}
+
+function vaccinateFx(capFrom, done){
+  const floor = document.getElementById('creatureFloor');
+  const c = document.createElement('canvas');
+  c.className = 'vaccine-fx';
+  const s = Math.round(furniDeviceScale() * 1.35), k = s / DPR;
+  c.width = VAC_ART_W * s; c.height = VAC_ART_H * s;
+  c.style.width = (c.width / DPR) + 'px'; c.style.height = (c.height / DPR) + 'px';
+  floor.appendChild(c);
+  const art = document.createElement('canvas');
+  art.width = VAC_ART_W; art.height = VAC_ART_H;
+  const actx = art.getContext('2d'), ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  const side = walker.x < 0.5 ? 1 : -1;      // la jeringa va del lado con más pieza
+  const awake = !state.sleeping;
+  if (walker.activity) endFurniActivity(walker);
+  petAction = null;
+  if (awake){
+    startActivity(walker, [
+      { anim: 'idle', ms: VAC_T.windup - 250, dir: side },
+      { anim: 'sad', ms: 250, dir: side, fx: ['😨'] },
+      { anim: 'medicine', ms: VAC_T.out - VAC_T.windup, dir: side, fx: ['💢'] },
+      { anim: 'happy', ms: 900, dir: side, fx: ['💪'] },
+    ], { kind: 'vaccine' });
+  }
+  vaccineFx = { cap: capFrom };
+  const snap = v => Math.round(v * DPR) / DPR;
+  const ease = t => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
+  const t0 = performance.now();
+  let lastPush = -1, burst = false, raf = 0, sparkAt = 0;
+  const frame = now => {
+    const t = now - t0, T = VAC_T;
+    const fw = floorWidth(), h = actorCssH(walker);
+    /* El borde del cuerpo: el frame de 32 trae aire a los lados, el cuerpo
+       ocupa más o menos su mitad del centro. */
+    const d = walker.drawn, frameW = d && d.frame ? d.frame.w * d.scale / DPR : h;
+    const petX = walker.x * fw, half = frameW * 0.27;
+    const armY = walker.y + h * (state.sleeping ? 0.25 : 0.42);
+    /* Cuánto se separa la punta del cuerpo (px CSS) y cuánto más arriba va. */
+    let gap = 6, lift = 0, alpha = 1;
+    if (t < T.arrive){ const e = ease(t / T.arrive); lift = (1 - e) * 70; gap = 6 + (1 - e) * 18; alpha = Math.min(1, t / 200); }
+    else if (t < T.windup) gap = 6 + ease((t - T.arrive) / (T.windup - T.arrive)) * 8;
+    else if (t < T.jab) gap = 14 - ease((t - T.windup) / (T.jab - T.windup)) * 17;
+    else if (t < T.push) gap = -3;
+    else if (t < T.out) gap = -3 + ease((t - T.push) / (T.out - T.push)) * 13;
+    else { const e = ease((t - T.out) / (T.leave - T.out)); gap = 10; lift = e * 60; alpha = 1 - e; }
+    const push = t < T.jab ? 0 : t < T.push ? VAC_PUSH_MAX * (t - T.jab) / (T.push - T.jab) : VAC_PUSH_MAX;
+    if (Math.round(push) !== lastPush){
+      lastPush = Math.round(push);
+      drawSyringe(actx, push);
+      ctx.clearRect(0, 0, c.width, c.height);
+      ctx.drawImage(art, 0, 0, c.width, c.height);
+    }
+    /* Mientras empuja, el tope perdido del anillo se va llenando. */
+    if (t >= T.jab) vaccineFx.cap = capFrom + (100 - capFrom) * Math.min(1, (t - T.jab) / (T.push - T.jab));
+    if (t >= T.jab && t < T.push && t - sparkAt > 90 && typeof fxSpawn === 'function'){
+      sparkAt = t;
+      fxSpawn({ x: petX + side * half * 0.4, y: armY + 2, vx: side * (10 + Math.random() * 20), vy: 30 + Math.random() * 30, ay: -40,
+        life: 700, shape: 'plus', color: '#5fe39b', layer: 'front' });
+    }
+    if (!burst && t >= T.out){
+      burst = true;
+      if (typeof fxBurst === 'function'){
+        fxBurst(petX, walker.y + h * 0.55, 16, { colors: ['#5fe39b', '#b6ffd6', '#ffffff'], shapes: ['plus', 'sq', 'heart'], speed: 75, life: 900, ay: -40 });
+      }
+      if (typeof magicFlash === 'function') magicFlash('#9dffcb', 420, 0.35);
+      if (typeof tone === 'function'){
+        [784, 988, 1319].forEach((f, i) => tone({ freq: f, durationMs: 160, type: 'triangle', vol: 0.1, at: i * 0.09, attackMs: 8 }));
+      }
+    }
+    const W = VAC_ART_W * k;
+    const tipX = petX + side * (half + gap);
+    c.style.left = snap(side > 0 ? tipX : tipX - W) + 'px';
+    c.style.bottom = snap(4 + armY + lift - 3.5 * k) + 'px';
+    c.style.transform = side > 0 ? 'scaleX(-1)' : '';
+    c.style.opacity = alpha.toFixed(3);
+    if (t < T.leave){ raf = requestAnimationFrame(frame); return; }
+    if (typeof fxBurst === 'function'){
+      fxBurst(tipX + (side > 0 ? 1 : -1) * W * 0.5, armY + lift + 4, 10, { colors: ['#ffffff', '#b6ffd6'], shapes: ['spark', 'sq'], speed: 45, life: 600, ay: -30 });
+    }
+    c.remove();
+    vaccineFx = null;
+    render();
+    if (done) done();
+  };
+  raf = requestAnimationFrame(frame);
+  return () => cancelAnimationFrame(raf);
 }
 
 /* Dar una medicina de la despensa. Devuelve el aviso si no se pudo (no está
@@ -2143,7 +2262,8 @@ const btnSleep = () => {
 /* Los botones de abajo avisan cuando hacen falta (ver .need y data-badge en
    el CSS). Corre en cada render(), así que solo toca el DOM si algo cambió. */
 /* Le falta la vacuna de su etapa y ya se le nota (el tope bajó un poco):
-   el botón Comer lo avisa con un 💉, salvo que esté enferma (va el 💊). */
+   la Tienda lo avisa con un 💉 (salvo que esté enferma: primero la
+   medicina, que avisa Comer con el 💊). */
 function vaccineDue(){
   return !state.sick && !!vaccineFor() && !isVaccinated() && healthMax() < 97;
 }
@@ -2151,13 +2271,13 @@ function vaccineDue(){
 function updateDock(){
   const sleepy = !state.sleeping && state.energy < SLEEPY_THRESHOLD;
   const want = {
-    btnFeed:  vaccineDue()
-      ? { need: state.hunger < 30 || healthMax() < 85, badge: VACCINE_EMOJI, soft: healthMax() >= 85 }
-      : { need: state.hunger < 30 || !!state.sick, badge: state.sick ? '💊' : '' },
+    btnFeed:  { need: state.hunger < 30 || !!state.sick, badge: state.sick ? '💊' : '' },
     btnClean: { need: !!state.poop, badge: state.poop ? '💩' : '' },
     btnSleep: { need: sleepy, badge: sleepy ? 'zZ' : '', soft: !isExhausted(), asleep: !!state.sleeping },
     /* La ruleta vive dentro de Juegos: el giro gratis se avisa en Jugar. */
     btnPlay:  { need: false, badge: typeof wheelReady === 'function' && wheelReady() ? '🎡' : '', soft: true },
+    /* La vacuna se compra (y se pone) en la tienda. */
+    btnShop:  vaccineDue() ? { need: false, badge: VACCINE_EMOJI, soft: healthMax() >= 85 } : { need: false, badge: '' },
   };
   const key = JSON.stringify(want);
   if (updateDock._key === key) return;
@@ -2214,31 +2334,16 @@ function renderFoodTray(aviso){
   const meds = foodStock(MEDICINE.id);
   const med = tile(MEDICINE.id, MEDICINE.emoji, MEDICINE.name, meds,
     'med ' + (meds <= 0 ? 'out ' : '') + (state.sick ? 'urgent' : ''));
-  /* La vacuna de su etapa, mientras no la tenga puesta. Con ella son nueve
-     y la bandeja pasa a cinco columnas: sigue en dos filas (una tercera
-     subía la bandeja encima de la pantalla). */
-  const v = vaccineFor();
-  const vacN = v ? foodStock(v.id) : 0;
-  const vac = v && !isVaccinated() ? tile('vaccine', VACCINE_EMOJI, 'Vacuna', vacN,
-    'med ' + (vacN <= 0 ? 'out ' : '') + (healthMax() < 85 ? 'urgent' : '')) : '';
   const sub = aviso
     ? `<small class="warn">${escapeHtml(aviso)}</small>`
-    : `<small>${state.sick ? '¡Está enferma! Dale una medicina'
-      : vaccineDue() ? 'Le falta su vacuna 💉' : 'Toca varias: caen todas juntas'}</small>`;
+    : `<small>${state.sick ? '¡Está enferma! Dale una medicina' : 'Toca varias: caen todas juntas'}</small>`;
   tray.innerHTML = `
     <div class="tray-head"><span><b>¿Qué come?</b>${sub}</span>
       <button class="tray-close" id="trayClose">Cerrar</button></div>
-    <div class="tray-foods ${vac ? 'five' : ''}">${foods}${med}${vac}</div>`;
+    <div class="tray-foods">${foods}${med}</div>`;
   tray.querySelector('#trayClose').addEventListener('click', closeFoodTray);
   tray.querySelectorAll('[data-tray]').forEach(el => el.addEventListener('click', requireAlive(() => {
     const id = el.dataset.tray;
-    if (id === 'vaccine'){
-      if (mealBusy()){ renderFoodTray('Primero que termine de comer'); return; }
-      if (vacN <= 0){ closeFoodTray(); shopTab = 'food'; openShop(`Te falta la ${v.name.toLowerCase()}`); return; }
-      const problema = giveVaccine();
-      if (problema) renderFoodTray(problema); else closeFoodTray();
-      return;
-    }
     if (id === MEDICINE.id){
       if (mealBusy()){ renderFoodTray('Primero que termine de comer'); return; }
       if (meds <= 0){ closeFoodTray(); shopTab = 'food'; openShop('No te quedan medicinas'); return; }
@@ -2414,7 +2519,7 @@ function openShop(aviso, gachaRes){
         <span class="emoji">${VACCINE_EMOJI}</span>
         <div class="info">
           <b>${vac.name}</b>
-          <small>Sin ella su salud máxima baja (hoy ${Math.round(healthMax())}%) · tienes ${foodStock(vac.id)}</small>
+          <small>Sin ella su salud máxima baja (hoy ${Math.round(healthMax())}%) · se la pones al comprarla</small>
         </div>
         <span class="menu-record">${coinsLabel(vac.price)}</span>
       </div>`;
@@ -2429,7 +2534,7 @@ function openShop(aviso, gachaRes){
       <button class="shop-tab ${shopTab === 'gacha' ? 'active' : ''}" id="shopTabGacha">Gacha</button>
     </div>
     <div class="menu-list ${shopTab === 'style' ? 'style-list' : ''}">${
-      shopTab === 'food' ? vacShopRow + foodRows + medShopRow : shopTab === 'upgrades' ? upgradeRows
+      shopTab === 'food' ? foodRows + medShopRow : shopTab === 'upgrades' ? vacShopRow + upgradeRows
         : shopTab === 'gacha' ? gachaTabHtml(gachaRes) : styleRows('shop')}</div>
     <button class="overlay-btn secondary" id="btnCloseShop">Cerrar</button>
   `, hideOverlay);
@@ -2486,15 +2591,16 @@ function openShop(aviso, gachaRes){
 
   const buyVac = document.querySelector('[data-buy-vaccine]');
   if (buyVac) buyVac.addEventListener('click', () => {
-    if (foodStock(vac.id) > 0){ reopen(`Ya tienes la ${vac.name.toLowerCase()}: pónsela desde Comer`); return; }
     if (state.coins < vac.price){ reopen(`Te faltan ${coinsLabel(vac.price - state.coins)} para la ${vac.name.toLowerCase()}`); return; }
     confirmBuy({ icon: VACCINE_EMOJI, name: vac.name, price: vac.price }, () => {
       state.coins -= vac.price;
-      state.pantry[vac.id] = foodStock(vac.id) + 1;
-      saveState(); render();
-      reopen();
-      boughtPopup({ icon: VACCINE_EMOJI, name: vac.name, amount: '+1', price: vac.price,
-        note: 'Pónsela desde Comer: su salud máxima vuelve a 100%.' });
+      const capFrom = applyVaccine();
+      render();
+      /* Se cierra la tienda para que se vea vacunarla; el pop-up de la
+         compra sale cuando termina. */
+      hideOverlay();
+      vaccinateFx(capFrom, () => boughtPopup({ icon: VACCINE_EMOJI, name: vac.name, amount: 'Puesta ✓', price: vac.price,
+        note: 'Su salud máxima volvió a 100% y se va a enfermar la mitad.' }));
     });
   });
 
@@ -3026,7 +3132,10 @@ function wireButtons(){
   });
   document.getElementById('btnPlay').addEventListener('click', requireAlive(() => openGamesMenu()));
   document.getElementById('btnClean').addEventListener('click', requireAlive(btnClean));
-  document.getElementById('btnShop').addEventListener('click', requireAlive(() => openShop()));
+  document.getElementById('btnShop').addEventListener('click', requireAlive(() => {
+    if (vaccineDue()) shopTab = 'upgrades';   // donde está la vacuna, si es lo que avisa el 💉
+    openShop();
+  }));
   document.getElementById('btnStyle').addEventListener('click', requireAlive(() => openPersonalize()));
   document.getElementById('btnDebug').addEventListener('click', requireAlive(toggleDebugPanel));
   document.getElementById('btnCloseDebugSide').addEventListener('click', closeDebugPanel);

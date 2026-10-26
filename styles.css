@@ -1755,7 +1755,7 @@ body{
 .btn.need .btn-icon{box-shadow:
   0 2px 0 rgba(255,255,255,.55) inset, 0 -3px 0 rgba(0,0,0,.12) inset,
   0 0 0 2px #fff, 0 0 0 4.5px var(--ring), 0 6px 14px -4px var(--ring);}
-.btn[data-badge]::after{
+.btn[data-badge]::after, .pill[data-badge]::after{
   content:attr(data-badge);
   position:absolute;
   top:-7px; right:-3px;
@@ -1770,7 +1770,7 @@ body{
   box-shadow:0 0 0 2px #fff, 0 4px 10px -2px rgba(255,93,108,.7);
   animation:alertPulse 1s ease-in-out infinite;
 }
-.btn.badge-soft[data-badge]::after{
+.btn.badge-soft[data-badge]::after, .pill.badge-soft[data-badge]::after{
   background:#7b6cff;
   box-shadow:0 0 0 2px #fff, 0 4px 10px -2px rgba(123,108,255,.7);
   animation:none;
@@ -1827,7 +1827,11 @@ body{
 }
 .pill:active{transform:scale(.95); box-shadow:0 1px 0 #fff inset, 0 4px 10px -8px rgba(70,10,90,.6);}
 #btnStyle{--pill:#c25bff; --pill-hi:#ff8cc8;}
-#btnShop {--pill:#1fbf86; --pill-hi:#8ff0c4;}   /* verde menta: el dorado se confundía con el amarillo de Jugar */
+#btnShop {--pill:#1fbf86; --pill-hi:#8ff0c4;}
+.pill{position:relative;}
+.controls.tray-open .pill[data-badge]::after{display:none;}
+/* La jeringa de vaccinateFx(): canvas en píxeles físicos, sobre los personajes. */
+.vaccine-fx{position:absolute; z-index:6; pointer-events:none; image-rendering:pixelated; transform-origin:50% 50%;}   /* verde menta: el dorado se confundía con el amarillo de Jugar */
 /* Dos píldoras del mismo ancho: Personalizar a la izquierda, Tienda a la
    derecha. */
 .dock-sec .pill{flex:1; max-width:180px; justify-content:center;}
@@ -1852,7 +1856,7 @@ body{
   animation:trayIn .22s var(--ease-spring);
 }
 .food-tray.hidden{display:none;}
-.controls.tray-open .btn[data-badge]::after{display:none;}
+.controls.tray-open .btn[data-badge]::after, .pill[data-badge]::after{display:none;}
 @keyframes trayIn{ from{opacity:0; transform:translateY(10px) scale(.98);} }
 .tray-head{display:flex; justify-content:space-between; align-items:center; gap:8px; padding:0 4px;}
 .tray-head b{font-size:13px; font-weight:900;}
@@ -1873,9 +1877,6 @@ body{
 /* Siete comidas más la medicina: dos filas de cuatro (con cinco por fila
    quedaban dos filas desparejas y la segunda casi vacía). */
 .tray-foods{display:grid; grid-template-columns:repeat(4, 1fr); gap:5px;}
-/* Con la vacuna son nueve: cinco columnas, sigue en dos filas. */
-.tray-foods.five{grid-template-columns:repeat(5, 1fr); gap:4px;}
-.tray-foods.five .tray-food b{font-size:9.5px;}
 .tray-food{
   position:relative;
   display:flex;
