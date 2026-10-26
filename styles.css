@@ -511,6 +511,7 @@ body{
    por reclamar lleva un globito con cuántas, al costado (encima tapaba la
    copa); al ganar una pestañea como la bitácora. */
 .logros-btn{top:38px;}
+.dex-btn{top:74px;}
 .logros-btn[data-badge]::after{
   content:attr(data-badge);
   position:absolute; right:-17px; top:7px;

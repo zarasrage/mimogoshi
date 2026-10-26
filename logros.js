@@ -144,8 +144,8 @@ function nextMedalToast(){
     const t0 = (typeof audioNow === 'function' && audioNow()) || 0;
     [1318.5, 1568, 1975.5].forEach((f, i) => tone({ freq: f, durationMs: 120, type: 'triangle', vol: 0.06, at: t0 + i * 0.07 }));
   }
-  /* La pestañita de Logros pestañea, como la bitácora al volver. */
-  const lb = document.getElementById('btnLogros');
+  /* La pestañita de las medallas pestañea, como la bitácora al volver. */
+  const lb = q.tab === 'medallas' && document.getElementById('btnLogros');
   if (lb){ lb.classList.remove('blink'); void lb.offsetWidth; lb.classList.add('blink'); }
   clearTimeout(nextMedalToast.timer);
   nextMedalToast.timer = setTimeout(() => {
@@ -251,39 +251,36 @@ function dexSeen(id){
   }
 }
 function dexToast(id){
+  const db = document.getElementById('btnDex');
+  if (db){ db.classList.remove('blink'); void db.offsetWidth; db.classList.add('blink'); }
   queueToast({ emoji: '📖', small: '¡Nueva en el Mimodex!', title: SPECIES_RAW[id].name, cls: 'dex', tab: 'mimodex' });
 }
 
 const dexNum = id => '#' + String(SPECIES_IDS.indexOf(id) + 1).padStart(3, '0');
 const fmtDate = ts => new Date(ts).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' });
 
-/* ---------- la hoja de Logros ---------- */
+/* ---------- las hojas: Medallas y Mimodex ----------
+   Cada una con su pestañita en la pantalla (la copa y el libro, debajo de
+   la bitácora). Antes iban juntas en una hoja con dos pestañas. */
 
-let logrosTab = 'medallas';
 let dexAnim = 0;   // requestAnimationFrame del personaje de la ficha
 
-function openLogros(tab){
-  if (tab) logrosTab = tab;
+function openLogros(tab = 'medallas'){
   cancelAnimationFrame(dexAnim);
   medalsTick();
-  const body = logrosTab === 'medallas' ? medalsHtml() : dexHtml();
+  const dex = tab === 'mimodex';
   showOverlay(`
-    <h3>🏆 Logros</h3>
-    <div class="shop-tabs">
-      <button class="shop-tab ${logrosTab === 'medallas' ? 'active' : ''}" data-ltab="medallas">Medallas</button>
-      <button class="shop-tab ${logrosTab === 'mimodex' ? 'active' : ''}" data-ltab="mimodex">Mimodex</button>
-    </div>
-    ${body}
+    <h3>${dex ? '📖 Mimodex' : '🏆 Medallas'}</h3>
+    ${dex ? dexHtml() : medalsHtml()}
     <button class="overlay-btn secondary" id="btnCloseLogros">Cerrar</button>
   `, closeLogros);
   document.getElementById('overlayCard').classList.add('sheet-full');
   document.getElementById('btnCloseLogros').addEventListener('click', closeLogros);
-  document.querySelectorAll('[data-ltab]').forEach(b => b.addEventListener('click', () => openLogros(b.dataset.ltab)));
   document.querySelectorAll('[data-claim]').forEach(b => b.addEventListener('click', () => {
     const list = document.querySelector('.overlay-card .menu-list');
     const scroll = list ? list.scrollTop : 0;
     claimMedal(b.dataset.claim);
-    openLogros();
+    openLogros('medallas');
     const l2 = document.querySelector('.overlay-card .menu-list');
     if (l2) l2.scrollTop = scroll;
   }));
@@ -418,7 +415,13 @@ window.addEventListener('DOMContentLoaded', () => {
   if (btn) btn.addEventListener('click', e => {
     e.stopPropagation();
     btn.classList.remove('blink');
-    if (state && !gameOver && !activeMinigame) openLogros();
+    if (state && !gameOver && !activeMinigame) openLogros('medallas');
+  });
+  const dexBtn = document.getElementById('btnDex');
+  if (dexBtn) dexBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    dexBtn.classList.remove('blink');
+    if (state && !gameOver && !activeMinigame) openLogros('mimodex');
   });
   const toast = document.getElementById('medalToast');
   if (toast) toast.addEventListener('click', () => {
