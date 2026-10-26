@@ -314,10 +314,9 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   veintena de propuestas capturadas en la app real.
 - **Cada reloj se toca** y abre su ficha (`openStatInfo(stat)`, una hoja
   como las demás): arriba el valor **real** (el hambre en puntos de panza,
-  "83 / 180 pts"; la salud contra su tope, "71 / 88"; el resto con un
-  decimal) y una barra con los umbrales marcados (en rojo los que ya cruzó;
-  el tope perdido de la salud, rayado). Debajo, el ritmo de **ahora** por
-  hora real con lo que falta para el próximo umbral (`statRateNow()`,
+  "83 / 180 pts"; el resto con un decimal) y una barra con los umbrales
+  marcados (en rojo los que ya cruzó). Debajo, el ritmo de **ahora** por
+  hora real (la salud, que va lento, por día) con lo que falta para el próximo umbral (`statRateNow()`,
   `statEta()`, que integra con el x1.5 de apuro), y las listas "Lo que la
   sube", "Lo que la baja" y "Umbrales", cada fila con su valor y la
   etiqueta AHORA en lo que está pasando (dormida, de noche, caca, cama
@@ -702,34 +701,40 @@ saves de antes también reciben esas 2, para que la primera enfermedad no pille
 sin monedas. Para que la enfermedad se siga notando sin un botón propio, el botón
 **Comer** lleva un 💊 rojo que late mientras está enferma (`updateDock()`).
 
+**Salud que se recupera sola: 15 al día** (`HEALTH_RECOVER_PER_DAY`,
+solo sin ninguna causa activa). Antes era ~25 por hora real y cualquier
+susto se borraba en un rato; ahora lo que se pierde cuesta recuperarlo, y
+la medicina y la vacuna pesan.
+
 **Vacunas** (`VACCINES`, una por etapa: niño 20, adolescente 50, adulto
-100 💰): sin la vacuna de su etapa, el **tope** de la salud
-(`state.healthMax`) baja `VACCINE_CAP_LOSS_PER_DAY` (5) por día real; la
-barra no puede pasar de ahí (`capHealth()`, por donde pasa toda subida de
-salud). No baja la salud misma porque, sin causas, la salud se recupera
-sola ~25 por hora y una bajada lenta se tapaba. Vacunada, el tope vuelve a
-100, deja de bajar y se enferma la mitad (`VACCINE_SICK_MULT`), hasta que
-crece y le toca la de la etapa nueva (`state.vaccinated` =
-`{child, teen, adult}`). Con el tope en 0 se muere: son 20 días sin
-vacunarla. **No es comida**: se compra en la tienda, pestaña Mejoras
+100 💰): sin la vacuna de su etapa la salud pierde
+`VACCINE_HEALTH_LOSS_PER_DAY` (20) por día real, **siempre** (aparte de las
+causas, sin frenarse de noche). Como sola recupera 15, una mascota bien
+cuidada y sin vacuna queda en **−5 al día**: baja muy despacio, pero nunca
+se recupera (pedido así: que la diferencia sea −5). Vacunada deja de
+perder esos 20 y se enferma la mitad (`VACCINE_SICK_MULT`), hasta que crece
+y le toca la de la etapa nueva (`state.vaccinated` = `{child, teen,
+adult}`). La primera versión bajaba un **tope** de la salud
+(`state.healthMax`, con un tramo gris en el anillo) en vez de la salud:
+con la recuperación de 25 por hora, una bajada lenta de la salud misma se
+tapaba sola. Con 15 al día ya no hace falta y se sacó (`loadState()` borra
+`healthMax`). Muerte por descuido total (simulada contra `applyDecay()`
+real, 200 corridas): mediana **19.3 h** vacunada y **15.6 h** sin vacuna.
+**No es comida**: se compra en la tienda, pestaña Mejoras
 (arriba de todo, solo la de su etapa), y se pone **al comprarla**
 (`applyVaccine()`, que la deja puesta en el acto por si se cierra la app a
 mitad), con su animación (`vaccinateFx()`): la tienda se cierra, una
 jeringa de pixel art baja volando junto a la mascota, se echa para atrás,
-la pincha y empuja el émbolo; el líquido verde se vacía y el tramo gris del
-anillo de salud se va llenando a la par (`vaccineFx.cap`, que lee
-`render()`); después un estallido de crucecitas y la jeringa se va hacia
-arriba y se deshace. Recién ahí sale el pop-up de la compra. Mientras, la
-mascota está quieta en una rutina `kind:'vaccine'` (no se corta por estar
-triste o enferma); dormida no se despierta. Primero estaba en la bandeja de
-Comer, como la medicina: se compraba, quedaba guardada y había que ir a
-ponerla; `loadState()` pone la de su etapa si había una guardada y devuelve
-en monedas las que ya no sirven. El anillo de salud muestra el tope perdido
-como un tramo gris (`#cap-health`); la píldora de Tienda lleva un 💉
-(`vaccineDue()`, desde que el tope baja de 97; rojo bajo 85) y entonces
-abre directo en Mejoras, y la bitácora anota cuando le toca una nueva y
-cuando el tope baja de 90. Los saves de antes arrancan con el tope entero y
-sin vacunas.
+la pincha y empuja el émbolo mientras le saltan crucecitas verdes; después
+un estallido y la jeringa se va hacia arriba y se deshace. Recién ahí sale
+el pop-up de la compra. Mientras, la mascota está quieta en una rutina
+`kind:'vaccine'` (no se corta por estar triste o enferma); dormida no se
+despierta. Primero estaba en la bandeja de Comer, como la medicina: se
+compraba, quedaba guardada y había que ir a ponerla; `loadState()` pone la
+de su etapa si había una guardada y devuelve en monedas las que ya no
+sirven. La píldora de Tienda lleva un 💉 mientras le falte
+(`vaccineDue()`; rojo bajo `SICK_LOW_HEALTH_AT`) y entonces abre directo en
+Mejoras, y la bitácora anota cuando le toca una nueva.
 
 **Los avisos de la tienda van dentro de la tarjeta, no con `say()`**: la burbuja
 tiene `z-index:5` y el overlay `10`, así que un `say()` con un overlay abierto
@@ -1635,7 +1640,7 @@ teléfono va a llevar el tiempo completo y eso es lo que se quiere probar.
 Lleva un reloj virtual (`debugClockOffsetMs`, que suma `isNightMode()` y
 también `catchUp()`), así la noche cae en la hora simulada aunque se
 adelante varias veces; arriba de los botones se ve la hora simulada, la
-etapa, las cinco barras y el tope de salud, y "Hora real" lo vuelve a cero. No se guarda (al
+etapa y las cinco barras, y "Hora real" lo vuelve a cero. No se guarda (al
 recargar vuelve la hora real) y no mueve los relojes de la ruleta ni del
 desafío diario. Se corta si la mascota muere. Con "Stats al máximo" no baja
 nada (lo avisa). Al sacarlo: `debugSkipTime()`, `debugTimeInfo()`,

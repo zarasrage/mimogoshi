@@ -757,10 +757,6 @@ body{
   filter:drop-shadow(0 2px 2px rgba(0,0,0,.45));}
 .stat-track, .stat-fill, .stat-spark{fill:none; stroke-width:6;}
 .stat-track{stroke:rgba(0,0,0,.55); transition:stroke .5s ease;}
-/* Tope de salud perdido por falta de vacuna: un tramo gris claro (bloqueado) al
-   final del anillo de salud. */
-.stat-cap{fill:none; stroke-width:6; stroke:rgba(255,255,255,.2); stroke-dasharray:0 100;}
-.stat-cap.hidden{display:none;}
 .stat-disc{fill:rgba(0,0,0,.22);}
 .stat-inner{fill:none; stroke:rgba(var(--screen-lit-rgb),.12); stroke-width:1;}
 .stat-fill{
@@ -1803,8 +1799,6 @@ body{
 .si-gauge{position:relative; height:12px; border-radius:999px; background:rgba(0,0,0,.35); overflow:hidden;}
 .si-fill{position:absolute; left:0; top:0; bottom:0; border-radius:999px;
   background:linear-gradient(90deg, var(--si), var(--si-hi));}
-.si-capzone{position:absolute; top:0; bottom:0;
-  background:repeating-linear-gradient(135deg, rgba(255,255,255,.28) 0 3px, rgba(255,255,255,.08) 3px 6px);}
 .si-mark{position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:rgba(255,255,255,.55);}
 .si-mark.past{background:#ff5d6c;}
 .si-body h4{margin:8px 2px 0; font-size:12px; font-weight:900; text-transform:uppercase;
