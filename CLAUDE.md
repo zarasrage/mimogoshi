@@ -581,8 +581,11 @@ baja tan lento (~56 h la barra) que en esa simulación nunca llega a 20.
   quedan con una etapa fantasma.
 - **Hambre por etapa** (`HUNGER_CAP`, `HUNGER_PER_REAL_HOUR`, junto a
   `STAGE_CSS_PX`): la panza crece y come más. Niño 70 / adolescente 110 /
-  adulto 180 puntos de panza, que bajan 9.4 / 13.8 / 27.9 puntos por hora
-  real. **`state.hunger` se sigue guardando en %**: anillos, umbrales,
+  adulto 180 puntos de panza, que bajan 9.33 / 17.1 / 33.6 puntos por hora
+  real. **Mientras más grande, menos aguanta**: de lleno a vacío dura 7 h de
+  niño, 6 h de adolescente y 5 h de adulto (pedido así; con la primera
+  versión el adolescente era el que más aguantaba). El ritmo sale de
+  `0.933 * panza / horas`: bajo `DISTRESS_AT` (20%) baja x1.5. **`state.hunger` se sigue guardando en %**: anillos, umbrales,
   avisos y saves no cambian; lo que cambia por etapa es cuánto % llena una
   comida (`hungerFillPct()`: sus puntos sobre la panza; la comida rica, +30,
   llena 43% a un niño y 17% a un adulto) y cuánto % baja por hora
@@ -597,13 +600,15 @@ baja tan lento (~56 h la barra) que en esa simulación nunca llega a 20.
   lo que ganaba alguien que juega 10 partidas al día, y de adulto ~25%. Con
   esto, medido con una simulación de la economía (partidas de mérito 40,
   desafíos diarios, ruleta, regalos, comprando juegos apenas sobra un día de
-  comida, comiendo bocadillos): ~35 monedas al día de niño, ~60 de
-  adolescente y ~140 de adulto, o sea ~33% de lo que gana ese jugador de
-  niño y ~60% de adulto; ~30% de adulto para uno de 15 partidas al día, y
-  ~90% para uno de 6 (se eligió a propósito la versión exigente). Medido
-  contra `applyDecay()` real: de lleno a vacío 6.95 h de niño, 7.4 h de
-  adolescente y 6.0 h de adulto (bajo `DISTRESS_AT` se acelera); la muerte
-  por descuido total sigue en una mediana de ~18 h en las tres etapas. Las
+  comida, comiendo bocadillos): ~35 monedas al día de niño, ~79 de
+  adolescente y ~172 de adulto, o sea ~33% de lo que gana alguien que juega
+  10 partidas al día de niño, ~40-60% de adolescente y ~60-75% de adulto;
+  ~40% de adulto para uno de 15 partidas al día. Uno de 6 partidas al día
+  **no alcanza** a mantener al adulto (gana ~85-117 y la comida cuesta
+  172): es la versión exigente, elegida a propósito. Medido contra
+  `applyDecay()` real: de lleno a vacío 7.0 / 6.0 / 5.0 h; la muerte por
+  descuido total casi no cambia (mediana 17.6 / 17.4 / 16.8 h), porque la
+  manda la salud, que no depende de la etapa. Las
   demás barras todavía no cambian por etapa.
 - **Ánimos** (`ALL_MOODS`): `normal, happy, sad, sick, sleepy, dead`.
 
