@@ -299,10 +299,18 @@ function drawSprite(ctx, stage, mood, walkFrame, noClear, scaleOverride, box = {
 /* El bocadillo simple ya no es infinito ni gratis: se arranca con
    FOOD_START_STOCK porciones (ver freshState) y de ahí en más se repone en la
    tienda como cualquier otra comida, a precio. */
+/* Las comidas de hambre llevan descuento por tamaño: mientras más grande,
+   menos monedas por punto (0.33 / 0.30 / 0.28). Como la barra no pasa del
+   100%, lo que sobra se pierde: la grande conviene solo con harta hambre, y
+   eso es una decisión (darle un bocadillo ahora o esperar y darle la que
+   rinde más). Además calza con las etapas: a un adulto, con su panza grande,
+   le sirven las grandes. Antes era al revés (0.33 / 0.40 / 0.50: se pagaba
+   la comodidad), y comer de a varias porciones habría dejado las grandes sin
+   sentido. */
 const FOODS = [
   { id:'simple',   name:'Bocadillo simple', emoji:'🍬', restore:15, price:  5 },
-  { id:'rica',     name:'Comida rica',      emoji:'🍗', restore:30, price: 12 },
-  { id:'especial', name:'Comida especial',  emoji:'🍰', restore:50, price: 25 },
+  { id:'rica',     name:'Comida rica',      emoji:'🍗', restore:30, price:  9 },
+  { id:'especial', name:'Comida especial',  emoji:'🍰', restore:50, price: 14 },
   { id:'redbull',  name:'Red Bull',         emoji:'⚡', restore: 2, energy: 20, price: 20 },
   /* El banquete llena la barra entera, sea cual sea la panza (fill: con
      restore 100 solo, a un adulto de 180 lo dejaba a medias). Cuesta más que
