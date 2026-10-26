@@ -531,11 +531,13 @@ const STAGE_CSS_PX = { child: 50, teen: 64, adult: 78 };
    la idea es que el gasto crezca junto con lo que se gana (más juegos, más
    niveles, más desafíos diarios). Calibrado contra una simulación de la
    economía para que la comida se lleve ~35% de lo que gana alguien que juega
-   10 partidas al día de niño y ~60% de adulto. De lleno a vacío: 7.4 h de
-   niño, 8 h de adolescente y 6.4 h de adulto (horas reales). El huevo cuenta
-   como niño. Al crecer se mantiene el %: crecer no le da hambre de golpe. */
+   10 partidas al día de niño. Mientras más grande, menos aguanta: de lleno a
+   vacío dura 7 h de niño, 6 h de adolescente y 5 h de adulto (horas reales,
+   medido contra applyDecay(): cuenta el x1.5 de DISTRESS_MULT bajo el 20%,
+   por eso el ritmo es 0.933 * panza / horas). El huevo cuenta como niño. Al
+   crecer se mantiene el %: crecer no le da hambre de golpe. */
 const HUNGER_CAP = { child: 70, teen: 110, adult: 180 };
-const HUNGER_PER_REAL_HOUR = { child: 9.4, teen: 13.8, adult: 27.9 };
+const HUNGER_PER_REAL_HOUR = { child: 9.33, teen: 17.1, adult: 33.6 };
 function hungerStage(){
   const st = state && state.stage;
   return HUNGER_CAP[st] ? st : 'child';
