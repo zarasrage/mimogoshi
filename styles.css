@@ -1789,7 +1789,7 @@ body{
 }
 .pill:active{transform:scale(.95); box-shadow:0 1px 0 #fff inset, 0 4px 10px -8px rgba(70,10,90,.6);}
 #btnStyle{--pill:#c25bff; --pill-hi:#ff8cc8;}
-#btnShop {--pill:#f0a800; --pill-hi:#ffe08a;}
+#btnShop {--pill:#1fbf86; --pill-hi:#8ff0c4;}   /* verde menta: el dorado se confundía con el amarillo de Jugar */
 /* Dos píldoras del mismo ancho: Personalizar a la izquierda, Tienda a la
    derecha. */
 .dock-sec .pill{flex:1; max-width:180px; justify-content:center;}

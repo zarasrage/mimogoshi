@@ -281,7 +281,8 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   anillos (Dormir era azul marino al lado de un reloj violeta). Dormida,
   Despertar sigue violeta (el sol sobre amarillo no se leía). Debajo
   dos **píldoras** (`.pill`, del mismo ancho, blancas con el ícono en un
-  círculo de color, `.pill-icon`: rosa-violeta Personalizar, dorado Tienda;
+  círculo de color, `.pill-icon`: rosa-violeta Personalizar, verde menta
+  Tienda —era dorado y se confundía con el amarillo de Jugar—;
   antes eran un velo translúcido que se veía lavado) con lo de vez en cuando:
   Personalizar a la izquierda y Tienda a la derecha. Antes también estaban
   la Ruleta 🎡 (ahora dentro de Juegos, ver "Ruleta y gacha") y Reiniciar
@@ -640,7 +641,13 @@ al dinero.
 `state.pantry` guarda **porciones** por comida. Se arranca con
 `FOOD_START_STOCK = 5` de bocadillo simple (`freshState()`) y de ahí en más se
 repone en la tienda como cualquier otra comida, a `price: 5` — ya no es
-infinito ni gratis. `btnFeed()` cae solo al bocadillo si lo elegido se acabó,
+infinito ni gratis. Las comidas de hambre llevan **descuento por tamaño**:
+bocadillo +15 a 5, rica +30 a 9 y especial +50 a 14 (0.33 / 0.30 / 0.28
+monedas por punto). Como la barra no pasa del 100% y lo que sobra se
+pierde, la grande conviene solo con harta hambre: es una decisión. Antes era
+al revés (12 y 25: se pagaba la comodidad). Ojo: el costo por etapa de
+"Hambre por etapa" está medido con bocadillos; quien compre especiales gasta
+~15% menos. `btnFeed()` cae solo al bocadillo si lo elegido se acabó,
 y si el bocadillo también está en 0 avisa que hay que pasar por la tienda en
 vez de alimentar de la nada.
 
