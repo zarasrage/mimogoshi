@@ -493,7 +493,7 @@ solo en los minijuegos) **pestañea unos segundos y nada más**: a propósito
 no abre nada ni obliga a leer. Tocarlo abre `#logPanel`, lo más nuevo
 arriba; se cierra tocando afuera.
 
-Los ritmos de decaimiento (`DECAY_PER_HOUR`, `HEALTH_DECAY_PER_HOUR`,
+Los ritmos de decaimiento (`DECAY_PER_HOUR`, el daño a la salud,
 `POOP_CHANCE_PER_HOUR`, `SICK_CHANCE_PER_HOUR*`) se calibraron primero todos
 juntos, con el mismo factor (~3.54x), para que una mascota totalmente
 descuidada muriera en una mediana de ~12 horas reales. Después, **a propósito
@@ -501,13 +501,20 @@ y por pedido**, se rompió esa proporción en dos lugares:
 - hambre, felicidad e higiene bajan **al doble** de rápido (hay que atenderla
   más seguido): 100/424.5, 100/530.5 y 100/212 h de juego (el hambre después
   pasó a depender de la etapa, ver "Hambre por etapa" más abajo);
-- la salud baja **2.5 veces más lento** (`HEALTH_DECAY_PER_HOUR` = 100/1060):
-  las barras se vacían antes, pero morirse por eso tarda más.
+- la salud dejó de seguir ese escalado: sus ritmos van **en números redondos
+  de tiempo real, por pedido** (ver "Salud que se recupera sola" y "Vacunas" en "Dinero y tienda"): cada causa cuesta
+  **1 por hora** (`HEALTH_RISK_LOSS_PER_REAL_HOUR`: hambre, felicidad o
+  higiene bajo 30, cuenta una vez aunque sean varias;
+  `SICK_LOSS_PER_REAL_HOUR`: enferma), agotada y despierta **5 por día**
+  (`EXHAUSTED_LOSS_PER_DAY`), sin vacuna **20 por día** y se recupera sola
+  **15 por día**. Antes cada causa costaba ~5.7 por hora y la agotada ~17.
 
 Resultado, medido por simulación contra `applyDecay()`/`maybeAutoSleep()`
-reales (ticks de 4 s, sin modo nocturno, 400 corridas): totalmente descuidada
-se pone triste por primera vez a las **~3.9 h** reales (antes 7.3) y muere en
-una mediana de **~16.8 h** (p10 12.2, p90 21; antes 11.5). Los umbrales
+reales (ticks de 4 s, sin modo nocturno, 100 corridas): totalmente descuidada
+se pone triste por primera vez a las **~3.9 h** reales y muere en una
+mediana de **~67 h** vacunada (p10 55, p90 83) y **~45 h** sin vacuna (p10
+39, p90 50). Antes de pasar la salud a números redondos eran ~19 y ~16 h, y
+antes de las vacunas, 16.8. Los umbrales
 (`DISTRESS_AT`, `HEALTH_RISK_AT`, `SICK_LOW_HEALTH_AT`) no se tocaron: son
 valores de barra, no de tiempo. Si se vuelve a recalibrar, conviene repetir esa
 simulación en vez de razonar con un factor, porque las proporciones ya no son
@@ -559,8 +566,8 @@ simulación, no solo cómo se ve.
   dejó sin energía) y nada la despierta, ni de noche. De 0 a 7 recupera en
   ~4 min reales.
 - **< `EXHAUSTED_AT` (15): agotada.** Se la puede despertar (`tryWake()` avisa
-  que está agotada), pero **despierta** pierde salud a `EXHAUSTED_HEALTH_MULT`
-  (x3) el ritmo de una causa normal (~17 de salud por hora real) y se la ve
+  que está agotada), pero **despierta** pierde `EXHAUSTED_LOSS_PER_DAY` (5)
+  de salud por día real (antes ~17 por hora: pedido así) y se la ve
   triste (`isExhausted()` → ánimo `sad`; tampoco va a los muebles). Dormida
   no cuesta nada: se está recuperando. Por eso la energía ya **no** entra en
   la regla general de `HEALTH_RISK_AT` (antes, energía bajo 30 costaba salud
@@ -635,8 +642,9 @@ baja tan lento (~56 h la barra) que en esa simulación nunca llega a 20.
   **no alcanza** a mantener al adulto (gana ~85-117 y la comida cuesta
   172): es la versión exigente, elegida a propósito. Medido contra
   `applyDecay()` real: de lleno a vacío 7.0 / 6.0 / 5.0 h; la muerte por
-  descuido total casi no cambia (mediana 17.6 / 17.4 / 16.8 h), porque la
-  manda la salud, que no depende de la etapa. Las
+  descuido total casi no cambiaba con la etapa (mediana 17.6 / 17.4 / 16.8 h
+  con los ritmos de salud de entonces), porque la manda la salud, que no
+  depende de la etapa. Las
   demás barras todavía no cambian por etapa.
 - **Ánimos** (`ALL_MOODS`): `normal, happy, sad, sick, sleepy, dead`.
 
@@ -718,8 +726,8 @@ adult}`). La primera versión bajaba un **tope** de la salud
 (`state.healthMax`, con un tramo gris en el anillo) en vez de la salud:
 con la recuperación de 25 por hora, una bajada lenta de la salud misma se
 tapaba sola. Con 15 al día ya no hace falta y se sacó (`loadState()` borra
-`healthMax`). Muerte por descuido total (simulada contra `applyDecay()`
-real, 200 corridas): mediana **19.3 h** vacunada y **15.6 h** sin vacuna.
+`healthMax`). Muerte por descuido total: ver arriba ("Los ritmos de
+decaimiento").
 **No es comida**: se compra en la tienda, pestaña Mejoras
 (arriba de todo, solo la de su etapa), y se pone **al comprarla**
 (`applyVaccine()`, que la deja puesta en el acto por si se cierra la app a

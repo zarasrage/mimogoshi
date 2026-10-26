@@ -593,8 +593,7 @@ function stageDeviceScale(stage){
    - bajo ENERGY_LOCK_AT se desploma: se duerme en el acto (aunque esté
      despierta) y nada la despierta hasta que recupere un poco;
    - bajo EXHAUSTED_AT está agotada: se la puede despertar, pero mientras
-     siga despierta pierde salud (EXHAUSTED_HEALTH_MULT veces el ritmo de una
-     causa normal) y se la ve triste;
+     siga despierta pierde salud (EXHAUSTED_LOSS_PER_DAY) y se la ve triste;
    - bajo SLEEPY_THRESHOLD puede quedarse dormida sola, con más probabilidad
      mientras menos energía le quede;
    - con WAKE_AT se despierta sola.
@@ -604,7 +603,6 @@ function stageDeviceScale(stage){
    es una decisión: despertarla cuesta salud. */
 const ENERGY_LOCK_AT = 7;
 const EXHAUSTED_AT = 15;
-const EXHAUSTED_HEALTH_MULT = 3;
 const SLEEPY_THRESHOLD = 20;
 const WAKE_AT = 90;
 /* Después de despertarla a mano no se vuelve a dormir sola por un rato: si
@@ -632,10 +630,10 @@ function isExhausted(){ return !state.sleeping && state.energy < EXHAUSTED_AT; }
    de barra, no de tiempo, y no necesitan escalarse para que la proporción se
    mantenga. */
 /* Hambre, felicidad e higiene van al doble de rápido que esa calibración
-   (pedido explícito: que haya que atenderla más seguido), y la salud baja 2.5
-   veces más lento (ver HEALTH_DECAY_PER_HOUR): las barras se vacían antes,
-   pero morirse por eso tarda más. Ver CLAUDE.md para el tiempo hasta la muerte
-   que da esta combinación. */
+   (pedido explícito: que haya que atenderla más seguido). La salud ya no
+   sigue este escalado: sus ritmos van en números redondos por hora o por
+   día real (ver HEALTH_RISK_LOSS_PER_REAL_HOUR). Ver CLAUDE.md para el
+   tiempo hasta la muerte que da esta combinación. */
 const DECAY_PER_HOUR = {
   /* El hambre ya no va acá: depende de la etapa (hungerDecayPerHour(), junto
      a HUNGER_CAP). Antes era 100 / 424.5 para todas, 7.1 horas reales. */
@@ -664,11 +662,17 @@ const GIFT_CHANCE_PER_HOUR = 0.00096;
 const DISTRESS_AT = { hunger: 20, happiness: 20, hygiene: 20, energy: 10 };
 const DISTRESS_MULT = 1.5;
 
-/* La salud tiene dos causas de daño independientes que se suman: que alguna de
-   las otras barras esté bajo HEALTH_RISK_AT, y estar enfermo. Con las dos a la
-   vez la salud cae al doble. */
+/* La salud tiene tres causas de daño independientes que se suman: que alguna
+   de las otras barras esté bajo HEALTH_RISK_AT (cuenta una vez aunque sean
+   varias), estar enferma y estar agotada y despierta. Van en números
+   redondos de tiempo REAL (pedido así); applyDecay() los pasa a horas de
+   juego. Antes cada causa costaba ~5.7 por hora real (100 / 1060 por hora
+   de juego) y la agotada el triple, ~17 por hora. De noche bajan a la
+   mitad, como todo lo que decae. */
 const HEALTH_RISK_AT = 30;
-const HEALTH_DECAY_PER_HOUR = 100 / 1060;  // ~17.7 horas reales por cada causa sola (antes 424: 2.5 veces más lento)
+const HEALTH_RISK_LOSS_PER_REAL_HOUR = 1;   // hambre, felicidad o higiene bajo HEALTH_RISK_AT
+const SICK_LOSS_PER_REAL_HOUR = 1;          // enferma
+const EXHAUSTED_LOSS_PER_DAY = 5;           // agotada (energía bajo EXHAUSTED_AT) y despierta
 /* Sin ninguna causa activa se recupera sola, despacio: 15 por día real
    (antes 0.424 por hora de juego, ~25 por hora real: cualquier susto se
    borraba en un rato). Así lo que se pierde cuesta recuperarlo, y la
@@ -996,9 +1000,9 @@ function applyDecay(hours){
   const enRiesgo = state.hunger    < HEALTH_RISK_AT || state.happiness < HEALTH_RISK_AT ||
                    state.hygiene   < HEALTH_RISK_AT;
   let healthDelta = 0;
-  if (enRiesgo)   healthDelta -= HEALTH_DECAY_PER_HOUR * nightFactor;
-  if (state.sick) healthDelta -= HEALTH_DECAY_PER_HOUR * nightFactor;
-  if (isExhausted()) healthDelta -= HEALTH_DECAY_PER_HOUR * EXHAUSTED_HEALTH_MULT * nightFactor;
+  if (enRiesgo)   healthDelta -= HEALTH_RISK_LOSS_PER_REAL_HOUR / 60 * nightFactor;
+  if (state.sick) healthDelta -= SICK_LOSS_PER_REAL_HOUR / 60 * nightFactor;
+  if (isExhausted()) healthDelta -= EXHAUSTED_LOSS_PER_DAY / (24 * 60) * nightFactor;
   if (healthDelta === 0) healthDelta = HEALTH_RECOVER_PER_HOUR;
   /* Sin la vacuna de su etapa pierde siempre lo suyo, aparte de las causas
      y sin frenarse de noche: así cuidada queda justo en 15 − 20 = −5 al día
@@ -2322,9 +2326,9 @@ function statRateNow(stat){
   if (stat === 'health'){
     const night = isNightMode() ? NIGHT_DECAY_FACTOR : 1;
     let d = 0;
-    if (healthRiskNow()) d -= HEALTH_DECAY_PER_HOUR * night;
-    if (state.sick) d -= HEALTH_DECAY_PER_HOUR * night;
-    if (isExhausted()) d -= HEALTH_DECAY_PER_HOUR * EXHAUSTED_HEALTH_MULT * night;
+    if (healthRiskNow()) d -= HEALTH_RISK_LOSS_PER_REAL_HOUR / 60 * night;
+    if (state.sick) d -= SICK_LOSS_PER_REAL_HOUR / 60 * night;
+    if (isExhausted()) d -= EXHAUSTED_LOSS_PER_DAY / (24 * 60) * night;
     if (d === 0) d = HEALTH_RECOVER_PER_HOUR;
     if (vaccineFor() && !isVaccinated()) d -= VACCINE_HEALTH_LOSS_PER_DAY / (24 * 60);
     if ((d > 0 && state.health >= 99.99) || (d < 0 && state.health <= 0)) return 0;
@@ -2445,7 +2449,7 @@ function statInfoData(stat){
       marks: [
         { v: WAKE_AT, t: 'Se despierta sola', above: true },
         { v: SLEEPY_THRESHOLD, t: 'Puede quedarse dormida sola' },
-        { v: EXHAUSTED_AT, t: `Agotada: despierta pierde salud ×${EXHAUSTED_HEALTH_MULT}` },
+        { v: EXHAUSTED_AT, t: `Agotada: despierta pierde ${EXHAUSTED_LOSS_PER_DAY} de salud al día` },
         { v: GAME_MIN_ENERGY, t: `Muy cansada para jugar · apuro ×${nf(DISTRESS_MULT)}` },
         { v: ENERGY_LOCK_AT, t: 'Se desploma: se duerme y no se la puede despertar' },
       ],
@@ -2476,7 +2480,6 @@ function statInfoData(stat){
   }
 
   /* Salud */
-  const cause = HEALTH_DECAY_PER_HOUR * GAME_H;
   const sickH = p => 1 - Math.pow(1 - p, GAME_H);
   const vac = vaccineFor(), vacOk = isVaccinated();
   const mult = vacOk ? VACCINE_SICK_MULT : 1;
@@ -2486,9 +2489,9 @@ function statInfoData(stat){
     big: nf(state.health, 1), unit: '/ 100',
     sub: vac && !vacOk ? `Sin vacuna: pierde ${VACCINE_HEALTH_LOSS_PER_DAY} al día` : 'Puntos de salud',
     down: [
-      { e: '⚠️', t: `Hambre, felicidad o higiene bajo ${HEALTH_RISK_AT}%`, d: 'Cuenta una vez, aunque sean varias', v: `−${nf(cause)}/h`, down: true, on: risk },
-      { e: '🤒', t: 'Enferma', d: 'Se suma a lo de arriba', v: `−${nf(cause)}/h`, down: true, on: !!state.sick },
-      { e: '😵', t: `Agotada y despierta (energía bajo ${EXHAUSTED_AT})`, d: 'Dormida no cuesta nada', v: `−${nf(cause * EXHAUSTED_HEALTH_MULT)}/h`, down: true, on: isExhausted() },
+      { e: '⚠️', t: `Hambre, felicidad o higiene bajo ${HEALTH_RISK_AT}%`, d: 'Cuenta una vez, aunque sean varias', v: `−${nf(HEALTH_RISK_LOSS_PER_REAL_HOUR)}/h`, down: true, on: risk },
+      { e: '🤒', t: 'Enferma', d: 'Se suma a lo de arriba', v: `−${nf(SICK_LOSS_PER_REAL_HOUR)}/h`, down: true, on: !!state.sick },
+      { e: '😵', t: `Agotada y despierta (energía bajo ${EXHAUSTED_AT})`, d: 'Dormida no cuesta nada', v: `−${EXHAUSTED_LOSS_PER_DAY}/día`, down: true, on: isExhausted() },
       { e: '🌙', t: 'De noche (00:00 a 06:00)', d: 'Lo que baja, baja a la mitad', v: `×${nf(NIGHT_DECAY_FACTOR)}`, up: true, on: night && causas > 0 },
       ...(vac ? [{ e: VACCINE_EMOJI, t: 'Sin la vacuna de su etapa', d: vacOk ? 'Ya la tiene puesta' : `Siempre, aunque esté todo bien, y también de noche`, v: `−${VACCINE_HEALTH_LOSS_PER_DAY}/día`, down: true, on: !vacOk }] : []),
     ],
@@ -2527,7 +2530,7 @@ function statNowHtml(stat, data){
   const k = data.unitPts || 1, u = data.unitPts ? ' pts' : '';
   let ritmo;
   if (Math.abs(r) < 0.005) ritmo = stat === 'health' && state.health >= 99.99 ? 'Está entera: no cambia' : 'Quieta: no está cambiando';
-  else if (data.perDay && Math.abs(r) < 2) ritmo = `${r > 0 ? 'Sube' : 'Baja'} ${nf(Math.abs(r) * 24)} por día`;
+  else if (data.perDay && Math.abs(r) < 1) ritmo = `${r > 0 ? 'Sube' : 'Baja'} ${nf(Math.abs(r) * 24)} por día`;
   else ritmo = `${r > 0 ? 'Sube' : 'Baja'} ${nf(Math.abs(r) * k)}${u} por hora${data.unitPts ? ` (${nf(Math.abs(r))}%)` : ''}`;
   const lines = [];
   if (r > 0.005){
