@@ -1621,6 +1621,21 @@ const PX_ICONS = {
       '.bbbbbbb.',
     ],
   },
+  /* Logros: una copa dorada, del mismo trazo que el pergamino de la bitácora. */
+  trophy: {
+    pal: { o:'#5a3a00', b:'#ffc83d', l:'#ffe58a', m:'#c98a12', w:'#ffffff' },
+    art: [
+      '.lwllbbm.',
+      'llwllbbmm',
+      '.lwllbbm.',
+      '..llbbm..',
+      '...lbm...',
+      '....b....',
+      '...lbm...',
+      '..lbbbm..',
+      '..mmmmm..',
+    ],
+  },
   moon: {
     pal: { o:'#4a3f12', b:'#fff0a8', l:'#ffffff', m:'#d9c25a', w:'#ffffff' },
     art: [
