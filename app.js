@@ -1636,6 +1636,22 @@ const PX_ICONS = {
       '..mmmmm..',
     ],
   },
+  /* Mimodex: un libro azul con un huevo en la tapa (con una estrella se
+     leía como la cruz de un botiquín), las hojas a la derecha. */
+  book: {
+    pal: { o:'#14205a', b:'#4d7dff', l:'#9cc0ff', m:'#2f55c9', w:'#ffffff', e:'#ffe9b0', p:'#fff3d6' },
+    art: [
+      '.lbbbbbm.',
+      'lbbbbbbmp',
+      'lbbwwbbmp',
+      'lbwwwebmp',
+      'lbwwwebmp',
+      'lbwwwebmp',
+      'lbbweebmp',
+      'lmmmmmmmp',
+      '.ppppppp.',
+    ],
+  },
   moon: {
     pal: { o:'#4a3f12', b:'#fff0a8', l:'#ffffff', m:'#d9c25a', w:'#ffffff' },
     art: [
