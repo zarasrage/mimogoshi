@@ -364,8 +364,10 @@ body{
   gap:4px;
 }
 
-/* Comida servida en el piso (serveFood en app.js): cae con un rebote, se
-   achica de a mordiscos mientras la mascota come y se desvanece al final. */
+/* Comida servida en el piso (serveFood en app.js): cae del cielo (--drop,
+   el alto del piso) con un rebote, se achica de a mordiscos mientras la
+   mascota come (--eat) y se desvanece. Varias se apilan: al comerse la de
+   abajo, las otras bajan (transición del bottom). */
 .floor-food{
   position:absolute;
   bottom:4px;
@@ -373,13 +375,16 @@ body{
   line-height:1;
   transform:translateX(-50%);
   pointer-events:none;
-  animation:foodDrop .5s cubic-bezier(.3,1.5,.5,1);
+  transition:bottom .2s ease, opacity .25s;
+  animation:foodDrop .65s linear;
 }
-.floor-food.eating{animation:foodBite 1.8s steps(3, end) forwards;}
-.floor-food.gone{opacity:0; transition:opacity .25s;}
+.floor-food.eating{animation:foodBite var(--eat, 1.1s) steps(3, end) forwards;}
+.floor-food.gone{opacity:0;}
 @keyframes foodDrop{
-  0%{transform:translate(-50%, -70px); opacity:0;}
-  40%{opacity:1;}
+  0%{transform:translate(-50%, calc(-1 * var(--drop, 80px))) rotate(-25deg); opacity:0; animation-timing-function:cubic-bezier(.5,0,1,1);}
+  12%{opacity:1;}
+  72%{transform:translate(-50%, 0) rotate(0) scale(1.15, .8); animation-timing-function:cubic-bezier(0,0,.4,1);}
+  86%{transform:translate(-50%, -9px) scale(.95, 1.08); animation-timing-function:cubic-bezier(.6,0,1,1);}
   100%{transform:translate(-50%, 0);}
 }
 @keyframes foodBite{
@@ -619,6 +624,35 @@ body{
 }
 .creature-floor.furni-hover, .creature-floor.furni-hover canvas{cursor:pointer;}
 
+/* Objetos mágicos (objetos.js). La luz ambiente tiñe la pieza y los
+   muebles pero va detrás de los personajes; las partículas van en dos
+   canvas del tamaño del piso, en píxeles físicos (como la mascota), uno
+   detrás y otro delante de los personajes. Ninguno recibe toques. */
+.ambient-layer{position:absolute; inset:-40px 0 0; pointer-events:none; opacity:0; transition:opacity .6s ease;}
+.ambient-layer.on{opacity:1;}
+.fx-canvas{position:absolute; inset:0; width:100%; height:100%; pointer-events:none; image-rendering:pixelated;}
+#cloneCanvas{
+  position:absolute; bottom:4px; width:96px; height:96px; image-rendering:pixelated; pointer-events:none;
+  filter:hue-rotate(170deg) saturate(1.4) brightness(1.15) drop-shadow(0 0 4px rgba(170,140,255,.9));
+}
+#cloneCanvas.hidden{display:none;}
+.magic-flash{position:absolute; inset:-60px -20px -20px; pointer-events:none; opacity:0; background:var(--flash, #fff); z-index:7;}
+@keyframes magicFlash{ 0%{opacity:var(--flash-a, .85);} 100%{opacity:0;} }
+/* Álbum de la cámara: polaroids en grilla. El canvas va a escala entera
+   (drawPhoto): nada de rotarlos, que el pixel art se embarra. */
+.album-list{flex:1 1 auto;}
+.album-grid{display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; padding:4px 2px 8px;}
+.polaroid{
+  background:#fbfbf7; border-radius:4px; padding:6px 6px 4px;
+  box-shadow:0 6px 14px -8px rgba(0,0,0,.6), 0 1px 0 rgba(255,255,255,.6) inset;
+  display:flex; flex-direction:column; align-items:center; gap:3px;
+}
+.polaroid canvas{image-rendering:pixelated; border-radius:2px; display:block;}
+.polaroid small{font-size:10px; font-weight:800; color:#5a4a66; white-space:nowrap;}
+
+/* Mientras el láser o el jetpack se manejan con toques, el piso es un mando. */
+.creature-floor.floor-mode{cursor:crosshair;}
+
 /* Tele prendida: la imagen parpadea un poco, como pantalla de verdad. */
 .furni-part.flicker{animation:tvFlicker .24s steps(2) infinite;}
 @keyframes tvFlicker{ from{filter:brightness(1.12);} to{filter:brightness(.9) saturate(1.2);} }
@@ -723,6 +757,10 @@ body{
   filter:drop-shadow(0 2px 2px rgba(0,0,0,.45));}
 .stat-track, .stat-fill, .stat-spark{fill:none; stroke-width:6;}
 .stat-track{stroke:rgba(0,0,0,.55); transition:stroke .5s ease;}
+/* Tope de salud perdido por falta de vacuna: un tramo gris claro (bloqueado) al
+   final del anillo de salud. */
+.stat-cap{fill:none; stroke-width:6; stroke:rgba(255,255,255,.2); stroke-dasharray:0 100;}
+.stat-cap.hidden{display:none;}
 .stat-disc{fill:rgba(0,0,0,.22);}
 .stat-inner{fill:none; stroke:rgba(var(--screen-lit-rgb),.12); stroke-width:1;}
 .stat-fill{
@@ -1835,6 +1873,9 @@ body{
 /* Siete comidas más la medicina: dos filas de cuatro (con cinco por fila
    quedaban dos filas desparejas y la segunda casi vacía). */
 .tray-foods{display:grid; grid-template-columns:repeat(4, 1fr); gap:5px;}
+/* Con la vacuna son nueve: cinco columnas, sigue en dos filas. */
+.tray-foods.five{grid-template-columns:repeat(5, 1fr); gap:4px;}
+.tray-foods.five .tray-food b{font-size:9.5px;}
 .tray-food{
   position:relative;
   display:flex;

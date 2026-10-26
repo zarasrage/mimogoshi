@@ -334,6 +334,30 @@ const MEDICINE = { id:'medicina', name:'Medicina', emoji:'💊', price: 15 };
 const MED_START_STOCK = 2;
 const MED_HEALTH = 20;
 
+/* Vacunas: una por etapa (niño, adolescente, adulto), cada una más cara.
+   Sin la vacuna de su etapa, el TOPE de la salud (state.healthMax) baja de a
+   poco, VACCINE_CAP_LOSS_PER_DAY por día real: la barra no puede subir más
+   allá, la cuide como la cuide. No baja la salud misma porque sin ninguna
+   causa la salud se recupera sola (~25 por hora) y una bajada lenta se
+   taparía. Al vacunarla el tope vuelve a 100 y deja de bajar, hasta que
+   crece y le toca la de la etapa nueva. Vacunada, además, se enferma la
+   mitad (VACCINE_SICK_MULT). Se compran en la tienda (pestaña Comida, solo
+   la de su etapa) y se ponen desde la bandeja de Comer, como la medicina. Si
+   el tope llega a 0, se muere: a 5 por día son 20 días sin vacunarla. */
+const VACCINES = {
+  child: { id: 'vac_child', name: 'Vacuna de niño',        price: 20 },
+  teen:  { id: 'vac_teen',  name: 'Vacuna de adolescente', price: 50 },
+  adult: { id: 'vac_adult', name: 'Vacuna de adulto',      price: 100 },
+};
+const VACCINE_EMOJI = '💉';
+const VACCINE_CAP_LOSS_PER_DAY = 5;
+const VACCINE_SICK_MULT = 0.5;
+function vaccineFor(stage = state.stage){ return VACCINES[stage] || null; }
+function isVaccinated(stage = state.stage){ return !!(state.vaccinated && state.vaccinated[stage]); }
+function healthMax(){ return clamp(state.healthMax ?? 100); }
+/* Toda subida de salud pasa por acá: nunca más allá del tope. */
+function capHealth(){ state.health = Math.min(clamp(state.health), healthMax()); }
+
 function foodById(id){ return FOODS.find(f => f.id === id) || FOODS[0]; }
 
 const FOOD_ENERGY_DEFAULT = 4;
@@ -426,6 +450,7 @@ const STYLE_ITEMS = [
 ];
 
 const STYLE_SECTIONS = [
+  { kind:'furni',  title:'Objetos mágicos ✨', wow: true },   // objetos.js
   { kind:'furni',  title:'Muebles' },
   { kind:'shell',  title:'Carcasa' },
   { kind:'screen', title:'Pantalla' },
@@ -733,6 +758,9 @@ function freshState(name, species){
     selectedFood: 'simple',
     coins: 0,
     pantry: { simple: FOOD_START_STOCK, [MEDICINE.id]: MED_START_STOCK },  // porciones en la mochila
+    healthMax: 100,      // tope de la salud: baja sin la vacuna de su etapa (ver VACCINES)
+    objData: {},         // lo que guardan los objetos mágicos (objetos.js): fruta, fotos, el frijol...
+    vaccinated: {},      // { child, teen, adult }: qué vacunas tiene puestas
     records: {},   // mejor puntaje por minijuego
     upgrades: freshUpgrades(),
     unlockedGames: [],   // los gratis (price 0) no hace falta anotarlos
@@ -767,6 +795,10 @@ function loadState(){
     if (s.pantry.simple === undefined) s.pantry.simple = FOOD_START_STOCK;
     // saves de cuando la medicina era un botón gratis: arrancan con lo mismo que una partida nueva
     if (s.pantry[MEDICINE.id] === undefined) s.pantry[MEDICINE.id] = MED_START_STOCK;
+    // saves de antes de las vacunas: tope entero y ninguna puesta
+    if (typeof s.healthMax !== 'number' || !isFinite(s.healthMax)) s.healthMax = 100;
+    if (!s.vaccinated || typeof s.vaccinated !== 'object') s.vaccinated = {};
+    if (!s.objData || typeof s.objData !== 'object') s.objData = {};   // objetos.js
     // se cerró la app mientras iba a comer: lo que faltaba se suma de una
     if (s.meal){
       s.hunger = clamp((s.hunger || 0) + (s.meal.hunger || 0));
@@ -892,7 +924,8 @@ function decayRate(stat, value){
    y 72 * 0.1 daría 7.2 — o sea "seguro", además de ser una probabilidad > 1.
    Compuesta, el resultado siempre queda entre 0 y 1 y respeta la tasa por hora. */
 function sickChance(hours){
-  const porHora = state.health < SICK_LOW_HEALTH_AT ? SICK_CHANCE_PER_HOUR_LOW : SICK_CHANCE_PER_HOUR;
+  let porHora = state.health < SICK_LOW_HEALTH_AT ? SICK_CHANCE_PER_HOUR_LOW : SICK_CHANCE_PER_HOUR;
+  if (isVaccinated()) porHora *= VACCINE_SICK_MULT;
   return 1 - Math.pow(1 - porHora, hours);
 }
 
@@ -975,6 +1008,13 @@ function applyDecay(hours){
   const careDelta = (state.hunger>60?1:-1) + (state.happiness>60?1:-1) + (state.hygiene>60?1:-1);
   if (careDelta > 0) state.careGood += hours * careDelta * 0.5;
   if (careDelta < 0) state.careBad += hours * -careDelta * 0.5;
+
+  /* Sin la vacuna de su etapa, el tope de la salud baja de a poco (ver
+     VACCINES). El huevo no necesita vacuna. */
+  if (vaccineFor() && !isVaccinated()){
+    state.healthMax = Math.max(0, healthMax() - hours * VACCINE_CAP_LOSS_PER_DAY / (24 * 60));
+  }
+  capHealth();
 
   state.ageHours += hours;
   state.stage = stageFor(state.ageHours);
@@ -1113,7 +1153,7 @@ function logSnapshot(){
   return {
     poop: state.poop, sick: state.sick, gift: state.gift, stage: state.stage,
     hunger: state.hunger, happiness: state.happiness, hygiene: state.hygiene,
-    energy: state.energy, health: state.health, sleeping: state.sleeping,
+    energy: state.energy, health: state.health, sleeping: state.sleeping, healthMax: healthMax(),
     clean: upgradeState('autoClean').timesUsed || 0, med: upgradeState('autoMed').timesUsed || 0,
   };
 }
@@ -1141,7 +1181,9 @@ function logChanges(a, t, away){
   if (ALL_STAGES.indexOf(b.stage) > ALL_STAGES.indexOf(a.stage)){
     const nombres = { child: 'Nació', teen: 'Creció: ya es adolescente', adult: 'Creció: ya es adulto' };
     if (nombres[b.stage]) logEvent(b.stage === 'child' ? '🐣' : '🌱', nombres[b.stage], t, away);
+    if (b.stage !== 'child' && vaccineFor(b.stage)) logEvent(VACCINE_EMOJI, `Le toca la ${vaccineFor(b.stage).name.toLowerCase()}`, t, away);
   }
+  if (a.healthMax >= 90 && b.healthMax < 90) logEvent(VACCINE_EMOJI, 'Le falta su vacuna: su salud máxima empezó a bajar', t, away);
   for (const [k, umbral, e, m] of LOG_LOW){
     if (a[k] >= umbral && b[k] < umbral && !(k === 'energy' && b.sleeping)) logEvent(e, m, t, away);
   }
@@ -1376,7 +1418,16 @@ function render(){
     const txt = Math.round(v) + '%';
     if (num.textContent !== txt) num.textContent = txt;
   });
-  /* Durmiendo, el reloj de energía se ve cargando (un destello que da
+  /* El tope de la salud que se perdió por no tener la vacuna: el final del
+     anillo se ve apagado, de healthMax a 100. */
+  const capV = Math.round(healthMax() * 10) / 10;
+  if (render._cap !== capV){
+    render._cap = capV;
+    const cap = document.getElementById('cap-health');
+    cap.style.strokeDasharray = `0 ${capV} ${100 - capV} 0`;
+    cap.classList.toggle('hidden', capV >= 99.9);
+  }
+    /* Durmiendo, el reloj de energía se ve cargando (un destello que da
      vueltas): sube tan poco por tick (~0.15) que el arco solo no lo
      muestra. */
   const charging = !!state.sleeping && !gameOver && state.energy < 100;
@@ -1408,7 +1459,7 @@ function render(){
     { w: canvas.width, h: canvas.height });
   canvas.style.left = (walker.x*100) + '%';
   canvas.style.bottom = (4 + walker.y) + 'px';
-  canvas.style.transform = `translateX(-50%) scaleX(${walker.dir})`;
+  canvas.style.transform = actorTransform(walker, drawn);
   canvas.style.opacity = walker.hidden ? '0' : '';
   walker.drawn = walker.hidden ? null : drawn;   // para saber si un toque cae sobre ella (muebles.js)
   updateHat(walker.drawn);
@@ -1423,6 +1474,21 @@ function render(){
 
   document.getElementById('poopFx').classList.toggle('hidden', !state.poop);
   document.getElementById('giftFx').classList.toggle('hidden', !state.gift);
+}
+
+/* Transform del canvas de un personaje: mira a su lado (scaleX) y, si un
+   objeto lo da vuelta (el cañón, objetos.js), cabeza abajo (scaleY(-1)),
+   girando sobre el centro del sprite y no del canvas: el sprite va apoyado
+   abajo y, girado sobre el centro del canvas, saltaba arriba. Escalas de -1
+   y 1: el pixel art no se deforma. */
+function actorTransform(act, drawn){
+  let t = `translateX(-50%) scaleX(${act.dir})`;
+  if (act.flipY && drawn && drawn.frame){
+    const k = drawn.box.h / CANVAS_H;
+    const cy = (drawn.dy + drawn.frame.h * drawn.scale / 2) / k;
+    t += ` translateY(${(cy - CANVAS_H / 2).toFixed(2)}px) scaleY(-1) translateY(${(CANVAS_H / 2 - cy).toFixed(2)}px)`;
+  }
+  return t;
 }
 
 /* El canvas de la mascota mide 96x96 px CSS (eso no cambia) pero su backing
@@ -1640,7 +1706,7 @@ function loopRender(t){
   const dt = Math.min(0.05, (t - (lastFrameT || t)) / 1000);
   lastFrameT = t;
   updateWalker(dt);
-  digestMeal(dt);
+  digestMeal();
   if (typeof updateBuddy === 'function') updateBuddy(dt);
   render();
   animFrame = requestAnimationFrame(loopRender);
@@ -1731,7 +1797,7 @@ const HAT_SINK = 0.3;
 function updateHat(drawn){
   const el = document.getElementById('petHat');
   const hat = state.style.hat && styleItemById(state.style.hat);
-  if (!hat || !drawn || displayMood() === 'dead'){ el.classList.add('hidden'); return; }
+  if (!hat || !drawn || walker.flipY || displayMood() === 'dead'){ el.classList.add('hidden'); return; }
   /* drawSprite() devuelve todo en píxeles del canvas (físicos); acá se pasa a
      px CSS dividiendo por cuántos píxeles del canvas hay en un px CSS. */
   const { species, frame, scale, dx, dy, box } = drawn;
@@ -1785,53 +1851,145 @@ function feedFood(id){
   if (state.stage === 'egg') { say('Todavía es un huevo…'); return false; }
   const food = foodById(id);
   if (foodStock(food.id) <= 0) return false;
+  if (foodPile && foodPile.pieces.length >= FOOD_PILE_MAX){ say('¡Espera que se coma lo que tiene!'); return false; }
   if (!tryWake()) return false;
   catchUp();
   state.pantry[food.id] = (state.pantry[food.id] || 0) - 1;
   /* La porción se gasta ya, pero las barras suben recién mientras se la
-     come (digestMeal()): si no, el hambre se llenaba antes de que llegara. */
-  flushMeal();
-  const hunger = hungerFillPct(food), energy = food.energy ?? FOOD_ENERGY_DEFAULT;
-  state.meal = { hunger, energy, total: { hunger, energy } };
+     come (eatFoodPile()): si no, el hambre se llenaba antes de que llegara.
+     state.meal es lo que falta sumar de TODAS las porciones del montón. */
+  const piece = { food, hunger: hungerFillPct(food), energy: food.energy ?? FOOD_ENERGY_DEFAULT, t: 0, done: 0 };
+  const m = state.meal || (state.meal = { hunger: 0, energy: 0 });
+  m.hunger += piece.hunger;
+  m.energy += piece.energy;
   state.selectedFood = food.id;
-  say(food.restore ? '¡Ñam ñam!' : '¡Con pilas! ⚡');
-  serveFood(food);
+  if (!foodPile || !foodPile.pieces.length) say(food.restore ? '¡Ñam ñam!' : '¡Con pilas! ⚡');
+  serveFood(piece);
   saveState(); render();
   return true;
 }
 
-/* La comida cae al piso en un lugar al azar de la pieza y la mascota va a
-   comérsela; mientras come se achica de a mordiscos y al final desaparece.
-   Con plato puesto se sirve en el plato, como antes (para eso está). Las
-   barras suben mientras come (digestMeal(), ver abajo) y mientras tanto no
-   se puede hacer nada más (mealBusy()). Si algo igual la corta (dormirse
-   de agotada), la comida se va y lo que faltaba se suma de una. */
-const FOOD_REACH_PX = 26;   // de la comida al centro de la mascota cuando come
-function serveFood(food){
+/* La comida cae del cielo y la mascota va a comérsela. La bandeja no se
+   cierra al tocar una: se pueden tocar varias y caen todas al MISMO lugar,
+   apiladas (foodPile). La mascota camina una sola vez y se las come una tras
+   otra en la misma animación (cada una se achica de a mordiscos en
+   EAT_PIECE_MS). Si una cae cuando ya terminó y está celebrando, vuelve a
+   comer (la rutina retrocede al paso de comer); si ya se fue, el montón es
+   nuevo, en otro lugar. Con plato puesto cae en el plato. Las barras suben
+   mientras come y mientras tanto no se puede hacer nada más que seguir
+   dándole comida (mealBusy()). Si algo igual la corta (dormirse de
+   agotada), lo que quedaba en el piso se va y se suma de una. */
+const FOOD_REACH_PX = 26;    // de la comida al centro de la mascota cuando come
+const EAT_PIECE_MS = 1100;   // lo que tarda en comerse cada porción
+const FOOD_DROP_MS = 650;    // lo que tarda en caer del cielo (igual que .floor-food en el CSS)
+const FOOD_PILE_MAX = 8;     // porciones esperando a la vez
+let foodPile = null;         // { x, side, standX, plate, pieces: [...] }
+
+function serveFood(piece){
   if (activeMinigame || gameOver || displayStage() === 'egg'){ flushMeal(); return; }
   petAction = null;
-  if (startFurniRoutine('eat')){ walker.activity.meal = true; return; }
-  const floor = document.getElementById('creatureFloor');
-  floor.querySelectorAll('.floor-food').forEach(e => e.remove());   // una a la vez
-  let fx = 0.15 + Math.random() * 0.7;
-  for (let i = 0; i < 8 && Math.abs(fx - walker.x) < 0.2; i++) fx = 0.15 + Math.random() * 0.7;
-  const el = document.createElement('div');
-  el.className = 'floor-food';
-  el.textContent = food.emoji;
-  el.style.left = (fx * 100) + '%';
-  floor.insertBefore(el, document.getElementById('buddyCanvas'));   // detrás de los personajes
-  const side = fx > walker.x ? -1 : 1;        // se para del lado por donde llega
-  const standX = fx + side * FOOD_REACH_PX / floorWidth();
-  startActivity(walker, [
-    { go: standX, speed: 0.24 },
-    { anim: 'eat', ms: 1800, dir: -side, fx: ['😋'], fxEvery: 850, start: () => el.classList.add('eating') },
-    { anim: 'happy', ms: 600, dir: -side, fx: ['💖'] },
-  ], { kind: 'eat', onEnd: () => { el.classList.add('gone'); setTimeout(() => el.remove(), 260); } });
-  walker.activity.meal = true;
+  if (!foodPile) foodPile = newFoodPile();
+  dropFoodPiece(foodPile, piece);
+  const a = walker.activity;
+  if (a && a.pile === foodPile){
+    /* Ya estaba terminando (paso de celebrar): vuelve a comer. */
+    if (a.i > 1){ a.i = 1; a.st = 0; }
+    return;
+  }
+  startEatRoutine(foodPile);
 }
 
-/* La comida que está yendo a comerse (state.meal: lo que falta sumar y el
-   total). Va en el save: si se cierra la app a mitad, loadState() la suma. */
+function newFoodPile(){
+  const plate = typeof furniPlaced === 'function' ? furniPlaced('plato') : null;
+  let x, side, reach;
+  if (plate){
+    x = plate.x;
+    side = walker.x < x ? -1 : 1;
+    reach = FURNI_ART.plato.w * furniK();
+  } else {
+    x = 0.15 + Math.random() * 0.7;
+    for (let i = 0; i < 8 && Math.abs(x - walker.x) < 0.2; i++) x = 0.15 + Math.random() * 0.7;
+    side = x > walker.x ? -1 : 1;   // se para del lado por donde llega
+    reach = FOOD_REACH_PX;
+  }
+  return { x, side, standX: clampX(x + side * reach / floorWidth()), plate, pieces: [], n: 0 };
+}
+
+/* Alto de cada porción del montón: se apilan un poco y, cuando se come la
+   de abajo, las otras bajan (transición en el CSS). */
+function foodPieceBottom(pile, i){
+  return 4 + (pile.plate ? Math.round(3 * furniK()) : 0) + Math.min(i, 4) * 3;
+}
+
+function dropFoodPiece(pile, piece){
+  const floor = document.getElementById('creatureFloor');
+  const el = document.createElement('div');
+  el.className = 'floor-food';
+  el.textContent = piece.food.emoji;
+  const jitter = pile.n ? Math.round((Math.random() * 2 - 1) * 8) : 0;
+  el.style.left = `calc(${(pile.x * 100).toFixed(2)}% + ${jitter}px)`;
+  el.style.bottom = foodPieceBottom(pile, pile.pieces.length) + 'px';
+  el.style.setProperty('--drop', Math.round(floorHeight() + 24) + 'px');
+  el.style.setProperty('--eat', EAT_PIECE_MS + 'ms');
+  floor.insertBefore(el, document.getElementById('buddyCanvas'));   // detrás de los personajes
+  piece.el = el;
+  piece.landAt = performance.now() + FOOD_DROP_MS;
+  pile.pieces.push(piece);
+  pile.n++;
+}
+
+function startEatRoutine(pile){
+  const side = pile.side;
+  startActivity(walker, [
+    { go: pile.standX, speed: 0.24 },
+    /* Come lo que haya en el montón; termina cuando no queda nada. */
+    { anim: 'eat', dir: -side, fx: ['😋'], fxEvery: 1000,
+      track: (rt, el, act, a, dt) => { eatFoodPile(pile, dt); return null; },
+      until: () => !pile.pieces.length },
+    { anim: 'happy', ms: 650, dir: -side, fx: ['💖'] },
+  ], { kind: 'eat', rt: pile.plate || null, onEnd: () => endFoodPile(pile) });
+  walker.activity.meal = true;
+  walker.activity.pile = pile;
+}
+
+/* Un cuadro comiendo: la porción de abajo se achica y suma lo suyo de a
+   poco. Una que todavía viene cayendo se espera. */
+function eatFoodPile(pile, dt){
+  const p = pile.pieces[0];
+  if (!p || performance.now() < p.landAt) return;
+  if (!p.t) p.el.classList.add('eating');
+  p.t += dt * 1000;
+  const frac = Math.min(1, p.t / EAT_PIECE_MS);
+  const bite = frac - p.done;
+  p.done = frac;
+  const m = state.meal;
+  if (m){
+    for (const stat of ['hunger', 'energy']){
+      const v = Math.min(m[stat], p[stat] * bite);
+      state[stat] = clamp(state[stat] + v);
+      m[stat] -= v;
+    }
+    if (m.hunger <= 1e-6 && m.energy <= 1e-6) state.meal = null;
+  }
+  if (frac >= 1){
+    pile.pieces.shift();
+    p.el.classList.add('gone');
+    setTimeout(() => p.el.remove(), 260);
+    pile.pieces.forEach((q, i) => { q.el.style.bottom = foodPieceBottom(pile, i) + 'px'; });
+    saveState();
+  }
+}
+
+/* Terminó (o se cortó): lo que quede en el piso se va; lo que faltaba sumar
+   lo suma digestMeal() apenas deja de estar ocupada. */
+function endFoodPile(pile){
+  for (const p of pile.pieces){ p.el.classList.add('gone'); setTimeout(() => p.el.remove(), 260); }
+  pile.pieces = [];
+  if (foodPile === pile) foodPile = null;
+}
+
+/* Lo que falta sumar de la comida (state.meal). Va en el save: si se cierra
+   la app a mitad, loadState() lo suma. */
 function flushMeal(){
   const m = state && state.meal;
   if (!m) return;
@@ -1842,39 +2000,28 @@ function flushMeal(){
 
 /* Mientras va a la comida y se la come no se puede hacer nada más: ni los
    botones de abajo ni tocar la pantalla (la mascota, el acompañante, los
-   muebles, la caca, el regalo, las flechas de las piezas). */
+   muebles, la caca, el regalo, las flechas de las piezas). La bandeja de
+   comida sí: se le puede seguir dando. */
 function mealBusy(){
   return !!(state && state.meal && walker.activity && walker.activity.meal);
 }
 
-/* Cada frame (loopRender): las barras suben al ritmo de los pasos `eat` de
-   la rutina (en el piso o en el plato), así terminan de llenarse justo
-   cuando termina de comer. Si la rutina se cortó, se suma lo que faltaba. */
-function digestMeal(dt){
-  const m = state && state.meal;
+/* Cada frame (loopRender): marca los botones como ocupados y, si la rutina
+   se cortó con comida a medias, suma lo que faltaba. */
+function digestMeal(){
   const busy = mealBusy();
   const controls = document.getElementById('controls');
   if (controls.classList.contains('busy') !== busy) controls.classList.toggle('busy', busy);
-  if (!m) return;
-  if (!busy){ flushMeal(); saveState(); return; }
-  if (walker.anim !== 'eat') return;
-  const act = walker.activity;
-  if (!act.mealMs) act.mealMs = act.steps.reduce((t, st) => t + (st.anim === 'eat' ? (st.ms || 0) : 0), 0) || 1800;
-  const k = dt * 1000 / act.mealMs;
-  for (const stat of ['hunger', 'energy']){
-    const bite = Math.min(m[stat], m.total[stat] * k);
-    state[stat] = clamp(state[stat] + bite);
-    m[stat] -= bite;
-  }
-  if (m.hunger <= 1e-6 && m.energy <= 1e-6){ state.meal = null; saveState(); }
+  if (state && state.meal && !busy){ flushMeal(); saveState(); }
 }
 
 /* Corta cualquier toque mientras come (captura en window: corre antes que
-   todos los demás listeners, también el de los muebles). */
+   todos los demás listeners, también el de los muebles). La bandeja queda
+   afuera: se le puede seguir tirando comida. */
 let mealBusySaidAt = 0;
 window.addEventListener('DOMContentLoaded', () => {
   const block = e => {
-    if (!mealBusy() || !e.target.closest || !e.target.closest('#controls, #screen')) return;
+    if (!mealBusy() || !e.target.closest || !e.target.closest('#controls, #screen') || e.target.closest('#foodTray')) return;
     e.stopPropagation();
     e.preventDefault();
     if (e.type === 'click' && performance.now() - mealBusySaidAt > 1500){
@@ -1931,6 +2078,24 @@ const collectGift = () => {
   });
 };
 
+/* Ponerle la vacuna de su etapa (de la despensa). Devuelve el aviso si no
+   se pudo, igual que giveMedicine(). */
+function giveVaccine(){
+  const v = vaccineFor();
+  if (!v) return 'Todavía es un huevo…';
+  if (isVaccinated()) return 'Ya tiene su vacuna de esta etapa';
+  if (foodStock(v.id) <= 0) return `No tienes la ${v.name.toLowerCase()}: cómprala en la tienda`;
+  catchUp();
+  state.pantry[v.id] -= 1;
+  state.vaccinated = { ...(state.vaccinated || {}), [state.stage]: true };
+  state.healthMax = 100;
+  floatFx(VACCINE_EMOJI);
+  say('¡Vacuna lista! Su salud ya no se gasta 💪', 2200);
+  triggerPetAction('medicine');
+  saveState(); render();
+  return null;
+}
+
 /* Dar una medicina de la despensa. Devuelve el aviso si no se pudo (no está
    enferma, no quedan), para que la bandeja de Comer lo muestre. */
 function giveMedicine(){
@@ -1940,6 +2105,7 @@ function giveMedicine(){
   state.pantry[MEDICINE.id] -= 1;
   state.sick = false;
   state.health = clamp(state.health + MED_HEALTH);
+  capHealth();
   floatFx('💊');
   say('Se siente mejor');
   triggerPetAction('medicine');
@@ -1976,10 +2142,18 @@ const btnSleep = () => {
 
 /* Los botones de abajo avisan cuando hacen falta (ver .need y data-badge en
    el CSS). Corre en cada render(), así que solo toca el DOM si algo cambió. */
+/* Le falta la vacuna de su etapa y ya se le nota (el tope bajó un poco):
+   el botón Comer lo avisa con un 💉, salvo que esté enferma (va el 💊). */
+function vaccineDue(){
+  return !state.sick && !!vaccineFor() && !isVaccinated() && healthMax() < 97;
+}
+
 function updateDock(){
   const sleepy = !state.sleeping && state.energy < SLEEPY_THRESHOLD;
   const want = {
-    btnFeed:  { need: state.hunger < 30 || !!state.sick, badge: state.sick ? '💊' : '' },
+    btnFeed:  vaccineDue()
+      ? { need: state.hunger < 30 || healthMax() < 85, badge: VACCINE_EMOJI, soft: healthMax() >= 85 }
+      : { need: state.hunger < 30 || !!state.sick, badge: state.sick ? '💊' : '' },
     btnClean: { need: !!state.poop, badge: state.poop ? '💩' : '' },
     btnSleep: { need: sleepy, badge: sleepy ? 'zZ' : '', soft: !isExhausted(), asleep: !!state.sleeping },
     /* La ruleta vive dentro de Juegos: el giro gratis se avisa en Jugar. */
@@ -2040,17 +2214,33 @@ function renderFoodTray(aviso){
   const meds = foodStock(MEDICINE.id);
   const med = tile(MEDICINE.id, MEDICINE.emoji, MEDICINE.name, meds,
     'med ' + (meds <= 0 ? 'out ' : '') + (state.sick ? 'urgent' : ''));
+  /* La vacuna de su etapa, mientras no la tenga puesta. Con ella son nueve
+     y la bandeja pasa a cinco columnas: sigue en dos filas (una tercera
+     subía la bandeja encima de la pantalla). */
+  const v = vaccineFor();
+  const vacN = v ? foodStock(v.id) : 0;
+  const vac = v && !isVaccinated() ? tile('vaccine', VACCINE_EMOJI, 'Vacuna', vacN,
+    'med ' + (vacN <= 0 ? 'out ' : '') + (healthMax() < 85 ? 'urgent' : '')) : '';
   const sub = aviso
     ? `<small class="warn">${escapeHtml(aviso)}</small>`
-    : `<small>${state.sick ? '¡Está enferma! Dale una medicina' : 'Toca para dársela · marcada, la última'}</small>`;
+    : `<small>${state.sick ? '¡Está enferma! Dale una medicina'
+      : vaccineDue() ? 'Le falta su vacuna 💉' : 'Toca varias: caen todas juntas'}</small>`;
   tray.innerHTML = `
     <div class="tray-head"><span><b>¿Qué come?</b>${sub}</span>
       <button class="tray-close" id="trayClose">Cerrar</button></div>
-    <div class="tray-foods">${foods}${med}</div>`;
+    <div class="tray-foods ${vac ? 'five' : ''}">${foods}${med}${vac}</div>`;
   tray.querySelector('#trayClose').addEventListener('click', closeFoodTray);
   tray.querySelectorAll('[data-tray]').forEach(el => el.addEventListener('click', requireAlive(() => {
     const id = el.dataset.tray;
+    if (id === 'vaccine'){
+      if (mealBusy()){ renderFoodTray('Primero que termine de comer'); return; }
+      if (vacN <= 0){ closeFoodTray(); shopTab = 'food'; openShop(`Te falta la ${v.name.toLowerCase()}`); return; }
+      const problema = giveVaccine();
+      if (problema) renderFoodTray(problema); else closeFoodTray();
+      return;
+    }
     if (id === MEDICINE.id){
+      if (mealBusy()){ renderFoodTray('Primero que termine de comer'); return; }
       if (meds <= 0){ closeFoodTray(); shopTab = 'food'; openShop('No te quedan medicinas'); return; }
       const problema = giveMedicine();
       if (problema) renderFoodTray(problema); else closeFoodTray();
@@ -2062,7 +2252,9 @@ function renderFoodTray(aviso){
       openShop(`No te queda ${foodById(id).name}`);
       return;
     }
-    if (feedFood(id)) closeFoodTray();
+    /* La bandeja queda abierta: se pueden tirar varias, caen todas al mismo
+       montón y se las come de una. */
+    if (feedFood(id)) renderFoodTray();
   })));
 }
 
@@ -2145,8 +2337,9 @@ function styleSwatch(it){
   if (it.kind === 'furni'){
     /* Miniatura a escala entera de px CSS (el pixel art no se reescala raro). */
     const art = FURNI_ART[it.id];
-    const s = Math.min(3, Math.max(1, Math.floor(46 / Math.max(art.w, art.h))));   // tope: la pelota sola salía gigante
-    return `<span class="swatch furni"><img src="${furniThumb(it.id)}" alt="" style="width:${art.w * s}px;height:${art.h * s}px"></span>`;
+    const tw = art.thumb ? art.thumb.w : art.w, th = art.thumb ? art.thumb.h : art.h;
+    const s = Math.min(3, Math.max(1, Math.floor(46 / Math.max(tw, th))));   // tope: la pelota sola salía gigante
+    return `<span class="swatch furni"><img src="${furniThumb(it.id)}" alt="" style="width:${tw * s}px;height:${th * s}px"></span>`;
   }
   return `<span class="swatch emoji">${it.emoji}</span>`;
 }
@@ -2174,7 +2367,7 @@ function styleTile(it, mode){
 function styleRows(mode){
   return STYLE_SECTIONS.map(sec => {
     /* Lo del gacha (premios.js) no se vende: en la tienda no sale. */
-    const items = STYLE_ITEMS.filter(it => it.kind === sec.kind &&
+    const items = STYLE_ITEMS.filter(it => it.kind === sec.kind && !!it.wow === !!sec.wow &&
       (mode === 'shop' ? !it.gacha : state.style.owned[it.id]));
     const grid = items.length
       ? `<div class="style-grid">${items.map(it => styleTile(it, mode)).join('')}</div>`
@@ -2209,6 +2402,22 @@ function openShop(aviso, gachaRes){
         <span class="menu-record">${coinsLabel(MEDICINE.price)}</span>
       </div>`;
   const upgradeRows = roomUpgradeRow() + UPGRADES.map(upgradeRow).join('');
+  /* La vacuna: solo la de su etapa (la de antes ya no sirve y la de después
+     todavía no). */
+  const vac = vaccineFor();
+  const vacShopRow = !vac ? '' : isVaccinated() ? `
+      <div class="menu-item locked">
+        <span class="emoji">${VACCINE_EMOJI}</span>
+        <div class="info"><b>${vac.name}</b><small>Ya la tiene puesta ✓ · la próxima, al crecer</small></div>
+      </div>` : `
+      <div class="menu-item ${state.coins >= vac.price ? '' : 'locked'} ${healthMax() < 85 ? 'urgent' : ''}" data-buy-vaccine>
+        <span class="emoji">${VACCINE_EMOJI}</span>
+        <div class="info">
+          <b>${vac.name}</b>
+          <small>Sin ella su salud máxima baja (hoy ${Math.round(healthMax())}%) · tienes ${foodStock(vac.id)}</small>
+        </div>
+        <span class="menu-record">${coinsLabel(vac.price)}</span>
+      </div>`;
 
   showOverlay(`
     <h3>🛒 Tienda</h3>
@@ -2220,7 +2429,7 @@ function openShop(aviso, gachaRes){
       <button class="shop-tab ${shopTab === 'gacha' ? 'active' : ''}" id="shopTabGacha">Gacha</button>
     </div>
     <div class="menu-list ${shopTab === 'style' ? 'style-list' : ''}">${
-      shopTab === 'food' ? foodRows + medShopRow : shopTab === 'upgrades' ? upgradeRows
+      shopTab === 'food' ? vacShopRow + foodRows + medShopRow : shopTab === 'upgrades' ? upgradeRows
         : shopTab === 'gacha' ? gachaTabHtml(gachaRes) : styleRows('shop')}</div>
     <button class="overlay-btn secondary" id="btnCloseShop">Cerrar</button>
   `, hideOverlay);
@@ -2272,6 +2481,20 @@ function openShop(aviso, gachaRes){
       /* Lo ya comprado se pone y se saca en Personalizar, no acá: la tienda
          es solo para comprar. */
       reopen(`${it.name} ya es tuyo: póntelo o sácatelo en Personalizar`);
+    });
+  });
+
+  const buyVac = document.querySelector('[data-buy-vaccine]');
+  if (buyVac) buyVac.addEventListener('click', () => {
+    if (foodStock(vac.id) > 0){ reopen(`Ya tienes la ${vac.name.toLowerCase()}: pónsela desde Comer`); return; }
+    if (state.coins < vac.price){ reopen(`Te faltan ${coinsLabel(vac.price - state.coins)} para la ${vac.name.toLowerCase()}`); return; }
+    confirmBuy({ icon: VACCINE_EMOJI, name: vac.name, price: vac.price }, () => {
+      state.coins -= vac.price;
+      state.pantry[vac.id] = foodStock(vac.id) + 1;
+      saveState(); render();
+      reopen();
+      boughtPopup({ icon: VACCINE_EMOJI, name: vac.name, amount: '+1', price: vac.price,
+        note: 'Pónsela desde Comer: su salud máxima vuelve a 100%.' });
     });
   });
 
@@ -2621,7 +2844,7 @@ function debugTimeInfo(){
   const r = v => Math.round(v);
   return `🕐 ${hh}${adelanto}${isNightMode() ? ' · 🌙 noche' : ''}<br>` +
     `${STAGE_LABELS[state.stage] || state.stage}${state.sleeping ? ' · 😴 dormida' : ''}${gameOver ? ' · 💀' : ''}<br>` +
-    `🍗 ${r(state.hunger)}% · 😊 ${r(state.happiness)}% · ⚡ ${r(state.energy)}% · 🧼 ${r(state.hygiene)}% · ❤️ ${r(state.health)}%`;
+    `🍗 ${r(state.hunger)}% · 😊 ${r(state.happiness)}% · ⚡ ${r(state.energy)}% · 🧼 ${r(state.hygiene)}% · ❤️ ${r(state.health)}% (tope ${r(healthMax())}%${isVaccinated() ? ' 💉' : ''})`;
 }
 
 function renderDebugPanel(){

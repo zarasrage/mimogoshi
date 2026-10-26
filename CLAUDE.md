@@ -5,7 +5,7 @@ backend**: se edita directo y se abre `index.html` en el navegador. Todo el
 progreso vive en `localStorage`.
 
 **Archivos:** `index.html` (esqueleto), `styles.css` (todo el CSS) y la lógica
-en seis scripts clásicos que comparten el ámbito global:
+en siete scripts clásicos que comparten el ámbito global:
 - `app.js`: el núcleo (estado, simulación, bitácora, render, tienda,
   Personalizar, panel de prueba).
 - `juegos.js`: el menú de Jugar (`GAMES`, niveles, desafío diario, resultado), lo
@@ -14,13 +14,16 @@ en seis scripts clásicos que comparten el ámbito global:
 - `premios.js`: la ruleta y el gacha.
 - `muebles.js`: los muebles (catálogo, arte, guiones), las habitaciones y el
   **motor de actores** que también usa el acompañante.
+- `objetos.js`: los 20 objetos mágicos (ver "Objetos mágicos"), que son
+  muebles con ganchos propios, y sus capas de efectos.
 - `duo.js`: el acompañante (`buddy`) y lo que hacen los dos juntos.
 - `duo-juegos.js`: los seis juegos de a dos.
 
 Se cargan en ese orden (`index.html`). Lo de un archivo que usa otro se usa
 recién en tiempo de juego (después de `DOMContentLoaded`), nunca al cargar —
 salvo los `push` a arreglos de otro archivo (`STYLE_ITEMS` y
-`minigameDisposers` de `app.js`, `GAMES` de `juegos.js`), que por eso van
+`minigameDisposers` de `app.js`, `GAMES` de `juegos.js`, `FURNI_ART` de
+`muebles.js`), que por eso van
 después del archivo dueño del arreglo. Dentro de
 `sprites/`, un par `<especie>_spritesheet.png` + `.json` por cada especie (más
 los PNG de personajes todavía sin integrar); se cargan como `new Image()` desde
@@ -38,7 +41,7 @@ sola persona.
 Chequeo de sintaxis (lo mínimo antes de cualquier commit):
 
 ```bash
-node -e "const fs=require('fs'); for (const f of ['app.js','juegos.js','premios.js','muebles.js','duo.js','duo-juegos.js']) { new Function(fs.readFileSync(f,'utf8')); console.log(f, 'syntax OK'); }"
+node -e "const fs=require('fs'); for (const f of ['app.js','juegos.js','premios.js','muebles.js','objetos.js','duo.js','duo-juegos.js']) { new Function(fs.readFileSync(f,'utf8')); console.log(f, 'syntax OK'); }"
 ```
 
 Prueba funcional/visual con Playwright (Chromium ya está instalado en
@@ -365,23 +368,29 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   cerrada), y no tapa la pantalla: se ve comer y la barra de hambre. Todas
   las comidas con su stock, más la medicina en la misma fila (antes eran dos
   botones —Comer daba la elegida y Menú la elegía— y el botiquín era una
-  sección del menú). Tocar una gasta la porción en el acto (`feedFood()`) y **la comida cae al piso** en un lugar al azar de la
-  pieza (`serveFood()`, `.floor-food`, lejos de la mascota si se puede): la
-  mascota camina hasta ella con una rutina sin mueble (`startActivity()`,
-  `kind:'eat'`, que no se corta por estar triste o enferma), se para al lado
-  (`FOOD_REACH_PX`) y la come mientras se achica de a mordiscos. La rutina
-  lleva `onEnd`, que saca la comida termine sola o se corte (dormirse de
-  agotada). **Las barras suben mientras come, no al tocarla**: lo que da la
-  comida queda en `state.meal` y `digestMeal()` (cada frame, desde
-  `loopRender()`) lo suma al ritmo de los pasos `eat` de la rutina (en el
-  piso o en el plato), así terminan de llenarse justo cuando termina de
-  comer. Antes el hambre se llenaba antes de que llegara a la comida. Si la
-  rutina se corta, lo que faltaba se suma de una (`flushMeal()`); si se
-  cierra la app a mitad, lo suma `loadState()`. **Mientras va a la comida y
-  se la come no se puede hacer nada más** (`mealBusy()`): un listener de
-  captura en `window` se come todo toque en `#controls` y `#screen`
-  (botones, mascota, acompañante, muebles, caca, regalo, flechas) y avisa
-  con `say()`; los botones se ven apagados (`.controls.busy`). Con plato puesto se sirve en el plato, como antes. La última
+  sección del menú). Tocar una gasta la porción en el acto (`feedFood()`) y
+  **cae del cielo** en un lugar al azar de la pieza (`serveFood()`,
+  `.floor-food`, lejos de la mascota si se puede; con plato puesto, en el
+  plato). **La bandeja no se cierra**: se pueden tocar varias y caen todas
+  al mismo montón (`foodPile`, hasta `FOOD_PILE_MAX`), un poco apiladas. La
+  mascota camina una sola vez (`startEatRoutine()`, `kind:'eat'`, que no se
+  corta por estar triste o enferma) y se las come una tras otra en la misma
+  animación: cada porción se achica de a mordiscos en `EAT_PIECE_MS`
+  (`eatFoodPile()`, desde el `track` del paso de comer) y una que todavía
+  viene cayendo se espera. Si cae una cuando ya terminó y está celebrando,
+  la rutina retrocede al paso de comer; si ya se fue, el montón es nuevo.
+  **Las barras suben mientras come, no al tocarla**: `state.meal` guarda lo
+  que falta sumar de todo el montón y cada porción suma lo suyo mientras se
+  achica. Antes el hambre se llenaba antes de que llegara a la comida, y
+  antes de eso había que dar las porciones de a una, esperando que
+  terminara cada vez. Si la rutina se corta, lo que quedaba en el piso se
+  va y se suma de una (`flushMeal()` desde `digestMeal()`); si se cierra
+  la app a mitad, lo suma `loadState()`. **Mientras va a la comida y se la
+  come no se puede hacer nada más** (`mealBusy()`), salvo seguir tirándole
+  comida: un listener de captura en `window` se come todo toque en
+  `#controls` y `#screen` menos los de `#foodTray`, y avisa con `say()`;
+  los botones se ven apagados (`.controls.busy`). La medicina sí espera a
+  que termine de comer. Con plato puesto se sirve en el plato, como antes. La última
   queda marcada (`state.selectedFood`); una en 0 sale apagada y tocarla abre
   la tienda en Comida. Se cierra con Cerrar, tocando afuera o al entrar a un
   minijuego (`showGameControls()`). Mientras está abierta se esconden los
@@ -673,6 +682,25 @@ la bandeja de **Comer**, en la misma fila que las comidas (`giveMedicine()`). Se
 saves de antes también reciben esas 2, para que la primera enfermedad no pille
 sin monedas. Para que la enfermedad se siga notando sin un botón propio, el botón
 **Comer** lleva un 💊 rojo que late mientras está enferma (`updateDock()`).
+
+**Vacunas** (`VACCINES`, una por etapa: niño 20, adolescente 50, adulto
+100 💰): sin la vacuna de su etapa, el **tope** de la salud
+(`state.healthMax`) baja `VACCINE_CAP_LOSS_PER_DAY` (5) por día real; la
+barra no puede pasar de ahí (`capHealth()`, por donde pasa toda subida de
+salud). No baja la salud misma porque, sin causas, la salud se recupera
+sola ~25 por hora y una bajada lenta se tapaba. Vacunada, el tope vuelve a
+100, deja de bajar y se enferma la mitad (`VACCINE_SICK_MULT`), hasta que
+crece y le toca la de la etapa nueva (`state.vaccinated` =
+`{child, teen, adult}`). Con el tope en 0 se muere: son 20 días sin
+vacunarla. Se compra en la tienda, pestaña Comida (solo la de su etapa,
+arriba de todo; con una guardada no deja comprar otra), y se pone desde la
+bandeja de Comer (`giveVaccine()`), donde aparece mientras no la tenga:
+con ella son nueve y la bandeja pasa a cinco columnas para seguir en dos
+filas. El anillo de salud muestra el tope perdido como un tramo gris
+(`#cap-health`); el botón Comer lleva un 💉 (`vaccineDue()`, desde que el
+tope baja de 97; anillo de aviso bajo 85), y la bitácora anota cuando le
+toca una nueva y cuando el tope baja de 90. Los saves de antes arrancan
+con el tope entero y sin vacunas.
 
 **Los avisos de la tienda van dentro de la tarjeta, no con `say()`**: la burbuja
 tiene `z-index:5` y el overlay `10`, así que un `say()` con un overlay abierto
@@ -1065,6 +1093,134 @@ loop. El eje del giro es la **base** del huevo (donde apoya en el piso, en
 abajo y en vez de tambalearse parece flotar.
 
 
+#### Objetos mágicos (`objetos.js`)
+
+Veinte objetos (`MAGIC_ITEMS`) que se compran, se ponen y se acomodan como
+cualquier mueble (`kind:'furni'`, mismo `FURNI_MAX`, mismos guiones `visits`
+y `duos`, mismo motor), pero que hacen cosas que un mueble no hacía. Van
+marcados `wow:true` y salen en su propia sección de Estilo, "Objetos
+mágicos ✨", la primera (`STYLE_SECTIONS`; `styleRows()` separa por
+`!!it.wow`). Precios de 45 a 130.
+
+**Ganchos nuevos que lee `muebles.js`** (todos opcionales en `FURNI_ART`):
+- `tick(rt, now, dt, k)`: vida propia, cada cuadro, aunque nadie lo use
+  (desde `updateFurniture()`): el robot pasea, la nube flota, el ventilador
+  de la nieve gira.
+- `tap(rt)`: tocar el objeto. Si devuelve `true` se hizo cargo y
+  `commandFurniVisit()` no hace lo de siempre. Corre **antes** del chequeo de
+  bloqueo, así un objeto puede responder aunque la mascota esté ocupada (el
+  árbol dice cuánto falta, el robot su batería). Para mandar a la mascota se
+  usa `magicGo(rt, pasos)`, que hace los mismos chequeos que tocar un mueble.
+- `cleanup(rt, act, a)`: al terminar o cortarse una actividad en el objeto
+  (`endFurniActivity()`): apagar el jetpack, el láser, el clon...
+- `keep: [...]`: campos de `rt` que sobreviven a `resetFurniRt()` (la fruta
+  colgando, dónde quedó el robot, el mono de nieve).
+- `thumb: {w, h, draw}`: la miniatura de la tienda, cuando el arte completo
+  no sirve (el frijol mide 60 de alto).
+
+**Capas** (en `#creatureFloor`, en este orden): `#ambientLayer` (luz de la
+pieza: `setAmbient(id, fondo, rt)`; si el objeto se saca, se apaga sola),
+`canvas#fxBack` (partículas detrás de los personajes), `#cloneCanvas` (el
+reflejo del espejo), los personajes y `#furniFront`, `canvas#fxFront`
+(partículas delante) y `#magicFlash` (destello: fotos, truenos, el cañón).
+Los dos canvas de partículas van en **píxeles físicos** y cada partícula es
+una figurita de pixel art (`PX_SHAPES`) con pixeles del mismo tamaño que
+los de los muebles (`furniDeviceScale()`): nada se ve de otro grano.
+`fxSpawn()` (una), `fxBurst()` (una explosión), `fxEffect()` (un dibujo que
+dura: el arcoíris, la nieve del piso, las estrellas del planetario).
+Posiciones en px CSS del piso con `y` hacia arriba, como `walker.y`.
+
+**Modo piso** (`startFloorMode(id, ms, onTap, onEnd)`): mientras dura, cada
+toque en el piso es una orden para el objeto (el láser, el jetpack), no un
+mimo ni un mueble. Es un listener de **captura en `window`** que corre antes
+que todos los demás y se come el `click` que sigue. Lo mismo, sin modo,
+para reventar burbujas (`popBubbleAt()`).
+
+**Cabeza abajo** (`act.flipY`, el cañón): `actorTransform(act, drawn)` en
+`app.js` arma el `transform` del canvas de cualquier actor (lo usan
+`render()` y `renderBuddy()`) con un `scaleY(-1)` entero, que no rompe la
+regla de oro. `endFurniActivity()` lo vuelve a `false` siempre, y el
+accesorio se esconde mientras va dado vuelta.
+
+**Lo que guardan** va en `state.objData[id]` (`objData()`), en el save.
+
+Los 20:
+- **Puntero láser**: modo piso de 25 s, el punto rojo va donde se toca y
+  la mascota lo persigue y se le tira encima. Sola, el punto anda sin rumbo.
+- **Jetpack**: vuela con inercia (un resorte hacia donde se toca, 20 s de
+  modo piso), con el pack en la espalda echando fuego. Sola hace un ocho. De
+  a dos, el otro va sentado en su cabeza.
+- **Máquina de burbujas**: burbujas que suben bamboleándose; se revientan
+  tocándolas (cada 6, un `furniJoy()`) y la mascota salta a reventarlas.
+- **Cámara instantánea**: cuenta 3-2-1, flash, y la foto va a un **álbum**
+  (tocar la cámara, `openAlbum()`; hasta `ALBUM_MAX` = 18). Las fotos no
+  son capturas: guardan especie, etapa, pose, acompañante y pantalla, y se
+  vuelven a dibujar con el sprite a escala entera. Sola, una selfie cada
+  `ALBUM_AUTO_GAP_MS` (2 h) como mucho.
+- **Bola de cristal**: dice de verdad qué va a pasar
+  (`crystalProphecy()`): qué barra se pone en riesgo primero y en cuánto,
+  con los ritmos reales; o que está enferma, que hay caca, que le falta la
+  vacuna.
+- **Robot aspiradora**: pasea solo y una vez cada `ROBOT_CLEAN_EVERY_MS`
+  (20 h) va hasta la caca y la aspira (como el botón Limpiar; queda en la
+  bitácora). Después se recarga (luz roja). La mascota se le sube encima.
+- **Nubecita** (libre): flota por la pieza y cada tanto llueve; si la
+  mascota queda debajo se moja (+4 de higiene, una vez por lluvia). Tocarla
+  hace un trueno.
+- **Árbol frutal**: una fruta cada `FRUIT_EVERY_MS` (6 h, hasta tres
+  colgando, también con la app cerrada). Tocarlo con fruta: la sacude y se
+  la come, **comida de verdad** (`FRUIT_FOOD`, +15 de hambre) que entra al
+  mismo montón de la bandeja (`serveFood()`).
+- **Frijol mágico**: crece una etapa por riego, un riego cada
+  `BEAN_WATER_EVERY_MS` (20 h), seis etapas. Arriba de todo, tocarlo la
+  manda a trepar y encuentra un huevo de oro (`BEAN_REWARD` = 120 monedas,
+  pop-up) y la planta vuelve a empezar. Es la meta larga: no regarla no
+  castiga, solo no crece.
+- **Fuegos artificiales**: prende la mecha, se tapa los oídos y suben
+  cohetes que revientan en bola, anillo, corazón o sauce, cada uno con su
+  brillo en la luz de la pieza.
+- **Prisma**: sale un arcoíris de seis bandas que cruza la pieza; sube por
+  él y se tira de guata hasta el otro lado.
+- **Planetario**: apaga la luz de la pieza (no la de los personajes) y la
+  llena de estrellas que giran, constelaciones y estrellas fugaces; la
+  mascota se tira de espaldas a mirar. Tocarlo lo prende o lo apaga.
+- **Máquina de nieve**: nieva en toda la pieza, la nieve se junta en el
+  piso (`SNOW`, se derrite sola aunque se saque la máquina) y arma un mono
+  de nieve que dura `SNOWMAN_MS`. De a dos, guerra de bolas.
+- **Lámpara de lava**: siempre prendida, tiñe la pieza del color de su
+  ánimo (rosado feliz, ámbar normal, azul triste, verde enferma, violeta con
+  sueño); tocarla cambia el modo (también rosa, azul, verde o arcoíris fijos).
+- **Portal**: se mete y sale por otro portal que se abre en el aire. Tocado,
+  con más de una habitación, viaja a la siguiente (`portalTravel()`).
+- **Caja musical**: tocada, suena una melodía de verdad (Web Audio): de
+  día "Estrellita", de noche o con sueño la canción de cuna, y al terminar
+  la cuna, si tiene algo de sueño, se duerme (`btnSleep()`). Sola baila sin
+  sonido.
+- **Cañón de circo**: cuenta 3-2-1 y sale volando en un arco enorme, dándose
+  vueltas y cabeza abajo (`flipY`), con estela; aterriza mareada.
+- **Gelatina gigante**: tiembla con un resorte de verdad (`rt.sq`/`rt.sqv`),
+  rebota cada vez más alto y se hunde adentro (la parte `z:'front'` es
+  semitransparente: se la ve adentro) hasta que la escupe.
+- **Patineta** (libre): cruza la pieza con un kickflip a la ida y otro a la
+  vuelta (`skateRide()`); la tabla queda donde se bajó. De a dos, se la
+  pasan.
+- **Espejo mágico**: el reflejo sale del espejo (`CLONE`, un tercer
+  personaje que solo se dibuja, teñido con `filter`) y la imita reflejado y
+  con un poco de retraso; al final vuelve a entrar.
+
+Los efectos de verdad son chicos a propósito, igual que los de los muebles:
+la fruta es poca comida, el robot limpia una caca al día y el frijol paga
+una vez cada ~5 días. La felicidad de jugar con ellos pasa por `furniJoy()`
+(`magicJoy()`), con el mismo tope por hora.
+
+**Probado** con un banco acelerado en Chromium (se parcha `performance.now`,
+se para el loop y se avanza cuadro a cuadro con `updateWalker()`/
+`updateBuddy()`/`render()`): cada guion de cada objeto, solo y de a dos,
+y cada `tap`: 0 errores, todos terminan con los personajes en el piso y sin
+modo piso ni reflejo colgando. También una visita espontánea a cada uno
+(`maybeStartFurniVisit()`). Al sumar o cambiar un guion, repetir eso.
+
+
 ## Acompañante (de a dos)
 
 Un segundo personaje en la pieza: un hijo o una visita (`duo.js`). Todavía no
@@ -1450,7 +1606,7 @@ teléfono va a llevar el tiempo completo y eso es lo que se quiere probar.
 Lleva un reloj virtual (`debugClockOffsetMs`, que suma `isNightMode()` y
 también `catchUp()`), así la noche cae en la hora simulada aunque se
 adelante varias veces; arriba de los botones se ve la hora simulada, la
-etapa y las cinco barras, y "Hora real" lo vuelve a cero. No se guarda (al
+etapa, las cinco barras y el tope de salud, y "Hora real" lo vuelve a cero. No se guarda (al
 recargar vuelve la hora real) y no mueve los relojes de la ruleta ni del
 desafío diario. Se corta si la mascota muere. Con "Stats al máximo" no baja
 nada (lo avisa). Al sacarlo: `debugSkipTime()`, `debugTimeInfo()`,
