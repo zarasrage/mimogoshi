@@ -708,6 +708,9 @@ la bandeja de **Comer**, en la misma fila que las comidas (`giveMedicine()`). Se
 saves de antes también reciben esas 2, para que la primera enfermedad no pille
 sin monedas. Para que la enfermedad se siga notando sin un botón propio, el botón
 **Comer** lleva un 💊 rojo que late mientras está enferma (`updateDock()`).
+**Solo cura** (pedido así): no suma salud; antes daba +20 (`MED_HEALTH`, se
+sacó). Lo que se perdió se recupera de a poco, sola, cuando ya no hay
+ninguna causa (15 al día, ver abajo).
 
 **Salud que se recupera sola: 15 al día** (`HEALTH_RECOVER_PER_DAY`,
 solo sin ninguna causa activa). Antes era ~25 por hora real y cualquier
@@ -764,7 +767,7 @@ Catálogo en `UPGRADES`, con dos formas:
   trivial la caca o la enfermedad en vez de ser una red de contención puntual
   para cuando no estás mirando. `autoClean` limpia sola la primera caca que
   aparezca (mismo `+35` de higiene que `btnClean`); `autoMed` cura sola una
-  enfermedad (mismo `MED_HEALTH`, +20 de salud, que darle una medicina). Ninguna distingue si la app
+  enfermedad (igual que darle una medicina: solo la cura, no suma salud). Ninguna distingue si la app
   está abierta o cerrada al disparar — nada más en el juego trata "estar
   mirando" como un estado aparte, así que tampoco esto. `state.upgrades[id]`
   guarda `{owned, armed, timesUsed}`; `timesUsed` se muestra en la tienda como
