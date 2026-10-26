@@ -1772,58 +1772,127 @@ body{
   animation:none;
 }
 @keyframes alertPulse{ 50%{transform:scale(1.15);} }
-/* Ficha de un reloj (openStatInfo): la cabecera con el color del reloj, la
-   barra con sus umbrales y debajo las listas con lo que la mueve. */
+/* Ficha de un reloj (openStatInfo): arriba el anillo grande con el valor y
+   cómo está en una palabra; debajo las pestañas Ahora (solo lo que la está
+   moviendo) y Todo (el catálogo entero). Cada hoja toma el color de su reloj
+   (--si). */
 .stat{cursor:pointer; -webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation;}
 /* Al tocar, brillo y no tamaño: el ícono es pixel art (nunca con transform). */
 .stat:active .stat-ring{filter:brightness(1.25);}
-.stat-info{--si:var(--c-health); --si-hi:var(--c-health-hi); margin-bottom:12px;}
-.stat-info[data-si="energy"]   {--si:var(--c-energy);    --si-hi:var(--c-energy-hi);}
-.stat-info[data-si="hygiene"]  {--si:var(--c-hygiene);   --si-hi:var(--c-hygiene-hi);}
-.stat-info[data-si="happiness"]{--si:var(--c-happiness); --si-hi:var(--c-happiness-hi);}
-.stat-info[data-si="hunger"]   {--si:var(--c-hunger);    --si-hi:var(--c-hunger-hi);}
-.stat-info, .si-body{text-align:left;}
-.si-head{display:flex; align-items:center; gap:14px; margin-bottom:12px;}
-.si-badge{
-  width:56px; height:56px; flex-shrink:0;
-  display:grid; place-items:center; font-size:28px;
-  border-radius:18px;
-  background:linear-gradient(160deg, var(--si-hi) 0%, var(--si) 70%);
-  box-shadow:0 2px 0 rgba(255,255,255,.5) inset, 0 -3px 0 rgba(0,0,0,.15) inset, 0 8px 18px -8px var(--si);
+/* --si-rgb es el mismo color en r,g,b para las transparencias (color-mix()
+   no anda en teléfonos un poco viejos y ahí el fondo desaparecía entero). */
+.stat-info, .si-body{--si:var(--c-health); --si-hi:var(--c-health-hi); --si-rgb:255,77,109; text-align:left;}
+[data-si="energy"]   {--si:var(--c-energy);    --si-hi:var(--c-energy-hi);    --si-rgb:143,123,255;}
+[data-si="hygiene"]  {--si:var(--c-hygiene);   --si-hi:var(--c-hygiene-hi);   --si-rgb:63,184,255;}
+[data-si="happiness"]{--si:var(--c-happiness); --si-hi:var(--c-happiness-hi); --si-rgb:255,194,61;}
+[data-si="hunger"]   {--si:var(--c-hunger);    --si-hi:var(--c-hunger-hi);    --si-rgb:255,138,76;}
+.stat-info{margin-bottom:12px;}
+
+.si-hero{
+  display:flex; align-items:center; gap:16px; padding:12px 14px;
+  border-radius:var(--r-lg);
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(var(--si-rgb), .32), transparent 60%),
+    var(--surface);
+  border:1.5px solid rgba(var(--si-rgb), .35);
 }
-.si-title{display:flex; flex-direction:column; gap:1px; min-width:0;}
-.si-title small{font-size:12px; font-weight:800; color:var(--text-soft);}
-.si-title > small:first-child{text-transform:uppercase; letter-spacing:.06em; color:var(--si-hi);}
-.si-big{font-size:30px; font-weight:900; line-height:1.05;}
-.si-unit{font-size:15px; font-weight:800; color:var(--text-soft);}
-.si-gauge{position:relative; height:12px; border-radius:999px; background:rgba(0,0,0,.35); overflow:hidden;}
-.si-fill{position:absolute; left:0; top:0; bottom:0; border-radius:999px;
-  background:linear-gradient(90deg, var(--si), var(--si-hi));}
-.si-mark{position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:rgba(255,255,255,.55);}
-.si-mark.past{background:#ff5d6c;}
-.si-body h4{margin:8px 2px 0; font-size:12px; font-weight:900; text-transform:uppercase;
-  letter-spacing:.06em; color:var(--text-soft);}
-.si-now-box{display:flex; flex-direction:column; gap:3px; padding:11px 13px;
-  border-radius:var(--r-lg); background:var(--surface-hi); border:1.5px solid var(--stroke);}
-.si-now-box b{font-size:15px;}
-.si-now-box small{font-size:12.5px; font-weight:700; color:var(--text-soft);}
-.si-flags{display:flex; gap:6px; flex-wrap:wrap; margin-top:3px;}
-.si-flags span{font-size:11.5px; font-weight:800; padding:2px 8px; border-radius:999px; background:rgba(255,255,255,.1);}
+.si-ring{position:relative; width:92px; height:92px; flex-shrink:0;}
+.si-ring svg{width:100%; height:100%; transform:rotate(-90deg); overflow:visible;}
+.sr-track, .sr-fill{fill:none; stroke-width:5.5;}
+.sr-track{stroke:rgba(0,0,0,.4);}
+.sr-fill{stroke:var(--si); stroke-linecap:round; filter:drop-shadow(0 0 3px rgba(var(--si-rgb), .6));
+  transition:stroke-dasharray .5s ease;}
+.sr-fill.empty{display:none;}
+.si-ring-val{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1;}
+.si-ring-val b{font-size:25px; font-weight:900;}
+.si-ring-val small{margin-top:3px; font-size:10.5px; font-weight:800; color:var(--text-soft);}
+.si-title{display:flex; flex-direction:column; gap:3px; min-width:0;}
+.si-title > small{font-size:12px; font-weight:900; text-transform:uppercase; letter-spacing:.07em; color:var(--si-hi);}
+.si-title > span{font-size:12.5px; font-weight:700; color:var(--text-soft); line-height:1.3;}
+.si-mood{align-self:flex-start; font-size:20px; font-weight:900; line-height:1.1;}
+.si-mood.bien{color:#7ff0b0;}
+.si-mood.mid{color:#ffd25a;}
+.si-mood.bad{color:#ff7b88;}
+
+.si-tabs{margin-bottom:10px;}
+.si-body h4{margin:12px 2px 0; font-size:11.5px; font-weight:900; text-transform:uppercase;
+  letter-spacing:.07em; color:var(--text-soft);}
+.si-body h4:first-child{margin-top:2px;}
+
+/* El ritmo de ahora: una tarjeta del color de hacia dónde va. */
+.si-rate{
+  --rc:154,163,181;
+  display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:var(--r-lg);
+  background:linear-gradient(135deg, rgba(var(--rc), .26), rgba(var(--rc), .08));
+  border:1.5px solid rgba(var(--rc), .45);
+}
+.si-rate.up{--rc:63,214,138;}
+.si-rate.down{--rc:255,93,108;}
+.si-arrow{width:40px; height:40px; flex-shrink:0; display:grid; place-items:center; border-radius:50%;
+  font-size:17px; color:#fff; background:rgb(var(--rc)); box-shadow:0 6px 14px -6px rgb(var(--rc));}
+.si-rate-main{display:flex; flex-direction:column; gap:1px;}
+.si-rate-main b{font-size:24px; font-weight:900; line-height:1.1;}
+.si-rate-main small{font-size:12px; font-weight:800; color:var(--text-soft);}
+/* Cuánto falta: una fichita por cada cosa que viene. */
+.si-etas{display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:8px;}
+.si-eta{display:flex; flex-direction:column; gap:2px; padding:9px 12px; border-radius:var(--r-md); background:var(--surface);}
+.si-eta b{font-size:16px; font-weight:900;}
+.si-eta b::before{content:'⏱ '; font-size:13px;}
+.si-eta small{font-size:11.5px; font-weight:700; color:var(--text-soft); line-height:1.25;}
+
+/* Las filas: el ícono en un círculo verde (la sube), rojo (la baja) o gris,
+   y el valor en una pastilla del mismo tono. */
+.si-item{display:flex; align-items:center; gap:11px; padding:9px 11px; border-radius:var(--r-md);
+  background:var(--surface); border:1.5px solid transparent;}
+.si-item.on{background:var(--surface-hi); border-color:rgba(255,255,255,.14);}
+.si-ico{width:34px; height:34px; flex-shrink:0; display:grid; place-items:center; border-radius:50%;
+  font-size:17px; background:rgba(255,255,255,.08);}
+.si-item.up .si-ico{background:rgba(63,214,138,.18); box-shadow:0 0 0 1.5px rgba(63,214,138,.35) inset;}
+.si-item.down .si-ico{background:rgba(255,93,108,.18); box-shadow:0 0 0 1.5px rgba(255,93,108,.35) inset;}
+.si-txt{flex:1; min-width:0; display:flex; flex-direction:column; gap:1px;}
+.si-txt b{font-size:13.5px; font-weight:800; line-height:1.25;}
+.si-txt small{font-size:11.5px; font-weight:700; color:var(--text-soft); line-height:1.3;}
+.si-val{flex-shrink:0; font-size:12.5px; font-weight:900; white-space:nowrap; padding:4px 9px; border-radius:999px;
+  background:rgba(255,255,255,.1);}
+.si-item.up .si-val{color:#7ff0b0; background:rgba(63,214,138,.14);}
+.si-item.down .si-val{color:#ff98a2; background:rgba(255,93,108,.14);}
+.si-now{font-style:normal; font-size:9.5px; font-weight:900; text-transform:uppercase; letter-spacing:.04em;
+  padding:1px 6px; margin-left:5px; border-radius:999px; background:var(--si); color:#1a1030; vertical-align:1px;}
+.si-num{display:inline-grid; place-items:center; min-width:28px; height:22px; padding:0 4px; border-radius:7px;
+  font-size:11.5px; font-weight:900; background:rgba(255,255,255,.12);}
+.si-item.down .si-num{background:#ff5d6c; color:#fff;}
+.si-item.up .si-num{background:#3fd68a; color:#08311d;}
+.si-empty{margin:4px 2px; font-size:13px; font-weight:700; color:var(--text-soft);}
+
+/* "Ver todo": lleva a la otra pestaña. */
+.si-more{
+  display:flex; align-items:center; justify-content:center; gap:8px; margin-top:12px; padding:11px;
+  border:1.5px dashed rgba(255,255,255,.2); border-radius:var(--r-md); background:transparent; cursor:pointer;
+  font-family:var(--font-ui); font-size:13px; font-weight:900; color:var(--text);
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.si-more span{min-width:22px; padding:2px 7px; border-radius:999px; background:var(--si); color:#1a1030; font-size:11.5px;}
+
+/* Umbrales en la pestaña Todo: una escala de arriba hacia abajo, con una
+   línea que los une y "aquí está" en su lugar. */
+.si-scale{position:relative; display:flex; flex-direction:column; gap:6px; padding-left:6px;}
+.si-scale::before{content:''; position:absolute; left:20px; top:12px; bottom:12px; width:2px; background:rgba(255,255,255,.1);}
+.si-step{position:relative; display:flex; align-items:center; gap:10px; font-size:13px; font-weight:700; color:var(--text-soft);}
+.si-step .si-num{position:relative; z-index:1; background:#2c2446; color:var(--text); box-shadow:0 0 0 3px var(--sheet);}
+.si-step.past{color:var(--text);}
+.si-step.past .si-num{background:#ff5d6c; color:#fff;}
+.si-step.good{color:var(--text);}
+.si-step.good .si-num{background:#3fd68a; color:#08311d;}
+.si-step.here{color:var(--text); font-weight:900;}
+.si-step.here .si-num{background:var(--si); color:#1a1030; box-shadow:0 0 0 3px var(--sheet), 0 0 12px var(--si);}
+
+/* Las filas de la ficha del Mimodex (logros.js) siguen con su forma simple. */
 .si-row{display:flex; align-items:center; gap:10px; padding:8px 11px;
   border-radius:var(--r-md); background:var(--surface); border:1.5px solid transparent;}
-.si-row.on{border-color:rgba(255,255,255,.28); background:var(--surface-hi);}
 .si-e{width:26px; flex-shrink:0; text-align:center; font-size:18px;}
-.si-num{display:inline-grid; place-items:center; min-width:26px; height:22px; border-radius:7px;
-  font-size:12px; font-weight:900; background:rgba(255,255,255,.12);}
-.si-row.on .si-num{background:#ff5d6c;}
 .si-t{flex:1; min-width:0; display:flex; flex-direction:column; gap:1px;}
 .si-t b{font-size:13.5px; font-weight:800;}
-.si-t small{font-size:11.5px; font-weight:700; color:var(--text-soft); line-height:1.3;}
-.si-now{font-style:normal; font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:.04em;
-  padding:1px 6px; margin-left:4px; border-radius:999px; background:#fff; color:var(--sheet); vertical-align:1px;}
 .si-v{flex-shrink:0; font-size:13px; font-weight:900; white-space:nowrap;}
-.si-v.up{color:#6fe3a2;}
-.si-v.down{color:#ff8a96;}
 .menu-item.urgent{border-color:#ff8a96; background:rgba(255,93,108,.14);}
 .overlay-card .style-empty{font-size:12px; color:var(--text-soft); margin:0 0 4px; text-align:left;}
 
