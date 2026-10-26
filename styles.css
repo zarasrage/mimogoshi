@@ -1776,6 +1776,60 @@ body{
   animation:none;
 }
 @keyframes alertPulse{ 50%{transform:scale(1.15);} }
+/* Ficha de un reloj (openStatInfo): la cabecera con el color del reloj, la
+   barra con sus umbrales y debajo las listas con lo que la mueve. */
+.stat{cursor:pointer; -webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation;}
+/* Al tocar, brillo y no tamaño: el ícono es pixel art (nunca con transform). */
+.stat:active .stat-ring{filter:brightness(1.25);}
+.stat-info{--si:var(--c-health); --si-hi:var(--c-health-hi); margin-bottom:12px;}
+.stat-info[data-si="energy"]   {--si:var(--c-energy);    --si-hi:var(--c-energy-hi);}
+.stat-info[data-si="hygiene"]  {--si:var(--c-hygiene);   --si-hi:var(--c-hygiene-hi);}
+.stat-info[data-si="happiness"]{--si:var(--c-happiness); --si-hi:var(--c-happiness-hi);}
+.stat-info[data-si="hunger"]   {--si:var(--c-hunger);    --si-hi:var(--c-hunger-hi);}
+.stat-info, .si-body{text-align:left;}
+.si-head{display:flex; align-items:center; gap:14px; margin-bottom:12px;}
+.si-badge{
+  width:56px; height:56px; flex-shrink:0;
+  display:grid; place-items:center; font-size:28px;
+  border-radius:18px;
+  background:linear-gradient(160deg, var(--si-hi) 0%, var(--si) 70%);
+  box-shadow:0 2px 0 rgba(255,255,255,.5) inset, 0 -3px 0 rgba(0,0,0,.15) inset, 0 8px 18px -8px var(--si);
+}
+.si-title{display:flex; flex-direction:column; gap:1px; min-width:0;}
+.si-title small{font-size:12px; font-weight:800; color:var(--text-soft);}
+.si-title > small:first-child{text-transform:uppercase; letter-spacing:.06em; color:var(--si-hi);}
+.si-big{font-size:30px; font-weight:900; line-height:1.05;}
+.si-unit{font-size:15px; font-weight:800; color:var(--text-soft);}
+.si-gauge{position:relative; height:12px; border-radius:999px; background:rgba(0,0,0,.35); overflow:hidden;}
+.si-fill{position:absolute; left:0; top:0; bottom:0; border-radius:999px;
+  background:linear-gradient(90deg, var(--si), var(--si-hi));}
+.si-capzone{position:absolute; top:0; bottom:0;
+  background:repeating-linear-gradient(135deg, rgba(255,255,255,.28) 0 3px, rgba(255,255,255,.08) 3px 6px);}
+.si-mark{position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:rgba(255,255,255,.55);}
+.si-mark.past{background:#ff5d6c;}
+.si-body h4{margin:8px 2px 0; font-size:12px; font-weight:900; text-transform:uppercase;
+  letter-spacing:.06em; color:var(--text-soft);}
+.si-now-box{display:flex; flex-direction:column; gap:3px; padding:11px 13px;
+  border-radius:var(--r-lg); background:var(--surface-hi); border:1.5px solid var(--stroke);}
+.si-now-box b{font-size:15px;}
+.si-now-box small{font-size:12.5px; font-weight:700; color:var(--text-soft);}
+.si-flags{display:flex; gap:6px; flex-wrap:wrap; margin-top:3px;}
+.si-flags span{font-size:11.5px; font-weight:800; padding:2px 8px; border-radius:999px; background:rgba(255,255,255,.1);}
+.si-row{display:flex; align-items:center; gap:10px; padding:8px 11px;
+  border-radius:var(--r-md); background:var(--surface); border:1.5px solid transparent;}
+.si-row.on{border-color:rgba(255,255,255,.28); background:var(--surface-hi);}
+.si-e{width:26px; flex-shrink:0; text-align:center; font-size:18px;}
+.si-num{display:inline-grid; place-items:center; min-width:26px; height:22px; border-radius:7px;
+  font-size:12px; font-weight:900; background:rgba(255,255,255,.12);}
+.si-row.on .si-num{background:#ff5d6c;}
+.si-t{flex:1; min-width:0; display:flex; flex-direction:column; gap:1px;}
+.si-t b{font-size:13.5px; font-weight:800;}
+.si-t small{font-size:11.5px; font-weight:700; color:var(--text-soft); line-height:1.3;}
+.si-now{font-style:normal; font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:.04em;
+  padding:1px 6px; margin-left:4px; border-radius:999px; background:#fff; color:var(--sheet); vertical-align:1px;}
+.si-v{flex-shrink:0; font-size:13px; font-weight:900; white-space:nowrap;}
+.si-v.up{color:#6fe3a2;}
+.si-v.down{color:#ff8a96;}
 .menu-item.urgent{border-color:#ff8a96; background:rgba(255,93,108,.14);}
 .overlay-card .style-empty{font-size:12px; color:var(--text-soft); margin:0 0 4px; text-align:left;}
 

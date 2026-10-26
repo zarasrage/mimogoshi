@@ -2295,6 +2295,321 @@ function updateDock(){
   document.getElementById('sleepLabel').textContent = want.btnSleep.asleep ? 'Despertar' : 'Dormir';
 }
 
+/* ===================== Ficha de cada reloj =====================
+   Tocar un reloj abre una hoja con todo lo que mueve esa barra: el valor
+   real (el hambre en puntos de panza, la salud contra su tope), a qué ritmo
+   va ahora y cuánto falta para el próximo umbral, lo que la sube y lo que
+   la baja con sus números, y qué pasa en cada umbral. Todo sale de las
+   constantes de la simulación (nada escrito a mano), así no se desfasa si
+   se recalibra algo. Lo que está pasando ahora va marcado. */
+const STAT_META = {
+  energy:    { name: 'Energía',   emoji: '⚡' },
+  hygiene:   { name: 'Higiene',   emoji: '🧼' },
+  health:    { name: 'Salud',     emoji: '❤️' },
+  happiness: { name: 'Felicidad', emoji: '😊' },
+  hunger:    { name: 'Hambre',    emoji: '🍗' },
+};
+const STAGE_NAME = { egg: 'huevo', child: 'niño', teen: 'adolescente', adult: 'adulto' };
+const GAME_H = 60;   // horas de juego por hora real (MS_PER_GAME_HOUR)
+
+const nf = (v, d = 1) => Number(v).toLocaleString('es-CL', { maximumFractionDigits: d });
+function fmtHours(h){
+  if (!isFinite(h)) return '—';
+  const min = Math.max(1, Math.round(h * 60));
+  if (min < 60) return `${min} min`;
+  const H = Math.floor(min / 60), M = min % 60;
+  return M ? `${H} h ${M} min` : `${H} h`;
+}
+function hasFurniAnywhere(id){
+  return !!(state.style && Array.isArray(state.style.rooms) &&
+    state.style.rooms.some(r => r.furniture.some(f => f.id === id)));
+}
+
+/* Lo que multiplica el decaimiento en este momento. */
+function statFactors(stat){
+  const night = isNightMode() ? NIGHT_DECAY_FACTOR : 1;
+  const sleep = state.sleeping && (stat === 'hunger' || stat === 'happiness') ? 0.25 : 1;
+  return night * sleep;
+}
+
+/* Cuánto cambia la barra por hora REAL ahora mismo, en % (signo incluido). */
+function statRateNow(stat){
+  const v = state[stat];
+  if (stat === 'energy'){
+    if (state.sleeping) return ENERGY_RECOVER_PER_HOUR * (hasFurniAnywhere('cama') ? FURNI_BED_ENERGY_MULT : 1) * GAME_H;
+    return -decayRate('energy', v) * statFactors('energy') * GAME_H;
+  }
+  if (stat === 'hygiene') return state.poop ? -decayRate('hygiene', v) * statFactors('hygiene') * GAME_H : 0;
+  if (stat === 'health'){
+    const night = isNightMode() ? NIGHT_DECAY_FACTOR : 1;
+    let d = 0;
+    if (healthRiskNow()) d -= HEALTH_DECAY_PER_HOUR * night;
+    if (state.sick) d -= HEALTH_DECAY_PER_HOUR * night;
+    if (isExhausted()) d -= HEALTH_DECAY_PER_HOUR * EXHAUSTED_HEALTH_MULT * night;
+    if (d === 0) return state.health >= healthMax() - 0.01 ? 0 : HEALTH_RECOVER_PER_HOUR * GAME_H;
+    return d * GAME_H;
+  }
+  return -decayRate(stat, v) * statFactors(stat) * GAME_H;
+}
+function healthRiskNow(){
+  return state.hunger < HEALTH_RISK_AT || state.happiness < HEALTH_RISK_AT || state.hygiene < HEALTH_RISK_AT;
+}
+
+/* Horas reales hasta que la barra baje a `target`, a las condiciones de
+   ahora (con el x1.5 de apuro cuando entra). Infinity si no baja. */
+function statEta(stat, target){
+  if (stat === 'health'){
+    const r = statRateNow('health');
+    return r < 0 && state.health > target ? (state.health - target) / -r : Infinity;
+  }
+  if (stat === 'hygiene' && !state.poop) return Infinity;
+  if (stat === 'energy' && state.sleeping) return Infinity;
+  let v = state[stat], h = 0;
+  if (v <= target) return 0;
+  const f = statFactors(stat), step = 0.25;
+  while (v > target && h < 60 * 24 * 30){ v -= decayRate(stat, v) * f * step; h += step; }
+  return h / GAME_H;
+}
+
+/* Fila de una lista: e emoji, t título, d detalle, v valor, up/down el
+   color del valor, on = está pasando ahora. */
+function siRow({ e, t, d = '', v = '', up = false, down = false, on = false }){
+  return `<div class="si-row ${on ? 'on' : ''}">
+      <span class="si-e">${e}</span>
+      <div class="si-t"><b>${t}${on ? ' <i class="si-now">ahora</i>' : ''}</b>${d ? `<small>${d}</small>` : ''}</div>
+      ${v ? `<span class="si-v ${up ? 'up' : down ? 'down' : ''}">${v}</span>` : ''}
+    </div>`;
+}
+
+/* Contenido por reloj: { big, unit, sub, gauge: {marks, cap}, now: [chips],
+   eta: [líneas], up: [filas], down: [filas], marks: [filas de umbrales],
+   extra } */
+function statInfoData(stat){
+  const night = isNightMode(), sleeping = !!state.sleeping;
+  const nightRow = { e: '🌙', t: 'De noche (00:00 a 06:00)', d: 'Hora del teléfono', v: `×${nf(NIGHT_DECAY_FACTOR)}`, up: true, on: night };
+  const distressRow = (lim) => ({ e: '📉', t: `En apuro (bajo ${lim}%)`, d: 'Cuando ya va mal, baja más rápido', v: `×${nf(DISTRESS_MULT)}`, down: true, on: state[stat] < lim });
+  const sleepRow = { e: '💤', t: 'Dormida', d: 'Baja a un cuarto del ritmo', v: '×0,25', up: true, on: sleeping };
+  const riskMark = { v: HEALTH_RISK_AT, t: 'Empieza a dañar la salud' };
+  const sadMark = { v: 25, t: 'Se pone triste' };
+  const distMark = lim => ({ v: lim, t: `Apuro: baja ×${nf(DISTRESS_MULT)} más rápido` });
+
+  if (stat === 'hunger'){
+    const st = hungerStage(), cap = hungerCap(), pts = state.hunger / 100 * cap;
+    const ptsH = HUNGER_PER_REAL_HOUR[st];
+    const full = c => c * (0.8 + 0.2 / DISTRESS_MULT);   // de 100% a 0, con el apuro bajo 20%
+    const stages = ['child', 'teen', 'adult'].map(s => siRow({
+      e: s === st ? '👉' : '·', t: `${STAGE_NAME[s][0].toUpperCase() + STAGE_NAME[s].slice(1)}: panza de ${HUNGER_CAP[s]}`,
+      d: `Baja ${nf(HUNGER_PER_REAL_HOUR[s])} pts por hora · de lleno a vacío en ${fmtHours(full(HUNGER_CAP[s]) / HUNGER_PER_REAL_HOUR[s])}`,
+      on: s === st })).join('');
+    const foods = FOODS.filter(f => f.restore > 0).map(f => ({
+      e: f.emoji, t: f.name,
+      d: f.fill ? `Llena la panza entera · ${f.price} 💰` : `Llena ${nf(hungerFillPct(f), 0)}% siendo ${STAGE_NAME[st]} · ${f.price} 💰`,
+      v: f.fill ? 'lleno' : `+${f.restore} pts`, up: true }));
+    if (typeof FRUIT_FOOD !== 'undefined') foods.push({ e: FRUIT_FOOD.emoji, t: 'Fruta del árbol frutal', d: `Gratis, una cada ${FRUIT_EVERY_MS / 3600000} h (objeto mágico)`, v: `+${FRUIT_FOOD.restore} pts`, up: true, on: hasFurniAnywhere('arbol') });
+    return {
+      big: nf(pts, 0), unit: `/ ${cap} pts`, sub: `${nf(state.hunger, 0)}% de su panza de ${STAGE_NAME[st]}`,
+      down: [
+        { e: '⏳', t: 'Sola, con el tiempo', d: `De lleno a vacío en ${fmtHours(full(cap) / ptsH)} siendo ${STAGE_NAME[st]}`, v: `−${nf(ptsH)} pts/h`, down: true, on: true },
+        sleepRow, nightRow, distressRow(DISTRESS_AT.hunger),
+      ],
+      up: foods,
+      marks: [{ v: 60, t: 'Feliz (si la felicidad pasa de 75)', above: true }, riskMark, sadMark, distMark(DISTRESS_AT.hunger)],
+      extra: `<h4>La panza crece con la edad</h4>${stages}`,
+      unitPts: cap / 100,
+      pct: true,   // los umbrales son % de la panza, no puntos
+    };
+  }
+
+  if (stat === 'happiness'){
+    const base = DECAY_PER_HOUR.happiness * GAME_H;
+    const j = state.furniJoy && typeof state.furniJoy === 'object' && Date.now() - state.furniJoy.since < 3600000 ? state.furniJoy.n : 0;
+    return {
+      big: nf(state.happiness, 1), unit: '/ 100', sub: 'Puntos de felicidad',
+      down: [
+        { e: '⏳', t: 'Sola, con el tiempo', d: `De llena a vacía en ~${fmtHours(100 / base)}`, v: `−${nf(base)}/h`, down: true, on: true },
+        sleepRow, nightRow, distressRow(DISTRESS_AT.happiness),
+        { e: '💩', t: 'Comer caca en Atrapa estrellas', d: 'Una partida mala puede restar', v: `hasta −${Math.abs(HAPPINESS_MIN_GAIN)}`, down: true },
+      ],
+      up: [
+        { e: '🎮', t: 'Jugar un minijuego', d: `Según qué tan bien: un tercio del mérito (~${Math.round(GOOD_GAME_MERIT * HAPPINESS_PER_MERIT)} en una partida muy buena)`, v: `hasta +${HAPPINESS_MAX_GAIN}`, up: true },
+        { e: '💗', t: 'Hacerle cariño', d: 'Tocar a la mascota', v: '+6', up: true },
+        { e: '🎁', t: 'Abrir un regalo', d: 'Aparecen solos, ~1 cada 12 h', v: `+${GIFT_HAPPINESS}`, up: true, on: !!state.gift },
+        { e: '🎡', t: 'Trozo de felicidad en la ruleta', d: 'Un premio posible del giro', v: '+15', up: true },
+        { e: '🛋️', t: 'Muebles, objetos y jugar de a dos', d: `Cada visita o juego juntos · máximo ${FURNI_JOY_PER_HOUR} por hora (esta hora: ${j})`, v: `+${FURNI_JOY}`, up: true, on: j > 0 },
+      ],
+      marks: [{ v: 75, t: 'Feliz (si el hambre pasa de 60)', above: true }, riskMark, sadMark, distMark(DISTRESS_AT.happiness)],
+    };
+  }
+
+  if (stat === 'energy'){
+    const base = DECAY_PER_HOUR.energy * GAME_H, rec = ENERGY_RECOVER_PER_HOUR * GAME_H;
+    const bed = hasFurniAnywhere('cama');
+    const foods = FOODS.map(f => ({ f, e: f.energy ?? FOOD_ENERGY_DEFAULT }))
+      .sort((a, b) => b.e - a.e)
+      .map(({ f, e }) => ({ e: f.emoji, t: f.name, d: `${f.price} 💰`, v: `+${e}`, up: true }));
+    return {
+      big: nf(state.energy, 1), unit: '/ 100', sub: sleeping ? 'Durmiendo: se está cargando' : 'Puntos de energía',
+      down: [
+        { e: '⏳', t: 'Despierta, con el tiempo', d: `De llena a vacía en ~${fmtHours(100 / base)}`, v: `−${nf(base)}/h`, down: true, on: !sleeping },
+        { e: '🌙', t: 'De noche (00:00 a 06:00)', d: 'Hora del teléfono', v: `×${nf(NIGHT_DECAY_FACTOR)}`, up: true, on: night && !sleeping },
+        distressRow(DISTRESS_AT.energy),
+        { e: '🎮', t: 'Cada partida de un minijuego', d: `Según el juego; hace falta ${GAME_MIN_ENERGY} para jugar`, v: '−10 a −20', down: true },
+      ],
+      up: [
+        { e: '💤', t: 'Dormir', d: `La barra entera en ${fmtHours(100 / rec)}`, v: `+${nf(rec, 0)}/h`, up: true, on: sleeping },
+        { e: '🛏️', t: 'Con cama puesta', d: `En cualquier habitación: la barra en ${fmtHours(100 / rec / FURNI_BED_ENERGY_MULT)}`, v: `×${nf(FURNI_BED_ENERGY_MULT)}`, up: true, on: bed },
+        ...foods,
+        ...(typeof FRUIT_FOOD !== 'undefined' ? [{ e: FRUIT_FOOD.emoji, t: 'Fruta del árbol frutal', d: 'Objeto mágico', v: `+${FRUIT_FOOD.energy}`, up: true }] : []),
+      ],
+      marks: [
+        { v: WAKE_AT, t: 'Se despierta sola', above: true },
+        { v: SLEEPY_THRESHOLD, t: 'Puede quedarse dormida sola' },
+        { v: EXHAUSTED_AT, t: `Agotada: despierta pierde salud ×${EXHAUSTED_HEALTH_MULT}` },
+        { v: GAME_MIN_ENERGY, t: `Muy cansada para jugar · apuro ×${nf(DISTRESS_MULT)}` },
+        { v: ENERGY_LOCK_AT, t: 'Se desploma: se duerme y no se la puede despertar' },
+      ],
+    };
+  }
+
+  if (stat === 'hygiene'){
+    const base = DECAY_PER_HOUR.hygiene * GAME_H;
+    const poopH = 1 - Math.pow(1 - POOP_CHANCE_PER_HOUR, GAME_H);
+    const poopMed = Math.log(2) / -Math.log(1 - POOP_CHANCE_PER_HOUR) / GAME_H;
+    const seguro = upgradeState('autoClean');
+    return {
+      big: nf(state.hygiene, 1), unit: '/ 100', sub: state.poop ? 'Hay caca: se está ensuciando' : 'No baja sola: solo con caca',
+      down: [
+        { e: '💩', t: 'Caca sin limpiar', d: `Solo mientras esté: de limpia a sucia en ~${fmtHours(100 / base)}`, v: `−${nf(base)}/h`, down: true, on: !!state.poop },
+        { e: '🎲', t: 'Que aparezca caca', d: `${nf(poopH * 100)}% por hora · la primera sale en ~${fmtHours(poopMed)} (mediana)`, v: '' },
+        nightRow, distressRow(DISTRESS_AT.hygiene),
+        { e: '🎮', t: 'Algunos minijuegos', d: 'Atrapa estrellas −5, Carrera en dupla −4, Espejo −3', v: 'hasta −5', down: true },
+      ],
+      up: [
+        { e: '🧹', t: 'Limpiar', d: 'Y saca la caca', v: '+35', up: true, on: !!state.poop },
+        { e: '🛡️', t: 'Seguro de limpieza', d: seguro.owned ? (seguro.armed ? 'Activado: limpia sola la próxima caca' : 'Comprado, pero desactivado (Tienda → Mejoras)') : 'Mejora de la tienda: limpia sola una caca', v: '+35', up: true, on: !!(seguro.owned && seguro.armed) },
+        ...(typeof ROBOT_CLEAN_EVERY_MS !== 'undefined' ? [{ e: '🤖', t: 'Robot aspiradora', d: `Aspira una caca cada ${ROBOT_CLEAN_EVERY_MS / 3600000} h (objeto mágico)`, v: '+35', up: true, on: hasFurniAnywhere('robot') }] : []),
+        ...(typeof NUBE_ART !== 'undefined' ? [{ e: '🌧️', t: 'Lluvia de la nubecita', d: 'Si queda debajo, una vez por lluvia (objeto mágico)', v: '+4', up: true, on: hasFurniAnywhere('nube') }] : []),
+      ],
+      marks: [riskMark, sadMark, distMark(DISTRESS_AT.hygiene)],
+    };
+  }
+
+  /* Salud */
+  const cause = HEALTH_DECAY_PER_HOUR * GAME_H, rec = HEALTH_RECOVER_PER_HOUR * GAME_H;
+  const sickH = p => 1 - Math.pow(1 - p, GAME_H);
+  const vac = vaccineFor(), vacOk = isVaccinated();
+  const mult = vacOk ? VACCINE_SICK_MULT : 1;
+  const medSeguro = upgradeState('autoMed');
+  const risk = healthRiskNow(), causas = (risk ? 1 : 0) + (state.sick ? 1 : 0) + (isExhausted() ? 1 : 0);
+  return {
+    big: nf(state.health, 1), unit: `/ ${nf(healthMax(), 0)}`,
+    sub: healthMax() < 99.9 ? `Su tope bajó a ${nf(healthMax(), 1)} por falta de vacuna` : 'Puntos de salud',
+    down: [
+      { e: '⚠️', t: `Hambre, felicidad o higiene bajo ${HEALTH_RISK_AT}%`, d: 'Cuenta una vez, aunque sean varias', v: `−${nf(cause)}/h`, down: true, on: risk },
+      { e: '🤒', t: 'Enferma', d: 'Se suma a lo de arriba', v: `−${nf(cause)}/h`, down: true, on: !!state.sick },
+      { e: '😵', t: `Agotada y despierta (energía bajo ${EXHAUSTED_AT})`, d: 'Dormida no cuesta nada', v: `−${nf(cause * EXHAUSTED_HEALTH_MULT)}/h`, down: true, on: isExhausted() },
+      { e: '🌙', t: 'De noche (00:00 a 06:00)', d: 'Lo que baja, baja a la mitad', v: `×${nf(NIGHT_DECAY_FACTOR)}`, up: true, on: night && causas > 0 },
+      ...(vac ? [{ e: VACCINE_EMOJI, t: 'Sin la vacuna de su etapa', d: vacOk ? 'Ya la tiene: el tope no baja' : `El tope baja; en 0 se muere (${nf(healthMax() / VACCINE_CAP_LOSS_PER_DAY, 0)} días)`, v: `tope −${VACCINE_CAP_LOSS_PER_DAY}/día`, down: true, on: !vacOk }] : []),
+    ],
+    up: [
+      { e: '🌿', t: 'Sin ninguna causa', d: 'Se recupera sola, hasta su tope', v: `+${nf(rec)}/h`, up: true, on: causas === 0 && state.health < healthMax() - 0.01 },
+      { e: '💊', t: 'Medicina', d: `La cura y suma salud · ${MEDICINE.price} 💰`, v: `+${MED_HEALTH}`, up: true, on: !!state.sick },
+      { e: '🛡️', t: 'Seguro médico', d: medSeguro.owned ? (medSeguro.armed ? 'Activado: cura sola la próxima enfermedad' : 'Comprado, pero desactivado') : 'Mejora de la tienda: cura sola una enfermedad', v: `+${MED_HEALTH}`, up: true, on: !!(medSeguro.owned && medSeguro.armed) },
+      ...(vac ? [{ e: VACCINE_EMOJI, t: vac.name, d: vacOk ? 'Puesta ✓ · la próxima al crecer' : `Tienda → Mejoras · ${vac.price} 💰 · y se enferma la mitad`, v: 'tope 100', up: true, on: vacOk }] : []),
+    ],
+    marks: [
+      { v: SICK_LOW_HEALTH_AT, t: `Se enferma más seguido (${nf(sickH(SICK_CHANCE_PER_HOUR_LOW * mult) * 100)}% por hora)` },
+      { v: 25, t: 'Queda anotado en la bitácora' },
+      { v: 0, t: 'Se muere', zero: true },
+    ],
+    extra: `<h4>Enfermarse</h4>${siRow({ e: '🎲', t: 'Probabilidad por hora',
+      d: `${nf(sickH(SICK_CHANCE_PER_HOUR * mult) * 100)}% con ${SICK_LOW_HEALTH_AT} o más de salud, ${nf(sickH(SICK_CHANCE_PER_HOUR_LOW * mult) * 100)}% bajo ${SICK_LOW_HEALTH_AT}${vacOk ? ' (vacunada: la mitad)' : ''}`,
+      v: `${nf(sickH((state.health < SICK_LOW_HEALTH_AT ? SICK_CHANCE_PER_HOUR_LOW : SICK_CHANCE_PER_HOUR) * mult) * 100)}%/h`, down: true, on: true })}`,
+    cap: healthMax(),
+  };
+}
+
+/* Un umbral "pasa" bajo su valor; los de arriba (feliz, despertarse), sobre él. */
+const markOn = (m, v) => m.zero ? v <= 0 : m.above ? v >= m.v : v < m.v;
+
+/* La barra con sus umbrales marcados y dónde está ahora. */
+function statGauge(stat, data){
+  const v = clamp(state[stat]);
+  const marks = data.marks.filter(m => m.v > 0 && m.v < 100)
+    .map(m => `<i class="si-mark ${markOn(m, v) ? 'past' : ''}" style="left:${m.v}%"></i>`).join('');
+  const cap = data.cap !== undefined && data.cap < 99.9
+    ? `<i class="si-capzone" style="left:${data.cap}%; width:${100 - data.cap}%"></i>` : '';
+  return `<div class="si-gauge"><i class="si-fill" style="width:${v}%"></i>${cap}${marks}</div>`;
+}
+
+/* Lo de "ahora": a qué ritmo va y cuánto le falta para lo próximo. */
+function statNowHtml(stat, data){
+  const r = statRateNow(stat);
+  const k = data.unitPts || 1, u = data.unitPts ? ' pts' : '';
+  let ritmo;
+  if (Math.abs(r) < 0.005) ritmo = stat === 'health' && state.health >= healthMax() - 0.01 ? 'Está en su tope: no cambia' : 'Quieta: no está cambiando';
+  else ritmo = `${r > 0 ? 'Sube' : 'Baja'} ${nf(Math.abs(r) * k)}${u} por hora${data.unitPts ? ` (${nf(Math.abs(r))}%)` : ''}`;
+  const lines = [];
+  if (r > 0.005){
+    const tope = stat === 'health' ? healthMax() : 100;
+    lines.push(`Llega a ${stat === 'energy' && state.sleeping ? `${WAKE_AT} (se despierta)` : nf(tope, 0)} en ${fmtHours(((stat === 'energy' && state.sleeping ? WAKE_AT : tope) - state[stat]) / r)}`);
+  } else if (r < -0.005){
+    const prox = data.marks.filter(m => !m.above).sort((a, b) => b.v - a.v).find(m => m.v < state[stat]);
+    if (prox) lines.push(`${prox.v === 0 ? 'Llega a 0' : `Baja de ${prox.v}${data.pct ? '%' : ''}`} en ${fmtHours(statEta(stat, prox.v))}: ${prox.t.toLowerCase()}`);
+    if (stat !== 'health' && (!prox || prox.v > 0)) lines.push(`Se vacía en ${fmtHours(statEta(stat, 0))}`);
+  }
+  const flags = [];
+  if (state.sleeping) flags.push('💤 dormida');
+  if (isNightMode()) flags.push('🌙 noche');
+  return `<div class="si-now-box">
+      <b>${ritmo}</b>
+      ${lines.map(l => `<small>${l}</small>`).join('')}
+      ${flags.length ? `<div class="si-flags">${flags.map(f => `<span>${f}</span>`).join('')}</div>` : ''}
+    </div>`;
+}
+
+let statInfoTimer = null;
+function statInfoParts(stat){
+  const m = STAT_META[stat], d = statInfoData(stat);
+  return {
+    head: `
+      <div class="si-head">
+        <span class="si-badge">${m.emoji}</span>
+        <div class="si-title"><small>${m.name}</small><div><b class="si-big">${d.big}</b> <span class="si-unit">${d.unit}</span></div><small>${escapeHtml(d.sub)}</small></div>
+      </div>
+      ${statGauge(stat, d)}`,
+    body: `
+      ${statNowHtml(stat, d)}
+      <h4>Lo que la sube</h4>${d.up.map(siRow).join('')}
+      <h4>Lo que la baja</h4>${d.down.map(siRow).join('')}
+      <h4>Umbrales${d.pct ? ' (en % de la panza)' : ''}</h4>${d.marks.map(mk => siRow({ e: `<span class="si-num">${mk.v}</span>`, t: mk.t, on: markOn(mk, state[stat]) })).join('')}
+      ${d.extra || ''}`,
+  };
+}
+
+function openStatInfo(stat){
+  if (!STAT_META[stat] || !state || state.stage === 'egg') return;
+  catchUp();
+  const p = statInfoParts(stat);
+  showOverlay(`
+    <div class="stat-info" data-si="${stat}">${p.head}</div>
+    <div class="menu-list si-body">${p.body}</div>
+    <button class="overlay-btn secondary" id="btnCloseStat">Cerrar</button>
+  `, closeStatInfo);
+  document.getElementById('btnCloseStat').addEventListener('click', closeStatInfo);
+  /* Se refresca sola mientras está abierta (los números se mueven): solo el
+     contenido, sin volver a armar la hoja ni perder el scroll. */
+  clearInterval(statInfoTimer);
+  statInfoTimer = setInterval(() => {
+    const head = document.querySelector('.stat-info[data-si]');
+    if (!head || document.getElementById('overlay').classList.contains('hidden') || gameOver){ clearInterval(statInfoTimer); return; }
+    const q = statInfoParts(head.dataset.si);
+    head.innerHTML = q.head;
+    document.querySelector('.si-body').innerHTML = q.body;
+  }, 2000);
+}
+function closeStatInfo(){ clearInterval(statInfoTimer); hideOverlay(); }
+
 /* ===================== Bandeja de comidas ===================== */
 
 /* Comer abre una bandeja encima de los botones de abajo (no una hoja: no tapa
@@ -3152,6 +3467,12 @@ function wireButtons(){
       ? 'Es de noche (00:00 a 06:00): todo baja a la mitad y duerme más seguido'
       : `Es de día. De ${String(NIGHT_START_HOUR).padStart(2, '0')}:00 a ${String(NIGHT_END_HOUR).padStart(2, '0')}:00 es de noche`, 2800);
   });
+  /* Cada reloj abre su ficha (ver openStatInfo). */
+  document.querySelectorAll('#stats .stat').forEach(el => el.addEventListener('click', (e) => {
+    e.stopPropagation();   // que no limpie caca de pasada (listener de #screen)
+    if (gameOver || activeMinigame) return;
+    openStatInfo(el.dataset.stat);
+  }));
   /* Bitácora: el ícono del borde abre y cierra la lista; tocar fuera la cierra. */
   document.getElementById('logBtn').addEventListener('click', (e) => { e.stopPropagation(); toggleLogPanel(); });
   document.getElementById('logPanel').addEventListener('click', (e) => e.stopPropagation());
