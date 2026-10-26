@@ -671,7 +671,7 @@ let simNowMs = null;
 
 function isNightMode(){
   if (debugForcedNight !== null) return debugForcedNight;
-  const h = new Date(simNowMs ?? Date.now()).getHours();
+  const h = new Date(simNowMs ?? (Date.now() + debugClockOffsetMs)).getHours();
   return h >= NIGHT_START_HOUR && h < NIGHT_END_HOUR;
 }
 
@@ -995,7 +995,7 @@ function catchUp(){
   let done = 0;
   while (done < cappedMs && !gameOver){
     const step = Math.min(TICK_MS, cappedMs - done);
-    simNowMs = t0 + done;
+    simNowMs = t0 + done + debugClockOffsetMs;
     const antes = logSnapshot();
     applyDecay(step / MS_PER_GAME_HOUR);
     /* Con la app abierta esto lo hace tick(); cerrada, cada paso. */
@@ -1008,6 +1008,39 @@ function catchUp(){
   simNowMs = null;
   state.lastUpdate = now;
   if (visita) logAway(elapsedMs, visita);
+}
+
+/* Panel de prueba, TEMPORAL (se saca cuando se termine de calibrar): pasar
+   el tiempo. Simula `ms` reales de a un tick, igual que catchUp() pero SIN
+   su tope de 72 minutos, porque la app de teléfono va a llevar el tiempo
+   completo y eso es lo que se quiere probar. Corre un reloj virtual
+   (debugClockOffsetMs, que suma isNightMode()), así las noches caen donde
+   corresponde aunque se adelante varias veces seguidas. No se guarda: al
+   recargar vuelve la hora real. Los relojes de la ruleta y del desafío
+   diario no se mueven (leen Date.now()). */
+let debugClockOffsetMs = 0;
+function debugSkipTime(ms){
+  if (!state || gameOver) return;
+  catchUp();      // primero lo que pasó de verdad
+  flushMeal();    // una comida a medio comer cuenta entera
+  const t0 = Date.now() + debugClockOffsetMs;
+  const visita = { slept: 0, n: 0 };
+  let done = 0;
+  while (done < ms && !gameOver){
+    const step = Math.min(TICK_MS, ms - done);
+    simNowMs = t0 + done;
+    const antes = logSnapshot();
+    applyDecay(step / MS_PER_GAME_HOUR);
+    if (!gameOver) maybeAutoSleep();
+    done += step;
+    if (state.sleeping) visita.slept += step;
+    visita.n += logChanges(antes, t0 + done, true);
+  }
+  simNowMs = null;
+  debugClockOffsetMs += done;
+  state.lastUpdate = Date.now();
+  logAway(done, visita);
+  saveState(); render();
 }
 
 /* Bajo ENERGY_LOCK_AT se duerme en el acto, de día o de noche. */
@@ -2570,6 +2603,19 @@ function toggleDebugPanel(){
   if (isDebugPanelOpen()) closeDebugPanel(); else openDebugPanel();
 }
 
+/* Lo que se mira al pasar el tiempo: hora simulada, cuánto se adelantó,
+   etapa y las barras. */
+function debugTimeInfo(){
+  if (!state) return '';
+  const t = new Date(Date.now() + debugClockOffsetMs);
+  const hh = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+  const adelanto = debugClockOffsetMs ? ` · adelantado ${durationLabel(debugClockOffsetMs)}` : '';
+  const r = v => Math.round(v);
+  return `🕐 ${hh}${adelanto}${isNightMode() ? ' · 🌙 noche' : ''}<br>` +
+    `${STAGE_LABELS[state.stage] || state.stage}${state.sleeping ? ' · 😴 dormida' : ''}${gameOver ? ' · 💀' : ''}<br>` +
+    `🍗 ${r(state.hunger)}% · 😊 ${r(state.happiness)}% · ⚡ ${r(state.energy)}% · 🧼 ${r(state.hygiene)}% · ❤️ ${r(state.health)}%`;
+}
+
 function renderDebugPanel(){
   const stageBtns = ALL_STAGES.map(s => `
     <button class="debug-btn ${debugForcedStage===s ? 'active':''}" data-stage="${s}">${STAGE_LABELS[s]}</button>
@@ -2596,6 +2642,19 @@ function renderDebugPanel(){
         </div>
         <button class="debug-btn wide" id="dbgNight" style="margin-top:6px">${
           debugForcedNight === null ? '🕐 Día/noche: hora real' : debugForcedNight ? '🌙 Día/noche: noche forzada' : '☀️ Día/noche: día forzado'}</button>
+      </div>
+      <div class="debug-section">
+        <h4>Pasar el tiempo</h4>
+        <div class="debug-time">${debugTimeInfo()}</div>
+        <div class="debug-grid" style="grid-template-columns:1fr 1fr 1fr">
+          <button class="debug-btn" data-skip="15">+15 min</button>
+          <button class="debug-btn" data-skip="60">+1 h</button>
+          <button class="debug-btn" data-skip="180">+3 h</button>
+          <button class="debug-btn" data-skip="480">+8 h</button>
+          <button class="debug-btn" data-skip="1440">+1 día</button>
+          <button class="debug-btn" id="dbgClockReset" ${debugClockOffsetMs ? '' : 'disabled'}>🕐 Hora real</button>
+        </div>
+        ${debugMode ? '<div class="debug-time warn">Con "Stats al máximo" encendido las barras no bajan: apágalo para probar.</div>' : ''}
       </div>
       ${extraDebug}
       <div class="debug-section">
@@ -2698,6 +2757,13 @@ function renderDebugPanel(){
   document.querySelectorAll('[data-coins]').forEach(el => el.addEventListener('click', () => {
     state.coins += +el.dataset.coins; saveState(); render(); renderDebugPanel();
   }));
+  document.querySelectorAll('[data-skip]').forEach(el => el.addEventListener('click', () => {
+    debugSkipTime(Number(el.dataset.skip) * 60 * 1000);
+    renderDebugPanel();
+  }));
+  document.getElementById('dbgClockReset').addEventListener('click', () => {
+    debugClockOffsetMs = 0; render(); renderDebugPanel();
+  });
   /* Gira entre hora real → noche → día. Cambia también la simulación (el
      decaimiento y el sueño leen isNightMode()), no solo cómo se ve. */
   document.getElementById('dbgNight').addEventListener('click', () => {

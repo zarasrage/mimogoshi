@@ -1630,6 +1630,10 @@ body{
 .debug-btn.active{border-color:#ff8cc0; background:rgba(255,111,174,.18);}
 .debug-btn.wide{grid-column:1 / -1;}
 .debug-btn.danger{color:#ffb3ba;}
+/* Pasar el tiempo (temporal): hora simulada y las barras. */
+.debug-time{font-size:12px; line-height:1.5; color:var(--text-soft); margin:0 0 6px;}
+.debug-time.warn{color:#ffcf8a; margin:6px 0 0;}
+.debug-btn:disabled{opacity:.4; cursor:default;}
 
 /* ---------- controls ---------- */
 

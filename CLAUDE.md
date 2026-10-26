@@ -1436,6 +1436,20 @@ pantalla completa.
 
 `debugForcedSpecies` es lo que lee `currentSpeciesId()` antes que `state.species`.
 
+**Pasar el tiempo (TEMPORAL, sacar cuando se termine de calibrar)**: +15 min,
++1 h, +3 h, +8 h y +1 día (`debugSkipTime()`). Simula ese tiempo de a un
+tick como `catchUp()`, pero **sin su tope de 72 minutos**: la app de
+teléfono va a llevar el tiempo completo y eso es lo que se quiere probar.
+Lleva un reloj virtual (`debugClockOffsetMs`, que suma `isNightMode()` y
+también `catchUp()`), así la noche cae en la hora simulada aunque se
+adelante varias veces; arriba de los botones se ve la hora simulada, la
+etapa y las cinco barras, y "Hora real" lo vuelve a cero. No se guarda (al
+recargar vuelve la hora real) y no mueve los relojes de la ruleta ni del
+desafío diario. Se corta si la mascota muere. Con "Stats al máximo" no baja
+nada (lo avisa). Al sacarlo: `debugSkipTime()`, `debugTimeInfo()`,
+`debugClockOffsetMs` (y su uso en `isNightMode()` y `catchUp()`), los
+botones `data-skip`/`dbgClockReset` y `.debug-time` del CSS.
+
 ## Convenciones
 
 - Todo el copy en español (Chile).
