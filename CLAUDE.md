@@ -773,7 +773,8 @@ queda tapado. Lo mismo vale para cualquier menú nuevo.
 
 #### Mejoras
 
-Segunda pestaña de la tienda (`shopTab`, "Comida"/"Mejoras"/"Estilo"/"Gacha" —
+Segunda pestaña de la tienda (`shopTab`, "Comida"/"Mejoras"/"Estilo", y
+"Gacha" cuando está prendido —
 un tab en vez de apilar varias `.menu-list`, porque la de comida ya usa todo
 el alto disponible y esto va a seguir creciendo). Arriba de todo va la próxima
 **habitación** que se puede comprar (`roomUpgradeRow()`, ver "Habitaciones").
@@ -805,16 +806,22 @@ Catálogo en `UPGRADES`, con dos formas:
 #### Estilo
 
 Tercera pestaña de la tienda: cosas que solo cambian cómo se ve, sin efecto en
-ninguna barra. Catálogo en `STYLE_ITEMS`, en cuatro secciones
-(`STYLE_SECTIONS`):
+ninguna barra. Catálogo en `STYLE_ITEMS`, en secciones
+(`STYLE_SECTIONS`: objetos mágicos, muebles, carcasa y pantalla):
 
 - **Carcasa** (`kind:'shell'`, `colors` = los tres colores del degradado del
   aparato) y **Pantalla** (`kind:'screen'`, `lcd` = fondo, brillo, lo encendido
   en `r,g,b` y borde): siempre hay una puesta; las de `price: 0` (Chicle y
   Verde) vienen de fábrica.
-- **Accesorios** (`kind:'hat'`): uno a la vez en la cabeza, o ninguno.
-- **Decoración** (`kind:'deco'`): un adorno por lugar (`slot`: `pared`, `izq`,
-  `der`), o ninguno.
+- **Accesorios** (`kind:'hat'`, uno a la vez en la cabeza) y **Decoración**
+  (`kind:'deco'`, un adorno por lugar: `slot` `pared`, `izq`, `der`): **hoy
+  no hay ninguno**. Eran emojis (15 en la tienda y 16 en el gacha) y se
+  sacaron por pedido: feos, aburridos y de otro estilo que el pixel art de
+  la pieza. `loadState()` devuelve lo que se pagó por los que se tenían
+  (`REMOVED_STYLE`: su precio, y 40 los del gacha) y los saca de encima.
+  Sus dos secciones salieron de `STYLE_SECTIONS`; el motor quedó (abajo)
+  para cuando haya unos bien dibujados: se vuelven a sumar al catálogo y a
+  `STYLE_SECTIONS`, nada más.
 
 **La tienda es solo para comprar; ponerse y sacarse las cosas es en
 Personalizar** (`openPersonalize()`, el botón 🎨 que reemplazó a Medicina).
@@ -844,7 +851,7 @@ pantalla. `--screen-lit` se pone aparte y no derivado de `--screen-lit-rgb`:
 una variable que usa otra se resuelve donde se define (`:root`) y no se
 actualiza al pisar la de adentro en `#device`.
 
-Los adornos son emojis en `#decoLayer`, detrás de la mascota y con
+Los adornos (cuando los había) eran emojis en `#decoLayer`, detrás de la mascota y con
 `pointer-events:none`, en los bordes (3%) para no pisar la caca ni el
 regalo (16%). El accesorio es `#petHat`, un elemento aparte encima del canvas
 y **no** un dibujo dentro de él: a escala 3 la mascota llena los 96px y
@@ -863,8 +870,9 @@ La ruleta **da y quita monedas**: trozos de +1, +2, +3, +5, +7, +10, +15,
 +25, +50 y +100 (mientras más grande, más raro: +100 sale el 1.8% de las
 veces) y trozos que quitan -2, -5 y -10 (nunca más de 10, y nunca bajo
 cero: `giveCoins()` quita solo lo que haya). Con los pesos de hoy (suman
-113, 21 trozos) se ganan monedas el 55% de las veces, se pierden el 11%, y
-en promedio un giro deja ~+5.7, algo menos que una partida buena (~7): es
+105, 19 trozos, con el gacha en pausa) se ganan monedas el 59% de las
+veces, se pierden el 11%, y en promedio un giro deja ~+6.1, algo menos que
+una partida buena (~7): es
 un extra, no un reemplazo de jugar. Ningún trozo pesa menos de 2 (6.4°) y
 los emojis van solo en trozos de 3 o más; van intercalados para que los
 que quitan no queden juntos ni dos angostos seguidos. El gacha no da
@@ -933,10 +941,18 @@ hoja entra sin scroll.
   prueba tiene "+1 ticket de ruleta" y "Ruleta gratis ya". La cuenta
   regresiva se refresca sola (`[data-wheel-clock]`, mismo esquema que los
   relojes del desafío diario).
+- **Gacha: EN PAUSA** (`GACHA_ON = false` en `premios.js`). Al sacar los
+  accesorios y adornos le quedaban cinco cosas (tres carcasas y dos
+  pantallas), así que se apagó entero: no sale la pestaña en la tienda,
+  los dos trozos de fichas de la ruleta (`gacha: true`) no están en la
+  rueda (sin ellos la rueda pesaba 113 con 21 trozos y dejaba ~+5.7), el
+  oro de las medallas no da ficha y la medalla Coleccionista no aparece.
+  Las fichas que ya se tenían siguen en `state.gachaTickets` y lo que salió
+  sigue en Personalizar. Todo el código quedó: para volver, `true` y un
+  catálogo que valga la pena. Cómo funciona prendido:
 - **Gacha** (pestaña "Gacha" de la tienda): una cápsula = un objeto de
   `GACHA_ITEMS`, un catálogo **exclusivo** (no se vende en la tienda:
-  `styleRows('shop')` salta los `gacha`) de accesorios, adornos, carcasas y
-  pantallas, con rareza (`GACHA_RARITIES`: común 60%, raro 28%, épico 10%,
+  `styleRows('shop')` salta los `gacha`; hoy solo carcasas y pantallas), con rareza (`GACHA_RARITIES`: común 60%, raro 28%, épico 10%,
   legendario 2%; las probabilidades están escritas en la máquina). Cuesta
   `GACHA_PRICE` (40) o una ficha de la ruleta (`state.gachaTickets`).
   **Nunca repite**: si ya tienes todo lo de la rareza que salió, busca en
@@ -1304,9 +1320,11 @@ copa lleva al costado un globito con las medallas por reclamar (encima la
 tapaba) y pestañea al ganar una; el libro pestañea al entrar una especie
 nueva.
 
-**Medallas** (`MEDALS`): 20 logros, cada uno con tres niveles (bronce,
-plata, oro; `MEDAL_TIERS`), o sea 60 medallas. Cada nivel paga al
-reclamarlo: **10 / 30 / 80 monedas, y el oro además una ficha del gacha**.
+**Medallas** (`MEDALS`): 20 logros (19 con el gacha en pausa: sin
+Coleccionista), cada uno con tres niveles (bronce, plata, oro;
+`MEDAL_TIERS`), o sea 60 medallas. Cada nivel paga al reclamarlo: **10 /
+30 / 80 monedas, y el oro además una ficha del gacha** (con el gacha
+prendido).
 Se reclaman a mano (botón dorado en la tarjeta, pop-up con el premio): que
 se sienta. Al alcanzar un nivel baja un cartelito arriba (`#medalToast`,
 z-index 25, encima de todo; tocarlo abre la pestaña) y la copa lleva un

@@ -39,11 +39,12 @@ function prof(){ if (!profile) profile = loadProfile(); return profile; }
 
 /* ---------- medallas ---------- */
 
-/* Premio de cada nivel. El oro suma una ficha del gacha (premios.js). */
+/* Premio de cada nivel. El oro suma una ficha del gacha (premios.js), salvo
+   con el gacha en pausa (GACHA_ON). */
 const MEDAL_TIERS = [
   { id: 'bronce', name: 'bronce', emoji: '🥉', coins: 10 },
   { id: 'plata',  name: 'plata',  emoji: '🥈', coins: 30 },
-  { id: 'oro',    name: 'oro',    emoji: '🥇', coins: 80, gacha: 1 },
+  { id: 'oro',    name: 'oro',    emoji: '🥇', coins: 80, gacha: GACHA_ON ? 1 : 0 },
 ];
 
 /* `stat`: el contador de profile.stats que mide. `at`: lo que pide cada
@@ -73,7 +74,7 @@ const MEDALS = [
   { id: 'explora',  emoji: '📖', name: 'Explorador',     stat: 'especies', at: () => [2, 4, SPECIES_IDS.length], desc: n => `Conocer ${n} especies en el Mimodex` },
   { id: 'familia',  emoji: '🐣', name: 'Familia grande', stat: 'criadas',  at: () => [1, 3, SPECIES_IDS.length], desc: n => n === 1 ? 'Criar una mascota desde el huevo' : `Criar ${n} especies distintas` },
   { id: 'amigos',   emoji: '🤝', name: 'Mejores amigos', stat: 'juntos',   at: [5, 30, 120],   desc: n => `Que jueguen de a dos ${n} veces` },
-];
+].filter(m => GACHA_ON || m.stat !== 'capsulas');   // Coleccionista, solo con el gacha prendido
 
 function medalAt(m){ return typeof m.at === 'function' ? m.at() : m.at; }
 function medalValue(m){ return prof().stats[m.stat] || 0; }
