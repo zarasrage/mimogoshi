@@ -17,6 +17,13 @@
 
 /* ---------- Gacha ---------- */
 
+/* EN PAUSA: los accesorios y adornos (casi todo lo que daba) se sacaron por
+   feos, y con cinco cosas no vale la pena. Apagado no sale la pestaña en la
+   tienda, la ruleta no trae los trozos de fichas, el oro de las medallas no
+   da ficha y la medalla Coleccionista no aparece. Las fichas que ya se
+   tenían quedan guardadas (state.gachaTickets). Para volver: true. */
+const GACHA_ON = false;
+
 const GACHA_PRICE = 40;
 
 /* Rarezas: probabilidad de cada una al girar (suman 1) y su color. La
@@ -35,30 +42,12 @@ function rarityById(id){ return GACHA_RARITIES.find(r => r.id === id); }
    prefijo g_ para que nunca choquen con los de la tienda (ver CLAUDE.md, el
    choque del radiocasete con el adorno "radio"). Emojis de Unicode 11 o
    anterior. `price: null`: freshStyle() regala de fábrica lo que tiene
-   price 0, y esto no tiene precio. */
+   price 0, y esto no tiene precio. Los accesorios y adornos que traía se
+   sacaron (REMOVED_STYLE en app.js): quedan carcasas y pantallas. */
 const GACHA_ITEMS = [
-  { id:'g_girasol',   kind:'hat',  gacha:'comun', name:'Girasol',      emoji:'🌻' },
-  { id:'g_hongo',     kind:'hat',  gacha:'comun', name:'Hongo',        emoji:'🍄' },
-  { id:'g_audif',     kind:'hat',  gacha:'comun', name:'Audífonos',    emoji:'🎧' },
-  { id:'g_banderin',  kind:'deco', gacha:'comun', name:'Banderín',     emoji:'🎏', slot:'pared' },
-  { id:'g_calabaza',  kind:'deco', gacha:'comun', name:'Calabaza',     emoji:'🎃', slot:'izq' },
-  { id:'g_pato',      kind:'deco', gacha:'comun', name:'Patito',       emoji:'🦆', slot:'der' },
-  { id:'g_futbol',    kind:'deco', gacha:'comun', name:'Pelotita',     emoji:'⚽', slot:'der' },
-
-  { id:'g_cerezas',   kind:'hat',  gacha:'raro',  name:'Cerezas',      emoji:'🍒' },
-  { id:'g_estrella',  kind:'hat',  gacha:'raro',  name:'Estrellita',   emoji:'🌟' },
-  { id:'g_luna',      kind:'deco', gacha:'raro',  name:'Luna',         emoji:'🌙', slot:'pared' },
-  { id:'g_arbol',     kind:'deco', gacha:'raro',  name:'Árbol',        emoji:'🌳', slot:'izq' },
-  { id:'g_robot',     kind:'deco', gacha:'raro',  name:'Robot',        emoji:'🤖', slot:'der' },
   { id:'g_sakura',    kind:'shell', gacha:'raro', name:'Sakura',       colors:['#ffe3ef', '#ffb3cf', '#e47aa5'] },
-
-  { id:'g_unicornio', kind:'hat',  gacha:'epico', name:'Unicornio',    emoji:'🦄' },
-  { id:'g_galaxia',   kind:'deco', gacha:'epico', name:'Vía láctea',   emoji:'🌌', slot:'pared' },
-  { id:'g_dragon',    kind:'deco', gacha:'epico', name:'Dragón',       emoji:'🐉', slot:'der' },
   { id:'g_cosmos',    kind:'shell', gacha:'epico', name:'Cosmos',      colors:['#7b6cff', '#3b2a8f', '#120b3a'] },
   { id:'g_neon',      kind:'screen', gacha:'epico', name:'Neón',       lcd:['#16061f', '#33104a', '255,110,230', '#0b0310'] },
-
-  { id:'g_diamante',  kind:'hat',  gacha:'legendario', name:'Diamante', emoji:'💎' },
   { id:'g_arcoiris',  kind:'shell', gacha:'legendario', name:'Prisma',  colors:['#ff9a9e', '#fad06a', '#7fd6ff'] },
   { id:'g_dorada',    kind:'screen', gacha:'legendario', name:'Dorada', lcd:['#1a1404', '#3d2e08', '255,222,120', '#100c02'] },
 ].map(it => ({ ...it, price: null }));
@@ -210,7 +199,10 @@ const WHEEL_TURNS = 5;
    que una partida buena (~7). Ningún trozo pesa menos de 2 (6.4°): ahí
    todavía cabe el número escrito a lo largo del radio, y los emojis van
    en trozos de 3 o más. Van intercalados para que los que quitan no queden
-   juntos, ni dos angostos seguidos. */
+   juntos, ni dos angostos seguidos.
+   Con el gacha en pausa (GACHA_ON) se sacan los dos trozos de fichas
+   (`gacha: true`): quedan 105 de peso, se ganan monedas el 59% de las
+   veces, se pierden el 11% y un giro deja ~+6.1 en promedio. */
 const WHEEL_PRIZES = [
   { id: 'm5',       label: '+5',   w: 9,  color: '#ffcd57', give: () => giveCoins(5) },
   { id: 'rica',     emoji: '🍗',   w: 7,  color: '#ff8fab', give: () => giveFood('rica', 2) },
@@ -219,7 +211,7 @@ const WHEEL_PRIZES = [
   { id: 'm15',      label: '+15',  w: 4,  color: '#ffa62b', give: () => giveCoins(15) },
   { id: 'cafe',     emoji: '☕',   w: 6,  color: '#b9a0ff', give: () => giveFood('cafe', 2) },
   { id: 'm3',       label: '+3',   w: 9,  color: '#ffdc78', give: () => giveCoins(3) },
-  { id: 'fichas3',  emoji: '💎',   w: 3,  color: '#6fd2ff', give: () => giveTickets(3), big: true },
+  { id: 'fichas3',  emoji: '💎',   w: 3,  color: '#6fd2ff', give: () => giveTickets(3), big: true, gacha: true },
   { id: 'm7',       label: '+7',   w: 7,  color: '#ffc23d', give: () => giveCoins(7) },
   { id: 'feliz',    emoji: '😊',   w: 6,  color: '#ff9ed8', give: () => { state.happiness = clamp(state.happiness + 15); return '+15 de felicidad'; } },
   { id: 'm-5',      label: '-5',   w: 4,  color: '#4b3b76', give: () => giveCoins(-5), lose: true },
@@ -229,11 +221,11 @@ const WHEEL_PRIZES = [
   { id: 'm100',     label: '+100', w: 2,  color: '#2fc985', give: () => giveCoins(100), big: true },
   { id: 'medicina', emoji: '💊',   w: 5,  color: '#ff7b7b', give: () => giveFood(MEDICINE.id, 1) },
   { id: 'm25',      label: '+25',  w: 3,  color: '#ff9330', give: () => giveCoins(25) },
-  { id: 'ficha',    emoji: '🎟️',   w: 5,  color: '#86c8ff', give: () => giveTickets(1) },
+  { id: 'ficha',    emoji: '🎟️',   w: 5,  color: '#86c8ff', give: () => giveTickets(1), gacha: true },
   { id: 'm-10',     label: '-10',  w: 2,  color: '#3a2c60', give: () => giveCoins(-10), lose: true },
   { id: 'especial', emoji: '🍰',   w: 4,  color: '#ffb8d4', give: () => giveFood('especial', 1) },
   { id: 'm50',      label: '+50',  w: 3,  color: '#ff7a3d', give: () => giveCoins(50), big: true },
-];
+].filter(p => GACHA_ON || !p.gacha);
 
 /* La fila del pop-up para un premio de la ruleta: el nombre a la izquierda y
    la cantidad a la derecha, como en el resto de los pop-ups. give() devuelve

@@ -413,6 +413,9 @@ function upgradeState(id){
      hay una puesta; las de price 0 vienen de fábrica.
    - hat: un accesorio a la vez en la cabeza de la mascota, o ninguno.
    - deco: un adorno por lugar de la pieza (slot: pared, izq, der), o ninguno.
+   Hoy no hay ningún hat ni deco: los que había (emojis) se sacaron por feos
+   (REMOVED_STYLE, abajo). El motor quedó (updateHat, #decoLayer, las
+   ranuras de cada habitación) para cuando haya unos bien dibujados.
    Los colores viven acá y no en el CSS: applyStyle() los pone como variables
    sobre #device, así una carcasa nueva es una línea en este catálogo. */
 const STYLE_ITEMS = [
@@ -430,23 +433,6 @@ const STYLE_ITEMS = [
   { id:'azul',   kind:'screen', name:'Hielo',   price: 45, lcd:['#0a1424', '#142a4a', '170,215,255', '#060c16'] },
   { id:'malva',  kind:'screen', name:'Malva',   price: 45, lcd:['#1d0f24', '#3a1a48', '255,190,235', '#12081a'] },
   { id:'retro',  kind:'screen', name:'Retro',   price: 70, lcd:['#8bac0f', '#a4c41a', '15,56,15',    '#306230'] },
-
-  { id:'flor',     kind:'hat', name:'Flor',     emoji:'🌸', price: 15 },
-  { id:'mono',     kind:'hat', name:'Moño',     emoji:'🎀', price: 20 },
-  { id:'jockey',   kind:'hat', name:'Jockey',   emoji:'🧢', price: 25 },
-  { id:'copa',     kind:'hat', name:'Galera',   emoji:'🎩', price: 35 },
-  { id:'birrete',  kind:'hat', name:'Birrete',  emoji:'🎓', price: 40 },
-  { id:'corona',   kind:'hat', name:'Corona',   emoji:'👑', price: 60 },
-
-  { id:'cuadro',   kind:'deco', slot:'pared', name:'Cuadro',    emoji:'🖼️', price: 20 },
-  { id:'reloj',    kind:'deco', slot:'pared', name:'Reloj',     emoji:'🕰️', price: 25 },
-  { id:'arcoiris', kind:'deco', slot:'pared', name:'Arcoíris',  emoji:'🌈', price: 35 },
-  { id:'cactus',   kind:'deco', slot:'izq',   name:'Cactus',    emoji:'🌵', price: 15 },
-  { id:'tulipan',  kind:'deco', slot:'izq',   name:'Tulipanes', emoji:'🌷', price: 20 },
-  { id:'arbolito', kind:'deco', slot:'izq',   name:'Arbolito',  emoji:'🎄', price: 35 },
-  { id:'radio',    kind:'deco', slot:'der',   name:'Radio',     emoji:'📻', price: 20 },
-  { id:'peluche',  kind:'deco', slot:'der',   name:'Peluche',   emoji:'🧸', price: 25 },
-  { id:'trofeo',   kind:'deco', slot:'der',   name:'Trofeo',    emoji:'🏆', price: 40 },
 ];
 
 const STYLE_SECTIONS = [
@@ -454,10 +440,21 @@ const STYLE_SECTIONS = [
   { kind:'furni',  title:'Muebles' },
   { kind:'shell',  title:'Carcasa' },
   { kind:'screen', title:'Pantalla' },
-  { kind:'hat',    title:'Accesorios' },
-  { kind:'deco',   title:'Decoración' },
 ];
 const DECO_SLOT_NAMES = { pared:'pared', izq:'suelo izq.', der:'suelo der.' };
+
+/* Accesorios y adornos que se sacaron del catálogo (los de la tienda y los
+   del gacha): loadState() devuelve lo que se pagó por cada uno que se tenga.
+   Lo del gacha, a GACHA_PRICE (40) aunque haya salido con ficha. */
+const REMOVED_STYLE = {
+  flor: 15, mono: 20, jockey: 25, copa: 35, birrete: 40, corona: 60,
+  cuadro: 20, reloj: 25, arcoiris: 35, cactus: 15, tulipan: 20, arbolito: 35,
+  radio: 20, peluche: 25, trofeo: 40,
+  g_girasol: 40, g_hongo: 40, g_audif: 40, g_banderin: 40, g_calabaza: 40,
+  g_pato: 40, g_futbol: 40, g_cerezas: 40, g_estrella: 40, g_luna: 40,
+  g_arbol: 40, g_robot: 40, g_unicornio: 40, g_galaxia: 40, g_dragon: 40,
+  g_diamante: 40,
+};
 
 function styleItemById(id){ return STYLE_ITEMS.find(it => it.id === id); }
 
@@ -852,6 +849,9 @@ function loadState(){
     const base = freshStyle();
     if (!s.style || typeof s.style !== 'object') s.style = base;
     if (!s.style.owned || typeof s.style.owned !== 'object') s.style.owned = {};
+    for (const [id, precio] of Object.entries(REMOVED_STYLE)){
+      if (s.style.owned[id]){ delete s.style.owned[id]; s.coins = (s.coins || 0) + precio; }
+    }
     Object.assign(s.style.owned, base.owned);
     const vale = (id, kind) => { const it = styleItemById(id); return it && it.kind === kind && s.style.owned[id]; };
     if (!vale(s.style.shell, 'shell')) s.style.shell = base.shell;
@@ -2884,6 +2884,7 @@ function styleRows(mode){
 /* El aviso va dentro de la tarjeta y no con say(): la burbuja tiene z-index 5 y
    el overlay 10, así que un mensaje por say() con la tienda abierta queda tapado. */
 function openShop(aviso, gachaRes){
+  if (shopTab === 'gacha' && !GACHA_ON) shopTab = 'style';
   const foodRows = FOODS.map(f => {
     const alcanza = state.coins >= f.price;
     return `
@@ -2931,7 +2932,7 @@ function openShop(aviso, gachaRes){
       <button class="shop-tab ${shopTab === 'food' ? 'active' : ''}" id="shopTabFood">Comida</button>
       <button class="shop-tab ${shopTab === 'upgrades' ? 'active' : ''}" id="shopTabUpgrades">Mejoras</button>
       <button class="shop-tab ${shopTab === 'style' ? 'active' : ''}" id="shopTabStyle">Estilo</button>
-      <button class="shop-tab ${shopTab === 'gacha' ? 'active' : ''}" id="shopTabGacha">Gacha</button>
+      ${GACHA_ON ? `<button class="shop-tab ${shopTab === 'gacha' ? 'active' : ''}" id="shopTabGacha">Gacha</button>` : ''}
     </div>
     <div class="menu-list ${shopTab === 'style' ? 'style-list' : ''}">${
       shopTab === 'food' ? foodRows + medShopRow : shopTab === 'upgrades' ? vacShopRow + upgradeRows
@@ -2942,7 +2943,7 @@ function openShop(aviso, gachaRes){
   document.getElementById('shopTabFood').addEventListener('click', () => { shopTab = 'food'; openShop(); });
   document.getElementById('shopTabUpgrades').addEventListener('click', () => { shopTab = 'upgrades'; openShop(); });
   document.getElementById('shopTabStyle').addEventListener('click', () => { shopTab = 'style'; openShop(); });
-  document.getElementById('shopTabGacha').addEventListener('click', () => { shopTab = 'gacha'; openShop(); });
+  if (GACHA_ON) document.getElementById('shopTabGacha').addEventListener('click', () => { shopTab = 'gacha'; openShop(); });
   if (shopTab === 'gacha') wireGachaTab((msg, res) => openShop(msg, res));
 
   /* Las tres pestañas tienen la misma hoja, a todo el alto: así no salta al
