@@ -365,23 +365,29 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   cerrada), y no tapa la pantalla: se ve comer y la barra de hambre. Todas
   las comidas con su stock, más la medicina en la misma fila (antes eran dos
   botones —Comer daba la elegida y Menú la elegía— y el botiquín era una
-  sección del menú). Tocar una gasta la porción en el acto (`feedFood()`) y **la comida cae al piso** en un lugar al azar de la
-  pieza (`serveFood()`, `.floor-food`, lejos de la mascota si se puede): la
-  mascota camina hasta ella con una rutina sin mueble (`startActivity()`,
-  `kind:'eat'`, que no se corta por estar triste o enferma), se para al lado
-  (`FOOD_REACH_PX`) y la come mientras se achica de a mordiscos. La rutina
-  lleva `onEnd`, que saca la comida termine sola o se corte (dormirse de
-  agotada). **Las barras suben mientras come, no al tocarla**: lo que da la
-  comida queda en `state.meal` y `digestMeal()` (cada frame, desde
-  `loopRender()`) lo suma al ritmo de los pasos `eat` de la rutina (en el
-  piso o en el plato), así terminan de llenarse justo cuando termina de
-  comer. Antes el hambre se llenaba antes de que llegara a la comida. Si la
-  rutina se corta, lo que faltaba se suma de una (`flushMeal()`); si se
-  cierra la app a mitad, lo suma `loadState()`. **Mientras va a la comida y
-  se la come no se puede hacer nada más** (`mealBusy()`): un listener de
-  captura en `window` se come todo toque en `#controls` y `#screen`
-  (botones, mascota, acompañante, muebles, caca, regalo, flechas) y avisa
-  con `say()`; los botones se ven apagados (`.controls.busy`). Con plato puesto se sirve en el plato, como antes. La última
+  sección del menú). Tocar una gasta la porción en el acto (`feedFood()`) y
+  **cae del cielo** en un lugar al azar de la pieza (`serveFood()`,
+  `.floor-food`, lejos de la mascota si se puede; con plato puesto, en el
+  plato). **La bandeja no se cierra**: se pueden tocar varias y caen todas
+  al mismo montón (`foodPile`, hasta `FOOD_PILE_MAX`), un poco apiladas. La
+  mascota camina una sola vez (`startEatRoutine()`, `kind:'eat'`, que no se
+  corta por estar triste o enferma) y se las come una tras otra en la misma
+  animación: cada porción se achica de a mordiscos en `EAT_PIECE_MS`
+  (`eatFoodPile()`, desde el `track` del paso de comer) y una que todavía
+  viene cayendo se espera. Si cae una cuando ya terminó y está celebrando,
+  la rutina retrocede al paso de comer; si ya se fue, el montón es nuevo.
+  **Las barras suben mientras come, no al tocarla**: `state.meal` guarda lo
+  que falta sumar de todo el montón y cada porción suma lo suyo mientras se
+  achica. Antes el hambre se llenaba antes de que llegara a la comida, y
+  antes de eso había que dar las porciones de a una, esperando que
+  terminara cada vez. Si la rutina se corta, lo que quedaba en el piso se
+  va y se suma de una (`flushMeal()` desde `digestMeal()`); si se cierra
+  la app a mitad, lo suma `loadState()`. **Mientras va a la comida y se la
+  come no se puede hacer nada más** (`mealBusy()`), salvo seguir tirándole
+  comida: un listener de captura en `window` se come todo toque en
+  `#controls` y `#screen` menos los de `#foodTray`, y avisa con `say()`;
+  los botones se ven apagados (`.controls.busy`). La medicina sí espera a
+  que termine de comer. Con plato puesto se sirve en el plato, como antes. La última
   queda marcada (`state.selectedFood`); una en 0 sale apagada y tocarla abre
   la tienda en Comida. Se cierra con Cerrar, tocando afuera o al entrar a un
   minijuego (`showGameControls()`). Mientras está abierta se esconden los

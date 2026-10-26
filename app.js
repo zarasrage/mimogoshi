@@ -1640,7 +1640,7 @@ function loopRender(t){
   const dt = Math.min(0.05, (t - (lastFrameT || t)) / 1000);
   lastFrameT = t;
   updateWalker(dt);
-  digestMeal(dt);
+  digestMeal();
   if (typeof updateBuddy === 'function') updateBuddy(dt);
   render();
   animFrame = requestAnimationFrame(loopRender);
@@ -1785,53 +1785,145 @@ function feedFood(id){
   if (state.stage === 'egg') { say('Todavía es un huevo…'); return false; }
   const food = foodById(id);
   if (foodStock(food.id) <= 0) return false;
+  if (foodPile && foodPile.pieces.length >= FOOD_PILE_MAX){ say('¡Espera que se coma lo que tiene!'); return false; }
   if (!tryWake()) return false;
   catchUp();
   state.pantry[food.id] = (state.pantry[food.id] || 0) - 1;
   /* La porción se gasta ya, pero las barras suben recién mientras se la
-     come (digestMeal()): si no, el hambre se llenaba antes de que llegara. */
-  flushMeal();
-  const hunger = hungerFillPct(food), energy = food.energy ?? FOOD_ENERGY_DEFAULT;
-  state.meal = { hunger, energy, total: { hunger, energy } };
+     come (eatFoodPile()): si no, el hambre se llenaba antes de que llegara.
+     state.meal es lo que falta sumar de TODAS las porciones del montón. */
+  const piece = { food, hunger: hungerFillPct(food), energy: food.energy ?? FOOD_ENERGY_DEFAULT, t: 0, done: 0 };
+  const m = state.meal || (state.meal = { hunger: 0, energy: 0 });
+  m.hunger += piece.hunger;
+  m.energy += piece.energy;
   state.selectedFood = food.id;
-  say(food.restore ? '¡Ñam ñam!' : '¡Con pilas! ⚡');
-  serveFood(food);
+  if (!foodPile || !foodPile.pieces.length) say(food.restore ? '¡Ñam ñam!' : '¡Con pilas! ⚡');
+  serveFood(piece);
   saveState(); render();
   return true;
 }
 
-/* La comida cae al piso en un lugar al azar de la pieza y la mascota va a
-   comérsela; mientras come se achica de a mordiscos y al final desaparece.
-   Con plato puesto se sirve en el plato, como antes (para eso está). Las
-   barras suben mientras come (digestMeal(), ver abajo) y mientras tanto no
-   se puede hacer nada más (mealBusy()). Si algo igual la corta (dormirse
-   de agotada), la comida se va y lo que faltaba se suma de una. */
-const FOOD_REACH_PX = 26;   // de la comida al centro de la mascota cuando come
-function serveFood(food){
+/* La comida cae del cielo y la mascota va a comérsela. La bandeja no se
+   cierra al tocar una: se pueden tocar varias y caen todas al MISMO lugar,
+   apiladas (foodPile). La mascota camina una sola vez y se las come una tras
+   otra en la misma animación (cada una se achica de a mordiscos en
+   EAT_PIECE_MS). Si una cae cuando ya terminó y está celebrando, vuelve a
+   comer (la rutina retrocede al paso de comer); si ya se fue, el montón es
+   nuevo, en otro lugar. Con plato puesto cae en el plato. Las barras suben
+   mientras come y mientras tanto no se puede hacer nada más que seguir
+   dándole comida (mealBusy()). Si algo igual la corta (dormirse de
+   agotada), lo que quedaba en el piso se va y se suma de una. */
+const FOOD_REACH_PX = 26;    // de la comida al centro de la mascota cuando come
+const EAT_PIECE_MS = 1100;   // lo que tarda en comerse cada porción
+const FOOD_DROP_MS = 650;    // lo que tarda en caer del cielo (igual que .floor-food en el CSS)
+const FOOD_PILE_MAX = 8;     // porciones esperando a la vez
+let foodPile = null;         // { x, side, standX, plate, pieces: [...] }
+
+function serveFood(piece){
   if (activeMinigame || gameOver || displayStage() === 'egg'){ flushMeal(); return; }
   petAction = null;
-  if (startFurniRoutine('eat')){ walker.activity.meal = true; return; }
-  const floor = document.getElementById('creatureFloor');
-  floor.querySelectorAll('.floor-food').forEach(e => e.remove());   // una a la vez
-  let fx = 0.15 + Math.random() * 0.7;
-  for (let i = 0; i < 8 && Math.abs(fx - walker.x) < 0.2; i++) fx = 0.15 + Math.random() * 0.7;
-  const el = document.createElement('div');
-  el.className = 'floor-food';
-  el.textContent = food.emoji;
-  el.style.left = (fx * 100) + '%';
-  floor.insertBefore(el, document.getElementById('buddyCanvas'));   // detrás de los personajes
-  const side = fx > walker.x ? -1 : 1;        // se para del lado por donde llega
-  const standX = fx + side * FOOD_REACH_PX / floorWidth();
-  startActivity(walker, [
-    { go: standX, speed: 0.24 },
-    { anim: 'eat', ms: 1800, dir: -side, fx: ['😋'], fxEvery: 850, start: () => el.classList.add('eating') },
-    { anim: 'happy', ms: 600, dir: -side, fx: ['💖'] },
-  ], { kind: 'eat', onEnd: () => { el.classList.add('gone'); setTimeout(() => el.remove(), 260); } });
-  walker.activity.meal = true;
+  if (!foodPile) foodPile = newFoodPile();
+  dropFoodPiece(foodPile, piece);
+  const a = walker.activity;
+  if (a && a.pile === foodPile){
+    /* Ya estaba terminando (paso de celebrar): vuelve a comer. */
+    if (a.i > 1){ a.i = 1; a.st = 0; }
+    return;
+  }
+  startEatRoutine(foodPile);
 }
 
-/* La comida que está yendo a comerse (state.meal: lo que falta sumar y el
-   total). Va en el save: si se cierra la app a mitad, loadState() la suma. */
+function newFoodPile(){
+  const plate = typeof furniPlaced === 'function' ? furniPlaced('plato') : null;
+  let x, side, reach;
+  if (plate){
+    x = plate.x;
+    side = walker.x < x ? -1 : 1;
+    reach = FURNI_ART.plato.w * furniK();
+  } else {
+    x = 0.15 + Math.random() * 0.7;
+    for (let i = 0; i < 8 && Math.abs(x - walker.x) < 0.2; i++) x = 0.15 + Math.random() * 0.7;
+    side = x > walker.x ? -1 : 1;   // se para del lado por donde llega
+    reach = FOOD_REACH_PX;
+  }
+  return { x, side, standX: clampX(x + side * reach / floorWidth()), plate, pieces: [], n: 0 };
+}
+
+/* Alto de cada porción del montón: se apilan un poco y, cuando se come la
+   de abajo, las otras bajan (transición en el CSS). */
+function foodPieceBottom(pile, i){
+  return 4 + (pile.plate ? Math.round(3 * furniK()) : 0) + Math.min(i, 4) * 3;
+}
+
+function dropFoodPiece(pile, piece){
+  const floor = document.getElementById('creatureFloor');
+  const el = document.createElement('div');
+  el.className = 'floor-food';
+  el.textContent = piece.food.emoji;
+  const jitter = pile.n ? Math.round((Math.random() * 2 - 1) * 8) : 0;
+  el.style.left = `calc(${(pile.x * 100).toFixed(2)}% + ${jitter}px)`;
+  el.style.bottom = foodPieceBottom(pile, pile.pieces.length) + 'px';
+  el.style.setProperty('--drop', Math.round(floorHeight() + 24) + 'px');
+  el.style.setProperty('--eat', EAT_PIECE_MS + 'ms');
+  floor.insertBefore(el, document.getElementById('buddyCanvas'));   // detrás de los personajes
+  piece.el = el;
+  piece.landAt = performance.now() + FOOD_DROP_MS;
+  pile.pieces.push(piece);
+  pile.n++;
+}
+
+function startEatRoutine(pile){
+  const side = pile.side;
+  startActivity(walker, [
+    { go: pile.standX, speed: 0.24 },
+    /* Come lo que haya en el montón; termina cuando no queda nada. */
+    { anim: 'eat', dir: -side, fx: ['😋'], fxEvery: 1000,
+      track: (rt, el, act, a, dt) => { eatFoodPile(pile, dt); return null; },
+      until: () => !pile.pieces.length },
+    { anim: 'happy', ms: 650, dir: -side, fx: ['💖'] },
+  ], { kind: 'eat', rt: pile.plate || null, onEnd: () => endFoodPile(pile) });
+  walker.activity.meal = true;
+  walker.activity.pile = pile;
+}
+
+/* Un cuadro comiendo: la porción de abajo se achica y suma lo suyo de a
+   poco. Una que todavía viene cayendo se espera. */
+function eatFoodPile(pile, dt){
+  const p = pile.pieces[0];
+  if (!p || performance.now() < p.landAt) return;
+  if (!p.t) p.el.classList.add('eating');
+  p.t += dt * 1000;
+  const frac = Math.min(1, p.t / EAT_PIECE_MS);
+  const bite = frac - p.done;
+  p.done = frac;
+  const m = state.meal;
+  if (m){
+    for (const stat of ['hunger', 'energy']){
+      const v = Math.min(m[stat], p[stat] * bite);
+      state[stat] = clamp(state[stat] + v);
+      m[stat] -= v;
+    }
+    if (m.hunger <= 1e-6 && m.energy <= 1e-6) state.meal = null;
+  }
+  if (frac >= 1){
+    pile.pieces.shift();
+    p.el.classList.add('gone');
+    setTimeout(() => p.el.remove(), 260);
+    pile.pieces.forEach((q, i) => { q.el.style.bottom = foodPieceBottom(pile, i) + 'px'; });
+    saveState();
+  }
+}
+
+/* Terminó (o se cortó): lo que quede en el piso se va; lo que faltaba sumar
+   lo suma digestMeal() apenas deja de estar ocupada. */
+function endFoodPile(pile){
+  for (const p of pile.pieces){ p.el.classList.add('gone'); setTimeout(() => p.el.remove(), 260); }
+  pile.pieces = [];
+  if (foodPile === pile) foodPile = null;
+}
+
+/* Lo que falta sumar de la comida (state.meal). Va en el save: si se cierra
+   la app a mitad, loadState() lo suma. */
 function flushMeal(){
   const m = state && state.meal;
   if (!m) return;
@@ -1842,39 +1934,28 @@ function flushMeal(){
 
 /* Mientras va a la comida y se la come no se puede hacer nada más: ni los
    botones de abajo ni tocar la pantalla (la mascota, el acompañante, los
-   muebles, la caca, el regalo, las flechas de las piezas). */
+   muebles, la caca, el regalo, las flechas de las piezas). La bandeja de
+   comida sí: se le puede seguir dando. */
 function mealBusy(){
   return !!(state && state.meal && walker.activity && walker.activity.meal);
 }
 
-/* Cada frame (loopRender): las barras suben al ritmo de los pasos `eat` de
-   la rutina (en el piso o en el plato), así terminan de llenarse justo
-   cuando termina de comer. Si la rutina se cortó, se suma lo que faltaba. */
-function digestMeal(dt){
-  const m = state && state.meal;
+/* Cada frame (loopRender): marca los botones como ocupados y, si la rutina
+   se cortó con comida a medias, suma lo que faltaba. */
+function digestMeal(){
   const busy = mealBusy();
   const controls = document.getElementById('controls');
   if (controls.classList.contains('busy') !== busy) controls.classList.toggle('busy', busy);
-  if (!m) return;
-  if (!busy){ flushMeal(); saveState(); return; }
-  if (walker.anim !== 'eat') return;
-  const act = walker.activity;
-  if (!act.mealMs) act.mealMs = act.steps.reduce((t, st) => t + (st.anim === 'eat' ? (st.ms || 0) : 0), 0) || 1800;
-  const k = dt * 1000 / act.mealMs;
-  for (const stat of ['hunger', 'energy']){
-    const bite = Math.min(m[stat], m.total[stat] * k);
-    state[stat] = clamp(state[stat] + bite);
-    m[stat] -= bite;
-  }
-  if (m.hunger <= 1e-6 && m.energy <= 1e-6){ state.meal = null; saveState(); }
+  if (state && state.meal && !busy){ flushMeal(); saveState(); }
 }
 
 /* Corta cualquier toque mientras come (captura en window: corre antes que
-   todos los demás listeners, también el de los muebles). */
+   todos los demás listeners, también el de los muebles). La bandeja queda
+   afuera: se le puede seguir tirando comida. */
 let mealBusySaidAt = 0;
 window.addEventListener('DOMContentLoaded', () => {
   const block = e => {
-    if (!mealBusy() || !e.target.closest || !e.target.closest('#controls, #screen')) return;
+    if (!mealBusy() || !e.target.closest || !e.target.closest('#controls, #screen') || e.target.closest('#foodTray')) return;
     e.stopPropagation();
     e.preventDefault();
     if (e.type === 'click' && performance.now() - mealBusySaidAt > 1500){
@@ -2042,7 +2123,7 @@ function renderFoodTray(aviso){
     'med ' + (meds <= 0 ? 'out ' : '') + (state.sick ? 'urgent' : ''));
   const sub = aviso
     ? `<small class="warn">${escapeHtml(aviso)}</small>`
-    : `<small>${state.sick ? '¡Está enferma! Dale una medicina' : 'Toca para dársela · marcada, la última'}</small>`;
+    : `<small>${state.sick ? '¡Está enferma! Dale una medicina' : 'Toca varias: caen todas juntas'}</small>`;
   tray.innerHTML = `
     <div class="tray-head"><span><b>¿Qué come?</b>${sub}</span>
       <button class="tray-close" id="trayClose">Cerrar</button></div>
@@ -2051,6 +2132,7 @@ function renderFoodTray(aviso){
   tray.querySelectorAll('[data-tray]').forEach(el => el.addEventListener('click', requireAlive(() => {
     const id = el.dataset.tray;
     if (id === MEDICINE.id){
+      if (mealBusy()){ renderFoodTray('Primero que termine de comer'); return; }
       if (meds <= 0){ closeFoodTray(); shopTab = 'food'; openShop('No te quedan medicinas'); return; }
       const problema = giveMedicine();
       if (problema) renderFoodTray(problema); else closeFoodTray();
@@ -2062,7 +2144,9 @@ function renderFoodTray(aviso){
       openShop(`No te queda ${foodById(id).name}`);
       return;
     }
-    if (feedFood(id)) closeFoodTray();
+    /* La bandeja queda abierta: se pueden tirar varias, caen todas al mismo
+       montón y se las come de una. */
+    if (feedFood(id)) renderFoodTray();
   })));
 }
 
