@@ -1875,14 +1875,20 @@ body{
 }
 .pill:active{transform:scale(.95); box-shadow:0 1px 0 #fff inset, 0 4px 10px -8px rgba(70,10,90,.6);}
 #btnStyle{--pill:#c25bff; --pill-hi:#ff8cc8;}
-#btnShop {--pill:#1fbf86; --pill-hi:#8ff0c4;}
+#btnShop {--pill:#1fbf86; --pill-hi:#8ff0c4;}   /* verde menta: el dorado se confundía con el amarillo de Jugar */
+#btnLogros{--pill:#4d7dff; --pill-hi:#9cc0ff;}  /* azul: los otros colores ya son de un reloj o de otra píldora */
 .pill{position:relative;}
 .controls.tray-open .pill[data-badge]::after{display:none;}
 /* La jeringa de vaccinateFx(): canvas en píxeles físicos, sobre los personajes. */
-.vaccine-fx{position:absolute; z-index:6; pointer-events:none; image-rendering:pixelated; transform-origin:50% 50%;}   /* verde menta: el dorado se confundía con el amarillo de Jugar */
-/* Dos píldoras del mismo ancho: Personalizar a la izquierda, Tienda a la
-   derecha. */
-.dock-sec .pill{flex:1; max-width:180px; justify-content:center;}
+.vaccine-fx{position:absolute; z-index:6; pointer-events:none; image-rendering:pixelated; transform-origin:50% 50%;}
+/* Tres píldoras: Personalizar, Logros y Tienda. Cada una mide lo que pide su
+   texto y reparten lo que sobra (con el mismo ancho, "Personalizar" no
+   cabía en un teléfono de 360). */
+.dock-sec .pill{flex:1 1 auto; max-width:180px; justify-content:center; gap:6px; padding:5px 11px 5px 5px;}
+.dock-sec .pill-icon{width:28px; height:28px; font-size:15px;}
+/* En la píldora el globito va sobre el ícono, no en la esquina: con tres,
+   en la esquina tapaba el texto. */
+.dock-sec .pill[data-badge]::after{right:auto; left:19px; top:-9px; min-width:20px; height:20px; padding:0 4px; font-size:11px;}
 
 /* Bandeja de comidas: se abre con Comer y flota encima del dock y las
    píldoras, del mismo tamaño que ellos (posición absoluta): el aparato no
@@ -1904,7 +1910,7 @@ body{
   animation:trayIn .22s var(--ease-spring);
 }
 .food-tray.hidden{display:none;}
-.controls.tray-open .btn[data-badge]::after, .pill[data-badge]::after{display:none;}
+.controls.tray-open .btn[data-badge]::after{display:none;}
 @keyframes trayIn{ from{opacity:0; transform:translateY(10px) scale(.98);} }
 .tray-head{display:flex; justify-content:space-between; align-items:center; gap:8px; padding:0 4px;}
 .tray-head b{font-size:13px; font-weight:900;}
@@ -2078,6 +2084,112 @@ body{
    altas también gana alto. Va después del @media de pantallas bajas para
    ganarle al relleno lateral de ahí. Los env(safe-area-inset-*) quedan: con
    el teléfono de lado, el notch no tapa el borde. */
+/* ===================== Logros: medallas y Mimodex (logros.js) ===================== */
+
+/* El cartelito de arriba cuando se gana una medalla o entra una especie al
+   Mimodex: baja, se queda un rato y se va. Encima de todo (z 25). */
+.medal-toast{
+  position:absolute; z-index:25; top:calc(10px + env(safe-area-inset-top, 0px)); left:50%;
+  transform:translateX(-50%);
+  display:flex; align-items:center; gap:10px;
+  min-width:220px; max-width:calc(100% - 24px);
+  padding:7px 14px 7px 7px;
+  border-radius:999px;
+  background:linear-gradient(180deg, var(--sheet-2), var(--sheet));
+  color:var(--text);
+  font-family:var(--font-ui);
+  box-shadow:0 0 0 2px var(--mt, #d99a5b), 0 14px 30px -10px rgba(0,0,0,.7);
+  cursor:pointer; -webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation;
+  animation:toastIn .38s var(--ease-spring) both;
+}
+.medal-toast.hidden{display:none;}
+.medal-toast.out{animation:toastOut .3s ease-in both;}
+.medal-toast.bronce{--mt:#d99a5b;}
+.medal-toast.plata {--mt:#c9d3e3;}
+.medal-toast.oro   {--mt:#ffd25a;}
+.medal-toast.dex   {--mt:#9cc0ff;}
+@keyframes toastIn { from{opacity:0; transform:translate(-50%, -24px) scale(.9);} }
+@keyframes toastOut{ to{opacity:0; transform:translate(-50%, -16px);} }
+.mt-text{display:flex; flex-direction:column; min-width:0; flex:1;}
+.mt-text small{font-size:11px; font-weight:800; color:var(--mt); text-transform:uppercase; letter-spacing:.04em;}
+.mt-text b{font-size:14.5px; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.mt-cta{font-size:12px; font-weight:900; padding:4px 10px; border-radius:999px; background:rgba(255,255,255,.12);}
+
+/* Las medallas: un disco del color del nivel más alto que tiene (gris si
+   ninguno), con su emoji. */
+.medal-disc, .mt-medal{
+  --m1:#5b5470; --m2:#3a3450; --mr:rgba(255,255,255,.18);
+  width:46px; height:46px; flex-shrink:0;
+  display:grid; place-items:center; font-size:22px;
+  border-radius:50%;
+  background:radial-gradient(circle at 35% 30%, var(--m1), var(--m2) 70%);
+  box-shadow:0 0 0 3px var(--mr), 0 2px 0 rgba(255,255,255,.35) inset, 0 -3px 0 rgba(0,0,0,.2) inset, 0 6px 14px -6px rgba(0,0,0,.6);
+}
+.mt-medal{width:38px; height:38px; font-size:19px;}
+.medal-disc.bronce, .mt-medal.bronce{--m1:#f2b98a; --m2:#a8642e; --mr:#d99a5b;}
+.medal-disc.plata,  .mt-medal.plata {--m1:#f4f7fc; --m2:#8b97ab; --mr:#c9d3e3;}
+.medal-disc.oro,    .mt-medal.oro   {--m1:#fff0a8; --m2:#d39a12; --mr:#ffd25a;}
+.mt-medal.dex{--m1:#cfe0ff; --m2:#4d7dff; --mr:#9cc0ff;}
+.medal-disc.none{filter:saturate(.3); opacity:.75;}
+
+.logros-sum{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:0 2px 10px;
+  font-size:13px; font-weight:800; color:var(--text-soft);}
+.logros-sum span{padding:4px 10px; border-radius:999px; background:var(--surface);}
+.logros-sum b{color:var(--text); font-size:15px;}
+.logros-sum .lpend{background:#ff5d6c; color:#fff;}
+
+.medal-card{display:flex; align-items:center; gap:12px; padding:10px 12px; text-align:left;
+  border-radius:var(--r-lg); background:var(--surface); border:1.5px solid var(--stroke);}
+.medal-card.pending{border-color:rgba(255,210,90,.6); background:rgba(255,210,90,.1);}
+.minfo{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px;}
+.minfo b{font-size:14.5px; font-weight:900;}
+.minfo small{font-size:12px; font-weight:700; color:var(--text-soft); line-height:1.3;}
+.minfo .mcount{font-size:11px;}
+.mbar{height:6px; margin-top:3px; border-radius:999px; background:rgba(0,0,0,.35); overflow:hidden;}
+.mbar i{display:block; height:100%; border-radius:999px; background:linear-gradient(90deg, #8f7bff, #b4a8ff);}
+.mpips{display:flex; gap:4px; flex-shrink:0;}
+.mpip{width:11px; height:11px; border-radius:50%; background:rgba(255,255,255,.12); box-shadow:0 0 0 1.5px rgba(255,255,255,.15) inset;}
+.mpip.bronce{background:#d99a5b;} .mpip.plata{background:#c9d3e3;} .mpip.oro{background:#ffd25a;}
+.mclaim{
+  flex-shrink:0; border:none; cursor:pointer;
+  font-family:var(--font-ui); font-weight:900; font-size:13px; color:#3a2600;
+  padding:8px 12px; border-radius:999px;
+  background:linear-gradient(180deg, #ffe58a, #ffc23d);
+  box-shadow:0 2px 0 rgba(255,255,255,.6) inset, 0 6px 14px -6px rgba(255,194,61,.9);
+  animation:alertPulse 1.2s ease-in-out infinite;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+
+/* Mimodex: rejilla de tres, como el selector de especies. Las que no se
+   conocen, en silueta (filter: no reescala el pixel art). */
+.overlay-card .menu-list.dex-grid{display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; align-content:start;}
+.dex-card{
+  position:relative; display:flex; flex-direction:column; align-items:center; gap:4px;
+  padding:10px 4px 8px; border-radius:var(--r-lg); cursor:pointer;
+  background:var(--surface); border:1.5px solid var(--stroke); color:var(--text);
+  font-family:var(--font-ui); -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.dex-card b{font-size:12.5px; font-weight:900; text-align:center; line-height:1.15;}
+.dex-num{font-size:10.5px; font-weight:900; color:var(--text-soft); letter-spacing:.04em;}
+.dex-thumb{display:block;}
+.dex-card.unknown .dex-thumb{filter:brightness(0) opacity(.35);}
+.dex-card.unknown b{color:var(--text-soft);}
+.dex-tag{font-style:normal; font-size:10px; font-weight:900; padding:1px 7px; border-radius:999px; background:rgba(255,255,255,.12);}
+.dex-tag.raised{background:rgba(255,210,90,.22); color:#ffe08a;}
+
+.dex-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;}
+.dex-back{border:none; background:var(--surface-hi); color:var(--text); font-family:var(--font-ui); font-weight:900;
+  font-size:13px; padding:7px 12px; border-radius:999px; cursor:pointer; -webkit-tap-highlight-color:transparent;}
+.dex-stage{
+  display:grid; place-items:center; margin:2px auto 6px; width:150px; height:150px; border-radius:50%;
+  background:radial-gradient(circle at 50% 40%, rgba(var(--screen-lit-rgb, 90,200,140), .28), rgba(255,255,255,.04) 70%);
+  box-shadow:0 0 0 2px rgba(255,255,255,.08) inset;
+}
+.dex-stage canvas{image-rendering:pixelated; cursor:pointer;}
+.dex-stage.unknown canvas{filter:brightness(0) opacity(.4); cursor:default;}
+.dex-rows{margin-top:6px; text-align:left;}
+.dex-hint{display:block; text-align:center; margin-top:6px; font-size:11.5px; font-weight:700; color:var(--text-soft);}
+
 @media (max-width: 500px){
   body{
     padding-left:env(safe-area-inset-left);

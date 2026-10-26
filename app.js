@@ -672,7 +672,7 @@ const DISTRESS_MULT = 1.5;
    mitad, como todo lo que decae. */
 const HEALTH_RISK_AT = 30;
 const HEALTH_RISK_LOSS_PER_REAL_HOUR = 3;   // hambre, felicidad o higiene bajo HEALTH_RISK_AT
-const SICK_LOSS_PER_REAL_HOUR = 3;          // enferma
+const SICK_LOSS_PER_REAL_HOUR = 2;          // enferma
 const EXHAUSTED_LOSS_PER_REAL_HOUR = 1;     // agotada (energía bajo EXHAUSTED_AT) y despierta
 /* Sin ninguna causa activa se recupera sola, despacio: 15 por día real
    (antes 0.424 por hora de juego, ~25 por hora real: cualquier susto se
@@ -1868,6 +1868,7 @@ function feedFood(id){
   state.selectedFood = food.id;
   if (!foodPile || !foodPile.pieces.length) say(food.restore ? '¡Ñam ñam!' : '¡Con pilas! ⚡');
   serveFood(piece);
+  medalAdd('comidas');   // logros.js
   saveState(); render();
   return true;
 }
@@ -2038,6 +2039,7 @@ window.addEventListener('DOMContentLoaded', () => {
 const btnClean = () => {
   if (!tryWake()) return;
   catchUp();
+  if (state.poop) medalAdd('cacas');   // logros.js
   state.hygiene = clamp(state.hygiene + 35);
   state.poop = false;
   floatFx('🧼');
@@ -2086,6 +2088,7 @@ const collectGift = () => {
 function applyVaccine(){
   catchUp();
   state.vaccinated = { ...(state.vaccinated || {}), [state.stage]: true };
+  medalAdd('vacunas');   // logros.js
   saveState();
 }
 
@@ -2207,6 +2210,7 @@ function giveMedicine(){
   if (foodStock(MEDICINE.id) <= 0) return 'No te quedan medicinas: cómpralas en la tienda';
   state.pantry[MEDICINE.id] -= 1;
   state.sick = false;
+  medalAdd('curas');   // logros.js
   floatFx('💊');
   say('Se siente mejor');
   triggerPetAction('medicine');
@@ -2219,6 +2223,7 @@ const btnPet = () => {
   if (!tryWake()) return;
   catchUp();
   state.happiness = clamp(state.happiness + 6);
+  medalAdd('mimos');   // logros.js
   floatFx('💗');
   say('¡Le encanta que lo mimen!');
   triggerPetAction('pet');

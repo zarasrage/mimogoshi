@@ -96,6 +96,7 @@ function gachaPull(conFicha){
     state.coins -= GACHA_PRICE;
   }
   const item = gachaRoll();
+  medalAdd('capsulas');   // logros.js
   if (!item){
     state.pantry[GACHA_CONSOLATION] = foodStock(GACHA_CONSOLATION) + 1;
     saveState(); render();
@@ -606,6 +607,7 @@ function spinWheel(conTicket){
   let r = Math.random() * tot, pick = slices[slices.length - 1];
   for (const s of slices){ if (r < s.p.w){ pick = s; break; } r -= s.p.w; }
   const texto = pick.p.give();
+  medalAdd('giros');   // logros.js
   const w = wheelState();
   if (conTicket) state.wheelTickets = wheelTickets() - 1;
   else w.last = Date.now();

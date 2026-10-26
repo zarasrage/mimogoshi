@@ -690,6 +690,12 @@ function finishMinigame(id, { score, merit, energyCost, hygieneCost = 0, message
     }
   }
 
+  /* Medallas (logros.js): partidas, la mejor, desafíos y juegos de a dos. */
+  medalAdd('partidas');
+  medalMax('merito', merit);
+  if (mega) medalAdd('desafios');
+  if (gameById(id) && gameById(id).duo) medalAdd('juntos');
+
   state.happiness = clamp(state.happiness + happinessGain);
   state.energy = clamp(state.energy - energyCost);
   collapseIfDrained();   // jugar hasta quedar sin energía la deja dormida
@@ -2382,7 +2388,7 @@ function startCombatGame(){
     groundY: h - 4,
     playerX: w * 0.22,
     rivalX: w * 0.78,
-    rivalSpecies: pickRivalSpecies(),
+    rivalSpecies: (s => { dexSeen(s); return s; })(pickRivalSpecies()),   // entra al Mimodex (logros.js)
     round: 0,
     playerHp: CB_PLAYER_HP,
     rivalHp: CB_RIVAL_HP,

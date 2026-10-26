@@ -43,6 +43,7 @@ function setCompanion(c){
   if (buddy.activity) endFurniActivity(buddy);
   state.companion = c;
   if (c){
+    dexSeen(c.species);   // entra al Mimodex (logros.js)
     syncBuddy();
     buddy.x = buddy.targetX = walker.x < 0.5 ? Math.min(0.9, walker.x + 0.28) : Math.max(0.1, walker.x - 0.28);
     buddy.y = 0; buddy.dir = walker.x > buddy.x ? 1 : -1;
@@ -514,6 +515,7 @@ function startSocial(force){
     if (!muebles.length) return false;
     startFurniDuo(pickOne(muebles), a, b);
     socialNextAt = now + SOCIAL_GAP_MS;
+    medalAdd('juntos');   // logros.js
     return true;
   }
   let g = socialHelpers(a, b);
@@ -537,6 +539,7 @@ function startSocialWith(s, g, now){
   startActivity(g.b, d.b, { kind: 'social', duo, partner: g.a, rt: d.rt || null });
   socialNextAt = now + SOCIAL_GAP_MS;
   lastSocial = s.id;
+  medalAdd('juntos');   // logros.js
   return true;
 }
 
