@@ -1094,7 +1094,7 @@ function furniActivityBroken(mood, act = walker){
     /* Entrar a una habitación: aunque esté triste o enferma, termina de entrar. */
     if (a.kind === 'enter') return !!state.sleeping;
     if (state.sleeping) return true;
-    if (a.kind === 'eat' || a.kind === 'clean') return false;
+    if (a.kind === 'eat' || a.kind === 'clean' || a.kind === 'vaccine') return false;
     return mood === 'sleepy' || mood === 'sad' || mood === 'sick';
   }
   if (act.action) return true;
