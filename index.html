@@ -174,9 +174,10 @@
         </button>
       </div>
       <!-- La ruleta vive dentro de Juegos y Reiniciar en la configuración (⚙️ de
-           arriba): aquí quedan solo las dos cosas de vez en cuando. -->
+           arriba): aquí quedan solo las cosas de vez en cuando. -->
       <div class="dock-sec">
         <button class="pill" id="btnStyle" title="Personalizar"><span class="pill-icon">🎨</span>Personalizar</button>
+        <button class="pill" id="btnLogros" title="Logros"><span class="pill-icon">🏆</span>Logros</button>
         <button class="pill" id="btnShop" title="Tienda"><span class="pill-icon">🛒</span>Tienda</button>
       </div>
       <div class="food-tray hidden" id="foodTray"></div>
@@ -195,6 +196,8 @@
     <!-- Pop-up de compra y de premio: encima de todo, también de la hoja de
          la tienda (showPopup en app.js). -->
     <div class="popup hidden" id="popup"></div>
+    <!-- Una medalla o una especie nueva (logros.js): un cartelito arriba. -->
+    <div class="medal-toast hidden" id="medalToast" role="status"></div>
   </div>
 
   <aside class="debug-side hidden" id="debugPanel">
@@ -215,5 +218,6 @@
 <script src="objetos.js"></script>
 <script src="duo.js"></script>
 <script src="duo-juegos.js"></script>
+<script src="logros.js"></script>
 </body>
 </html>

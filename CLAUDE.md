@@ -5,7 +5,7 @@ backend**: se edita directo y se abre `index.html` en el navegador. Todo el
 progreso vive en `localStorage`.
 
 **Archivos:** `index.html` (esqueleto), `styles.css` (todo el CSS) y la lógica
-en siete scripts clásicos que comparten el ámbito global:
+en ocho scripts clásicos que comparten el ámbito global:
 - `app.js`: el núcleo (estado, simulación, bitácora, render, tienda,
   Personalizar, panel de prueba).
 - `juegos.js`: el menú de Jugar (`GAMES`, niveles, desafío diario, resultado), lo
@@ -18,6 +18,8 @@ en siete scripts clásicos que comparten el ámbito global:
   muebles con ganchos propios, y sus capas de efectos.
 - `duo.js`: el acompañante (`buddy`) y lo que hacen los dos juntos.
 - `duo-juegos.js`: los seis juegos de a dos.
+- `logros.js`: las medallas y el Mimodex (ver "Medallas y Mimodex"), que
+  viven en su propia clave de `localStorage` y sobreviven a la mascota.
 
 Se cargan en ese orden (`index.html`). Lo de un archivo que usa otro se usa
 recién en tiempo de juego (después de `DOMContentLoaded`), nunca al cargar —
@@ -41,7 +43,7 @@ sola persona.
 Chequeo de sintaxis (lo mínimo antes de cualquier commit):
 
 ```bash
-node -e "const fs=require('fs'); for (const f of ['app.js','juegos.js','premios.js','muebles.js','objetos.js','duo.js','duo-juegos.js']) { new Function(fs.readFileSync(f,'utf8')); console.log(f, 'syntax OK'); }"
+node -e "const fs=require('fs'); for (const f of ['app.js','juegos.js','premios.js','muebles.js','objetos.js','duo.js','duo-juegos.js','logros.js']) { new Function(fs.readFileSync(f,'utf8')); console.log(f, 'syntax OK'); }"
 ```
 
 Prueba funcional/visual con Playwright (Chromium ya está instalado en
@@ -283,11 +285,13 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   más `-hi` y `-ink`): antes los botones iban en pastel y no calzaban con los
   anillos (Dormir era azul marino al lado de un reloj violeta). Dormida,
   Despertar sigue violeta (el sol sobre amarillo no se leía). Debajo
-  dos **píldoras** (`.pill`, del mismo ancho, blancas con el ícono en un
-  círculo de color, `.pill-icon`: rosa-violeta Personalizar, verde menta
-  Tienda —era dorado y se confundía con el amarillo de Jugar—;
+  tres **píldoras** (`.pill`, blancas con el ícono en un círculo de color,
+  `.pill-icon`: rosa-violeta Personalizar, azul Logros, verde menta
+  Tienda —era dorado y se confundía con el amarillo de Jugar—; cada una
+  mide lo que pide su texto, porque con el mismo ancho "Personalizar" no
+  cabía en 360 px, y su globito va sobre el ícono, no en la esquina;
   antes eran un velo translúcido que se veía lavado) con lo de vez en cuando:
-  Personalizar a la izquierda y Tienda a la derecha. Antes también estaban
+  Personalizar, Logros y Tienda. Antes también estaban
   la Ruleta 🎡 (ahora dentro de Juegos, ver "Ruleta y gacha") y Reiniciar
   (ahora en la configuración, el ⚙️ de arriba junto al 🧪 del modo prueba,
   `openSettings()`: destructivo, no tiene por qué estar a mano). Debajo
@@ -505,7 +509,7 @@ y por pedido**, se rompió esa proporción en dos lugares:
   de tiempo real, por pedido** (ver "Salud que se recupera sola" y "Vacunas" en "Dinero y tienda"): hambre,
   felicidad o higiene bajo 30 cuesta **3 por hora**
   (`HEALTH_RISK_LOSS_PER_REAL_HOUR`, cuenta una vez aunque sean varias),
-  enferma **3 por hora** (`SICK_LOSS_PER_REAL_HOUR`), agotada y despierta
+  enferma **2 por hora** (`SICK_LOSS_PER_REAL_HOUR`), agotada y despierta
   **1 por hora** (`EXHAUSTED_LOSS_PER_REAL_HOUR`), sin vacuna **20 por día**
   y se recupera sola **15 por día**. Antes cada causa costaba ~5.7 por hora
   y la agotada ~17; hubo un paso intermedio de 1 / 1 por hora y 5 al día
@@ -514,8 +518,8 @@ y por pedido**, se rompió esa proporción en dos lugares:
 Resultado, medido por simulación contra `applyDecay()`/`maybeAutoSleep()`
 reales (ticks de 4 s, sin modo nocturno, 100 corridas): totalmente descuidada
 se pone triste por primera vez a las **~3.9 h** reales y muere en una
-mediana de **~30 h** vacunada (p10 22, p90 37) y **~23 h** sin vacuna (p10
-17, p90 26). Antes de pasar la salud a números redondos eran ~19 y ~16 h, y
+mediana de **~31 h** vacunada (p10 25, p90 37) y **~25 h** sin vacuna (p10
+21, p90 29). Antes de pasar la salud a números redondos eran ~19 y ~16 h, y
 antes de las vacunas, 16.8. Los umbrales
 (`DISTRESS_AT`, `HEALTH_RISK_AT`, `SICK_LOW_HEALTH_AT`) no se tocaron: son
 valores de barra, no de tiempo. Si se vuelve a recalibrar, conviene repetir esa
@@ -1266,6 +1270,52 @@ se para el loop y se avanza cuadro a cuadro con `updateWalker()`/
 y cada `tap`: 0 errores, todos terminan con los personajes en el piso y sin
 modo piso ni reflejo colgando. También una visita espontánea a cada uno
 (`maybeStartFurniVisit()`). Al sumar o cambiar un guion, repetir eso.
+
+
+## Medallas y Mimodex (`logros.js`)
+
+Dos colecciones **de quien juega, no de la mascota**: van en su propia clave
+(`PROFILE_KEY = 'mimogoshi.perfil.v1'`, en try/catch como todo
+`localStorage`), así sobreviven a que se muera o se reinicie (`clearSave()`
+solo borra el save). Se abren con la píldora 🏆 **Logros**: una hoja con dos
+pestañas, Medallas y Mimodex (`openLogros(tab)`).
+
+**Medallas** (`MEDALS`): 20 logros, cada uno con tres niveles (bronce,
+plata, oro; `MEDAL_TIERS`), o sea 60 medallas. Cada nivel paga al
+reclamarlo: **10 / 30 / 80 monedas, y el oro además una ficha del gacha**.
+Se reclaman a mano (botón dorado en la tarjeta, pop-up con el premio): que
+se sienta. Al alcanzar un nivel baja un cartelito arriba (`#medalToast`,
+z-index 25, encima de todo; tocarlo abre la pestaña) y la píldora lleva un
+globito con cuántas hay por reclamar. Si llegan varias juntas van en un solo
+cartelito ("¡N medallas nuevas!"). Lo que mide cada una es un contador de
+`profile.stats`:
+- `medalAdd(stat)` desde donde pasa la cosa: comidas (`feedFood()`), cacas
+  limpiadas (`btnClean()`, solo si había), curas (`giveMedicine()`), vacunas
+  (`applyVaccine()`), mimos (`btnPet()`), partidas, desafíos y juegos de a
+  dos (`finishMinigame()`), giros de ruleta (`spinWheel()`), cápsulas
+  (`gachaPull()`) y jugar juntos (`startSocial()`/`startSocialWith()`).
+- `medalMax(stat, v)` para lo que se mide: la mejor partida (mérito 45 /
+  70 / 100: "muy buena / excelente / legendaria"), y cada segundo
+  (`medalsTick()`): días reales que vivió una mascota, mascotas criadas
+  hasta adultas, muebles y objetos mágicos que tiene, el nivel más alto
+  desbloqueado de un juego, monedas ganadas (todo lo que el saldo sube,
+  venga de donde venga), veces que se durmió, y las especies del Mimodex.
+Los umbrales del Mimodex (`explora`, `familia`) piden en el oro **todas**
+las especies que haya (`SPECIES_IDS.length`): crecen solos al sumar una.
+
+**Mimodex**: la ficha de cada especie, con número (#001, en el orden de
+`SPECIES_IDS`). Una especie se **ve** al cruzársela (`dexSeen()`: la
+visita de un juego de a dos en `dgNew()`, el acompañante en
+`setCompanion()`, el rival del combate) y se **cría** cuando una mascota
+propia nace de esa especie (`medalsTick()`, identificada por su `bornAt`).
+La rejilla es de tres como el selector de especies; las desconocidas van en
+silueta (`filter`, que no reescala el pixel art) con "???". La ficha muestra
+al personaje **animado** (canvas en píxeles físicos, escala entera en
+píxeles físicos, con un `gameActor()` de `duo-juegos.js`; tocarlo cambia lo
+que hace), su frase (`DEX_FLAVOR`, una por especie; al sumar una especie,
+sumar su frase), cuántas se criaron, cuánto vivió la que más, encuentros y
+fecha de la primera vez. Una desconocida dice dónde buscarla. Una especie
+nueva avisa con el mismo cartelito.
 
 
 ## Acompañante (de a dos)

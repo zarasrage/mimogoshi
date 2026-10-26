@@ -63,6 +63,7 @@ const shortName = s => s.length > 10 ? s.slice(0, 9) + '…' : s;
 
 function dgNew(id, extra){
   const guest = duoGuest();
+  dexSeen(guest.species);   // la visita entra al Mimodex (logros.js)
   const { gc, ctx } = enterMinigame(id);
   dg = Object.assign({
     id, gc, ctx, w: gc.width, h: gc.height, cleanup: [], fx: [], pops: [], raf: null, lastT: 0,
