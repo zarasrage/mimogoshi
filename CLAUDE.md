@@ -378,9 +378,9 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
 - **Los botones avisan** (`updateDock()`, desde `render()`, solo toca el DOM
   si algo cambió): anillo de su color alrededor del ícono (`.need`) y globito
   arriba (`data-badge`): 💊 en Comer si está enferma (anillo también con
-  hambre bajo 30), anillo en Limpiar con higiene bajo 30 si ya se puede
-  bañar (la caca ya no se avisa ahí: se ve en la pantalla y se recoge
-  tocándola), zZ en Dormir con energía bajo
+  hambre bajo 30), anillo en Limpiar con higiene bajo 30 o caca (con 💩)
+  si ya se puede bañar (mientras espera sus 5 minutos, nada: la etiqueta
+  es la cuenta regresiva), zZ en Dormir con energía bajo
   `SLEEPY_THRESHOLD` (violeta; rojo si ya está agotada).
 - **Pop-up de compra y de premio** (`showPopup()` en `app.js`, `#popup`,
   z-index 20: encima de todo, también de la hoja abierta). Toda compra con
@@ -559,12 +559,15 @@ hora. Se sube de dos formas distintas a propósito:
   (`CLEAN_HYGIENE`) y después hay que esperar 5 minutos reales
   (`CLEAN_COOLDOWN_MS`, `state.lastClean`, `cleanWaitMs()`). Mientras
   espera se ve apagado (`.cooling`) y su etiqueta es la cuenta regresiva;
-  apretarlo dice cuánto falta. **No recoge la caca.**
-- **La caca se recoge solo tocándola** (`cleanPoop()`, el listener de
-  `#poopFx`): +10 (`POOP_CLEAN_HYGIENE`). Antes cualquier toque en la
-  pantalla (un listener en `#screen`) o en la mascota la limpiaba, y el
-  botón también; ese listener se sacó. El seguro de limpieza y el robot
-  aspiradora la recogen con el mismo +10.
+  apretarlo dice cuánto falta. Si hay caca, **también la recoge**, con su
+  +10 aparte (+35 en total). Hubo un rato en que no la recogía (solo
+  tocándola) y se volvió a esto por pedido.
+- **La caca también se recoge tocándola** (`cleanPoop()`, el listener de
+  `#poopFx`): +10 (`POOP_CLEAN_HYGIENE`), sin esperar al botón. Antes
+  cualquier toque en la pantalla (un listener en `#screen`) o en la
+  mascota la limpiaba; ese listener se sacó y tocar a la mascota es
+  siempre un mimo. El seguro de limpieza y el robot aspiradora la recogen
+  con el mismo +10.
 El tiempo hasta la muerte por descuido de arriba no cambia: el hambre cruza
 30 antes que la higiene, aun con caca, y el riesgo para la salud cuenta una
 sola vez.
