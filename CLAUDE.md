@@ -1479,19 +1479,45 @@ felicidad; se comen desde la bandeja de Comer, pestaña "Hecho en casa", o
 desde la mochila, y se venden). La cosecha cruda no se come: cocinar es
 la única forma de sacarle comida. Tocarla abre
 su hoja (`openCocina()`): cada receta con lo que pide (verde si alcanza,
-"faltan N" si no) y Cocinar; se cocina **una cosa a la vez** y tarda unos
-minutos reales (`mins`, de 2 a 10, `cocinaData()` = `{recipe, at}`; los
-ingredientes se gastan al empezar). Mientras, el horno brilla y la olla
-echa vapor; listo, el plato espera arriba con brillitos, y tocar la cocina
-manda a la mascota a sacarlo (`cocinaChore()` / `cocinaTake()`, con
-pop-up; igual que en el huerto, si la tarea se corta lo saca igual). De
+"faltan N" si no) y Cocinar / A la cola.
+
+**Cola** (por pedido; antes era una cosa a la vez): se encargan varias
+recetas y se cocinan **de a una, en orden**, cada una con su tiempo real
+(`mins`, de 2 a 10). `cocinaData()` = `{queue, at, ready}`: `queue` lo
+encargado (el primero se cocina desde `at`), `ready` lo que ya salió. Al
+leerla pasa a `ready` todo lo que terminó, y cada uno arranca justo cuando
+terminó el anterior, así avanza igual con la app cerrada. Los ingredientes
+**se descuentan al encargar**; cada uno de la cola se puede **cancelar** y
+devuelve sus ingredientes (si era el que se estaba cocinando, el siguiente
+empieza en ese momento). Caben `COCINA_MAX` (6) entre la cola y lo listo
+(el botón dice "Llena"). La hoja queda abierta al encargar, para poner
+varias seguidas; cada segundo mueve las cuentas regresivas y la barra del
+que va, y se rehace entera solo cuando algo termina (rehacerla cada
+segundo se comía los toques). Los saves de antes (`{recipe, at}`) pasan a
+una cola de uno.
+
+**Globito de lo listo**: encima de la cocina flota un globo en pixel art
+con **×N** (cuántas recetas hay listas): blanco mientras queda algo en el
+horno, **dorado y con corona** cuando ya salió todo. Son piezas de la
+cocina (`COCINA_BUBBLES`, una por número y variante, dígitos de
+`PX_DIGITS` dibujados con `pxMap()`, que contornea solo), subidas con
+`pose`. **Tocar el globito** saca todo lo listo (`cocinaTake()`, un pop-up
+con cada cosa) y lo demás se sigue cocinando; tocar la cocina abre la
+hoja, que también tiene "Sacar". Para saber qué pieza se tocó,
+`furniAtPoint()` deja en `rt.hitPart` el id de la pieza (sirve para
+cualquier objeto cuyo `tap` dependa de dónde). Mientras cocina, el horno
+brilla y la olla echa vapor; con algo listo, el plato espera arriba con
+brillitos. La mascota va a revolver al encargar la primera de una tanda y
+a sacar lo listo (`cocinaChore()`; igual que en el huerto, si la tarea se
+corta lo saca igual). De
 visita juega a ser chef; de a dos, uno cocina y el otro espera y se lo
 come. La comida de la mochila se come con `bagEat()`, que lee el `food`
 de los platos (los que tienen `short` usan ese nombre en la bandeja).
 
 **Modo prueba** (`huertaDebugHtml()`/`wireHuertaDebug()`, sección "Huerta
-y cocina" del panel): plantas +1 h, plantas listas, regar ya, horno
-listo, compost listo, +3 de todo en la mochila y cavar sin esperar.
+y cocina" del panel): plantas +1 h, plantas listas, regar ya, horno:
+listo el que va, horno: todo listo, compost listo, +3 de todo en la mochila
+y cavar sin esperar.
 
 ## Medallas y Mimodex (`logros.js`)
 

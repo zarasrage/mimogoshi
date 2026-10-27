@@ -2547,6 +2547,10 @@ body{
 .recipe-row{cursor:default; align-items:flex-start;}
 .recipe-row.locked{opacity:.75;}
 .recipe-row .mini-btn{align-self:center;}
+/* La cola de la cocina: barra de lo que se está cocinando. */
+.cook-q.cooking{box-shadow:inset 0 0 0 1.5px rgba(255,170,80,.5);}
+.cook-bar{height:5px; border-radius:3px; background:rgba(255,255,255,.12); margin-top:5px; overflow:hidden;}
+.cook-bar i{display:block; height:100%; border-radius:3px; background:linear-gradient(90deg, #ff8a3d, #ffd25a); transition:width 1s linear;}
 .need-chips{display:flex; flex-wrap:wrap; gap:4px; margin-top:5px;}
 .need-chip{
   font-size:11.5px; font-weight:800; padding:2px 7px; border-radius:999px;

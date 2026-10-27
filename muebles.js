@@ -654,10 +654,12 @@ function furniAtPoint(x, y){
   let best = null, bestRank = 9;
   for (const rt of furniRt){
     if (rt.removed) continue;
-    for (const { el } of Object.values(rt.els)){
+    for (const [pid, { el }] of Object.entries(rt.els)){
       if (el._v === false || el.classList.contains('hidden')) continue;
       const rank = layerRank[el.parentElement && el.parentElement.id] ?? 3;
-      if (rank < bestRank && partHit(el, x, y)){ best = rt; bestRank = rank; }
+      /* `hitPart`: qué pieza se tocó, para el `tap` de un objeto que hace
+         cosas distintas según dónde (el globito de la cocina). */
+      if (rank < bestRank && partHit(el, x, y)){ best = rt; bestRank = rank; rt.hitPart = pid; }
     }
   }
   return best;
