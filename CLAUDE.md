@@ -329,7 +329,7 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
     `statEta()`, que integra con el x1.5 de apuro); "Lo que la está
     moviendo" (las filas con `fx` y `on`: efectos que corren solos, como
     dormida, de noche, la caca, la vacuna que falta); "Puedes hacer ahora"
-    (las filas sin `fx` pero `on`: limpiar si hay caca, la medicina si está
+    (las filas sin `fx` pero `on`: recoger la caca, bañarla si ya se puede, la medicina si está
     enferma, abrir el regalo) y los umbrales que ya cruzó. Abajo, "Ver todo
     lo que puede afectarla" con cuántas cosas son.
   - **Todo**: el catálogo entero (lo que la sube, lo que la baja, con lo de
@@ -346,7 +346,7 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   contenido, sin perder el scroll ni la pestaña). Los colores van en
   `rgba()` con el RGB de cada reloj y no con `color-mix()`, que en
   teléfonos un poco viejos invalida el fondo entero. El toque frena la
-  propagación (el listener de `#screen` limpia caca) y el reloj apretado
+  propagación (que no siga al piso) y el reloj apretado
   brilla con `filter`, no se achica (el ícono es pixel art).
 - **Íconos pixel en la pantalla** (`PX_ICONS` en `app.js`): todo lo que
   vive en la LCD es pixel art, así que los íconos de los relojes (rayo,
@@ -378,7 +378,9 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
 - **Los botones avisan** (`updateDock()`, desde `render()`, solo toca el DOM
   si algo cambió): anillo de su color alrededor del ícono (`.need`) y globito
   arriba (`data-badge`): 💊 en Comer si está enferma (anillo también con
-  hambre bajo 30), 💩 en Limpiar si hay caca, zZ en Dormir con energía bajo
+  hambre bajo 30), anillo en Limpiar con higiene bajo 30 si ya se puede
+  bañar (la caca ya no se avisa ahí: se ve en la pantalla y se recoge
+  tocándola), zZ en Dormir con energía bajo
   `SLEEPY_THRESHOLD` (violeta; rojo si ya está agotada).
 - **Pop-up de compra y de premio** (`showPopup()` en `app.js`, `#popup`,
   z-index 20: encima de todo, también de la hoja abierta). Toda compra con
@@ -545,9 +547,27 @@ simulación en vez de razonar con un factor, porque las proporciones ya no son
 uniformes.
 
 La caca aparece con `POOP_CHANCE_PER_HOUR`: calibrada (dentro de ese mismo
-escalado) para que la primera salga en mediana a las ~3.5 horas reales. La
-higiene no baja sola — solo mientras haya caca sin limpiar (ver
-`DECAY_PER_HOUR.hygiene`).
+escalado) para que la primera salga en mediana a las ~3.5 horas reales.
+
+**Higiene** (por pedido, en números redondos de tiempo real): baja **2 por
+hora** siempre (`DECAY_PER_HOUR.hygiene`, la barra entera en ~50 h) y **18
+por hora** mientras haya caca sin recoger (`HYGIENE_POOP_DECAY`, en vez de
+los 2; `decayRate()` elige), con el x1.5 de apuro bajo 20 y a la mitad de
+noche; dormir no la frena. Antes no bajaba nada sin caca y con caca ~28 por
+hora. Se sube de dos formas distintas a propósito:
+- **El botón Limpiar baña** (`btnClean()`, ícono 🧼): +25
+  (`CLEAN_HYGIENE`) y después hay que esperar 5 minutos reales
+  (`CLEAN_COOLDOWN_MS`, `state.lastClean`, `cleanWaitMs()`). Mientras
+  espera se ve apagado (`.cooling`) y su etiqueta es la cuenta regresiva;
+  apretarlo dice cuánto falta. **No recoge la caca.**
+- **La caca se recoge solo tocándola** (`cleanPoop()`, el listener de
+  `#poopFx`): +10 (`POOP_CLEAN_HYGIENE`). Antes cualquier toque en la
+  pantalla (un listener en `#screen`) o en la mascota la limpiaba, y el
+  botón también; ese listener se sacó. El seguro de limpieza y el robot
+  aspiradora la recogen con el mismo +10.
+El tiempo hasta la muerte por descuido de arriba no cambia: el hambre cruza
+30 antes que la higiene, aun con caca, y el riesgo para la salud cuenta una
+sola vez.
 
 Los regalos aparecen igual que la caca — mismo modelo de dado, un solo
 `Math.random() < hours * GIFT_CHANCE_PER_HOUR` por tick, sin componer — pero
@@ -791,7 +811,7 @@ Catálogo en `UPGRADES`, con dos formas:
   nuevo. Nunca quedan disparando para siempre a propósito: eso volvería
   trivial la caca o la enfermedad en vez de ser una red de contención puntual
   para cuando no estás mirando. `autoClean` limpia sola la primera caca que
-  aparezca (mismo `+35` de higiene que `btnClean`); `autoMed` cura sola una
+  aparezca (mismo +10 de higiene que recogerla a mano); `autoMed` cura sola una
   enfermedad (igual que darle una medicina: solo la cura, no suma salud). Ninguna distingue si la app
   está abierta o cerrada al disparar — nada más en el juego trata "estar
   mirando" como un estado aparte, así que tampoco esto. `state.upgrades[id]`
@@ -1314,7 +1334,7 @@ Dos colecciones **de quien juega, no de la mascota**: van en su propia clave
 solo borra el save). Cada una tiene su **pestañita** pegada al borde
 izquierdo de la pantalla, debajo de la bitácora y con su misma forma (son
 `.log-btn` también, así los listeners del piso las dejan pasar; su clic
-frena la propagación para no limpiar caca ni mandar a un mueble): la
+frena la propagación para no mandar a un mueble): la
 **copa** (`#btnLogros`, `px-trophy`) abre las Medallas y el **libro**
 (`#btnDex`, `px-book`, un huevo en la tapa: con una estrella se leía como
 un botiquín) abre el Mimodex, cada una en su propia hoja
@@ -1336,7 +1356,7 @@ globito con cuántas hay por reclamar. Si llegan varias juntas van en un solo
 cartelito ("¡N medallas nuevas!"). Lo que mide cada una es un contador de
 `profile.stats`:
 - `medalAdd(stat)` desde donde pasa la cosa: comidas (`feedFood()`), cacas
-  limpiadas (`btnClean()`, solo si había), curas (`giveMedicine()`), vacunas
+  recogidas (`cleanPoop()`), curas (`giveMedicine()`), vacunas
   (`applyVaccine()`), mimos (`btnPet()`), partidas, desafíos y juegos de a
   dos (`finishMinigame()`), giros de ruleta (`spinWheel()`), cápsulas
   (`gachaPull()`) y jugar juntos (`startSocial()`/`startSocialWith()`).

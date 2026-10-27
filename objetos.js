@@ -944,7 +944,7 @@ function crystalProphecy(){
   cands.push({ t: eta(state.hunger, HEALTH_RISK_AT, hungerDecayPerHour() * H), msg: t => t ? `le dará hambre en ${t}` : 'tiene hambre ahora mismo' });
   cands.push({ t: eta(state.happiness, HEALTH_RISK_AT, DECAY_PER_HOUR.happiness * H), msg: t => t ? `se va a aburrir en ${t}` : 'quiere jugar ahora mismo' });
   if (!state.sleeping) cands.push({ t: eta(state.energy, SLEEPY_THRESHOLD, DECAY_PER_HOUR.energy * H), msg: t => t ? `le dará sueño en ${t}` : 'tiene sueño ahora mismo' });
-  if (state.poop) cands.push({ t: eta(state.hygiene, HEALTH_RISK_AT, DECAY_PER_HOUR.hygiene * H), msg: t => t ? `esa caca lo va a ensuciar en ${t}` : 'hay que limpiar ahora mismo' });
+  if (state.poop) cands.push({ t: eta(state.hygiene, HEALTH_RISK_AT, HYGIENE_POOP_DECAY * H), msg: t => t ? `esa caca lo va a ensuciar en ${t}` : 'hay que recoger la caca ahora mismo' });
   if (vaccineFor() && !isVaccinated()) cands.push({ t: eta(state.health, SICK_LOW_HEALTH_AT, (VACCINE_HEALTH_LOSS_PER_DAY - HEALTH_RECOVER_PER_DAY) / 24), msg: t => t ? `sin vacuna su salud bajará de ${SICK_LOW_HEALTH_AT} en ${t}: ¡vacuna!` : 'le falta su vacuna, ¡ya!' });
   cands.sort((a, b) => a.t - b.t);
   const c = cands[0];
@@ -1070,7 +1070,7 @@ const ROBOT_ART = { w: 16, h: 8, keep: ['rx', 'tx', 'dirX', 'waitUntil', 'mode',
         rt.mode = 'roam';
         if (state.poop){
           state.poop = false;
-          state.hygiene = clamp(state.hygiene + 35);   // lo mismo que el botón Limpiar
+          state.hygiene = clamp(state.hygiene + POOP_CLEAN_HYGIENE);   // lo mismo que recogerla a mano
           objData('robot').lastClean = Date.now();
           logEvent('🤖', 'El robot aspiró la caca');
           fxBurst(robotAbsX(rt) * fw, 10, 8, { colors: ['#ffffff', MP.mint], shape: 'plus', speed: 50, life: 600, ay: 0 });

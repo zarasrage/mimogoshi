@@ -412,7 +412,7 @@ window.addEventListener('DOMContentLoaded', () => {
   prof();
   const btn = document.getElementById('btnLogros');
   /* Vive en la pantalla: el toque no tiene que seguir de largo (el listener
-     de #screen limpia caca, el de los muebles los manda a usar). */
+     de los muebles los manda a usar). */
   if (btn) btn.addEventListener('click', e => {
     e.stopPropagation();
     btn.classList.remove('blink');
