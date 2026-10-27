@@ -5,7 +5,7 @@ backend**: se edita directo y se abre `index.html` en el navegador. Todo el
 progreso vive en `localStorage`.
 
 **Archivos:** `index.html` (esqueleto), `styles.css` (todo el CSS) y la lógica
-en ocho scripts clásicos que comparten el ámbito global:
+en nueve scripts clásicos que comparten el ámbito global:
 - `app.js`: el núcleo (estado, simulación, bitácora, render, tienda,
   Personalizar, panel de prueba).
 - `juegos.js`: el menú de Jugar (`GAMES`, niveles, desafío diario, resultado), lo
@@ -16,6 +16,8 @@ en ocho scripts clásicos que comparten el ámbito global:
   **motor de actores** que también usa el acompañante.
 - `objetos.js`: los 22 objetos mágicos (ver "Objetos mágicos"), que son
   muebles con ganchos propios, y sus capas de efectos.
+- `huerta.js`: la mochila (inventario), los tesoros que se encuentran
+  cavando y el huerto (ver "Mochila, tesoros y huerto").
 - `duo.js`: el acompañante (`buddy`) y lo que hacen los dos juntos.
 - `duo-juegos.js`: los seis juegos de a dos.
 - `logros.js`: las medallas y el Mimodex (ver "Medallas y Mimodex"), que
@@ -43,7 +45,7 @@ sola persona.
 Chequeo de sintaxis (lo mínimo antes de cualquier commit):
 
 ```bash
-node -e "const fs=require('fs'); for (const f of ['app.js','juegos.js','premios.js','muebles.js','objetos.js','duo.js','duo-juegos.js','logros.js']) { new Function(fs.readFileSync(f,'utf8')); console.log(f, 'syntax OK'); }"
+node -e "const fs=require('fs'); for (const f of ['app.js','juegos.js','premios.js','muebles.js','objetos.js','huerta.js','duo.js','duo-juegos.js','logros.js']) { new Function(fs.readFileSync(f,'utf8')); console.log(f, 'syntax OK'); }"
 ```
 
 Prueba funcional/visual con Playwright (Chromium ya está instalado en
@@ -833,11 +835,21 @@ Catálogo en `UPGRADES`, con dos formas:
 `loadState()` rellena `state.upgrades[id]` con el default que corresponda
 (`armable` u no) para saves viejos o para una mejora agregada después.
 
-#### Estilo
+#### Objetos (antes "Estilo")
 
-Tercera pestaña de la tienda: cosas que solo cambian cómo se ve, sin efecto en
-ninguna barra. Catálogo en `STYLE_ITEMS`, en secciones
-(`STYLE_SECTIONS`: objetos mágicos, muebles, carcasa y pantalla):
+Tercera pestaña de la tienda (en pantalla dice **Objetos**; en el código
+sigue siendo `shopTab = 'style'`, `STYLE_ITEMS`, `styleRows()`): todo lo
+que se compra una vez y se tiene. Catálogo en `STYLE_ITEMS`, en secciones
+(`STYLE_SECTIONS`, en este orden: **Esenciales**, **Huerta**, objetos
+mágicos, muebles, carcasa y pantalla). Las dos primeras juntan por
+`group` (lo que lleva `group: 'esencial'` / `'huerta'`, sea del tipo que
+sea); las demás por tipo, solo lo que no tiene grupo. **Esenciales** va
+arriba de todo con lo más barato y útil (hoy la Mochila, 10 monedas, la
+cosa más barata de la tienda, pedido así) y no sale en Personalizar: son
+herramientas (`kind:'tool'`), no se ponen ni se sacan (`isStyleEquipped()`
+las da por puestas con solo tenerlas). La Huerta junta la pala, la
+compostera y el huerto. Un ítem puede traer `boughtNote` para el pop-up
+de compra y `use` para la línea chica de su ficha.
 
 - **Carcasa** (`kind:'shell'`, `colors` = los tres colores del degradado del
   aparato) y **Pantalla** (`kind:'screen'`, `lcd` = fondo, brillo, lo encendido
@@ -1254,6 +1266,8 @@ regla de oro. `endFurniActivity()` lo vuelve a `false` siempre, y el
 accesorio se esconde mientras va dado vuelta.
 
 **Lo que guardan** va en `state.objData[id]` (`objData()`), en el save.
+La pala, la compostera y el huerto llevan `group: 'huerta'`: en la tienda
+salen en la sección Huerta y no en la de objetos mágicos.
 
 Los 22 (los dos últimos, pala y compostera, van más abajo en su propia sección):
 - **Puntero láser**: modo piso de 25 s, el punto rojo va donde se toca y
@@ -1364,6 +1378,64 @@ y cada `tap`: 0 errores, todos terminan con los personajes en el piso y sin
 modo piso ni reflejo colgando. También una visita espontánea a cada uno
 (`maybeStartFurniVisit()`). Al sumar o cambiar un guion, repetir eso.
 
+
+## Mochila, tesoros y huerto (`huerta.js`)
+
+**Mochila.** Todo lo que se junta y no es comida de la despensa ni un
+mueble va en `state.bag` (`bagAdd()`/`bagCount()` en `app.js`;
+`bagGain()` en `huerta.js` suma y hace pestañear la pestañita), con su
+catálogo en `BAG_ITEMS` (`bagItem()`), en tres grupos (`BAG_GROUPS`):
+**Huerta** (fertilizante y semillas), **Cosecha** y **Tesoros** (con
+rareza, `BAG_RARITY`, que pinta el borde). **Se guarda aunque no se tenga
+la Mochila**: comprarla (Esenciales, 10 monedas) da la pestañita para
+verla (`#btnBag`, `px-bag`, debajo del libro del Mimodex, escondida hasta
+comprarla) y usar lo que hay: los pop-ups de lo que se encuentra dicen si
+quedó en la mochila o que conviene comprarla (`bagNote()`). La hoja
+(`openBag(sel)`) muestra lo que hay por grupo, con cuántas; tocar algo
+abre su ficha arriba con la descripción y lo que se puede hacer: **comer**
+la cosecha (`bagEat()`: cae al mismo montón que la comida de la bandeja y
+las barras suben mientras se la come), **regalar** el girasol (+felicidad),
+**plantar** una semilla (abre el huerto) y **vender** (1 o todos, al
+precio `sell`). Arriba, cuánta caca hay en el balde de la pala.
+
+**Tesoros al cavar.** Tocar la pala sin caca que recoger ni balde que
+vaciar la manda a cavar (`palaDig()`): toma la pala, va a otro lado de la
+pieza, cava y vuelve. La visita espontánea de cavar (objetos.js) también
+encuentra cosas. Encuentra algo una vez cada `DIG_GAP_MS` (40 min reales:
+"la tierra descansa"; antes de eso, solo tierra), sorteado de
+`DIG_LOOT` por peso: solo tierra 22, caracola 18, semilla 20 (de un
+cultivo al azar), hueso 15, amuleto 8, topacio 6, zafiro 5, rubí 3,
+diamante 1.2 y **fósil misterioso 0.5** (~0.5%: un Mimogoshi de una especie
+que ya no existe; por pedido, **por ahora solo se guarda** y no se vende:
+la máquina para revivirlo y el personaje rarísimo vienen después). A
+pedido sale un pop-up con lo encontrado; sola, solo la partícula y una
+línea en la bitácora (salvo el fósil, que siempre sale en pop-up).
+
+**Semillas**: de los regalos (`GIFT_SEED_CHANCE`, la mitad de las veces,
+en `collectGift()`), de cavar y del girasol (devuelve 2 al cosecharlo).
+
+**Huerto** (`HUERTO_ART`, objeto de la sección Huerta, 80 monedas): un
+cajón con cuatro parcelas; empieza con **dos abiertas** y se amplía a 3 y
+a 4 desde su hoja (`HUERTO_PLOT_PRICE`: 60 y 90); las cerradas se ven
+tapadas con una tabla. Tocarlo abre su hoja (`openHuerto()`): cada
+parcela vacía (Plantar → elegir entre las semillas que hay), creciendo
+(cuánto falta; Fertilizar) o lista (Cosechar). Cultivos en `CROPS`:
+zanahoria 3 h (da 2), tomate 5 h (3), frutilla 8 h (4, +3 de felicidad al
+comerla), zapallo 12 h (1, llena 45) y girasol 6 h (no se come: se regala,
+y devuelve 2 semillas). Crecen con la **hora real** (`plotStage()`:
+semilla, brote, planta y lista, también con la app cerrada). El
+**fertilizante** de la compostera la hace crecer al doble de rápido (una
+vez por siembra). Plantar y fertilizar se anotan al tiro; cosechar, al
+final de la tarea (`huertoChore()`: la mascota va a la parcela, planta,
+abona o cosecha; si se corta, el `cleanup` igual lo hace; dormida o de
+huevo pasa al tiro). La cosecha va a la mochila con pop-up. El dibujo
+tiene una pieza por parcela y por etapa (y una por cultivo para la lista,
+`CROP_ART`), y lo que está listo brilla. De visita, la mascota riega.
+
+Probado en Chromium: comprar la mochila (aparece la pestañita), vender,
+comer, plantar, fertilizar, ampliar, ver las cuatro etapas, cosechar,
+cavar con pop-up, semillas en los regalos, y las visitas del huerto y de
+la pala solas y de a dos, sin errores.
 
 ## Medallas y Mimodex (`logros.js`)
 

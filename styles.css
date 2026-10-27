@@ -2465,3 +2465,71 @@ body{
 .gacha-col{margin:0; font-size:11.5px; color:var(--text-soft); text-align:center;}
 .gacha-actions{display:grid; grid-template-columns:1fr; gap:8px; width:100%;}
 .gacha-actions .overlay-btn:disabled{opacity:.4;}
+
+/* ===================== Mochila y huerto (huerta.js) ===================== */
+/* La mochila es otra pestañita del borde, debajo del Mimodex; solo con la
+   mochila comprada. */
+.bag-btn{top:110px;}
+.bag-btn.hidden{display:none;}
+.bag-chip{
+  font-family:var(--font-ui); font-size:12.5px; font-weight:700; color:var(--text-soft);
+  background:var(--surface); border:1.5px solid var(--stroke); border-radius:999px;
+  padding:6px 12px; margin:0 0 8px; align-self:flex-start;
+}
+.bag-chip b{color:var(--text);}
+.bag-list .section-label{margin:4px 0 8px;}
+.bag-list .section-label:not(:first-child){margin-top:14px;}
+.bag-grid{display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;}
+.bag-tile{
+  position:relative;
+  display:flex; flex-direction:column; align-items:center; gap:2px;
+  padding:10px 4px 8px;
+  border:none; border-radius:var(--r-md);
+  background:var(--surface);
+  box-shadow:0 0 0 1.5px var(--stroke) inset;
+  color:var(--text); font-family:var(--font-ui); cursor:pointer;
+  -webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation;
+  transition:transform .12s var(--ease-spring);
+}
+.bag-tile:active{transform:scale(.94);}
+.bag-tile[style*="--rar"]{box-shadow:0 0 0 1.5px var(--rar) inset;}
+.bag-tile.on{background:linear-gradient(135deg, rgba(255,111,174,.18), rgba(140,100,255,.14)); box-shadow:0 0 0 2px #ff8cc0 inset;}
+.bag-emoji{font-size:26px; line-height:1.2;}
+/* Las semillas llevan un brotecito en la esquina: si no, se confunden con
+   la cosecha del mismo emoji. */
+.bag-tile.seed::before{content:'🌱'; position:absolute; top:4px; right:6px; font-size:13px;}
+.bag-tile b{font-size:11.5px; font-weight:800; line-height:1.2; text-align:center;}
+.bag-n{font-size:11px; font-weight:900; color:var(--amber);}
+.bag-detail{
+  display:grid; grid-template-columns:auto 1fr; gap:6px 12px; align-items:center;
+  background:var(--surface-hi); border-radius:var(--r-lg); padding:12px;
+  border:1.5px solid var(--rar, var(--stroke));
+  font-family:var(--font-ui); color:var(--text);
+}
+.bag-big{font-size:38px; line-height:1;}
+.bag-detail b{font-size:15px; font-weight:900;}
+.bag-detail small{font-weight:700; color:var(--text-soft);}
+.bag-rar{color:var(--rar); font-weight:900;}
+.bag-detail p{margin:4px 0 0; font-size:12.5px; line-height:1.35; color:var(--text-soft);}
+.bag-acts{grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:6px;}
+.bag-acts .overlay-btn{flex:1 1 40%; margin:0; padding:10px 8px; font-size:13px;}
+/* Huerto */
+.mini-btn{
+  margin-left:auto; flex-shrink:0;
+  border:none; border-radius:999px; padding:7px 12px;
+  font-family:var(--font-ui); font-size:12.5px; font-weight:900;
+  color:var(--text); background:var(--surface-hi); cursor:pointer;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.mini-btn.go{color:#fff; background:var(--brand);}
+.mini-btn:disabled{opacity:.4;}
+.plot-row{cursor:default;}
+.plot-row.ripe{border-color:#ffce4b;}
+.seed-pick{display:flex; flex-wrap:wrap; gap:6px; padding:0 2px 4px;}
+.seed-chip{
+  border:none; border-radius:999px; padding:7px 11px;
+  font-family:var(--font-ui); font-size:12.5px; font-weight:800;
+  color:var(--text); background:var(--surface); box-shadow:0 0 0 1.5px var(--stroke) inset; cursor:pointer;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.seed-chip small{color:var(--amber); font-weight:900;}

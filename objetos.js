@@ -41,8 +41,8 @@ const MAGIC_ITEMS = [
   { id:'gelatina',   name:'Gelatina gigante', use:'rebota y se hunde',        price:  75 },
   { id:'patineta',   name:'Patineta',         use:'hace trucos',              price:  60 },
   { id:'espejo',     name:'Espejo mágico',    use:'su reflejo cobra vida',    price: 120 },
-  { id:'pala',       name:'Pala y balde',     use:'recoge y guarda la caca',  price:  40 },
-  { id:'compost',    name:'Compostera',       use:'caca → fertilizante',      price:  70 },
+  { id:'pala',       name:'Pala y balde',     use:'recoge caca y cava',       price:  40, group: 'huerta' },
+  { id:'compost',    name:'Compostera',       use:'caca → fertilizante',      price:  70, group: 'huerta' },
 ];
 STYLE_ITEMS.push(...MAGIC_ITEMS.map(it => ({ ...it, kind: 'furni', wow: true })));
 
@@ -2608,6 +2608,8 @@ const PALA_ART = { w: 14, h: 24,
     if (state.poop){ if (!palaTryScoop() && state.sleeping) say('Shh… está durmiendo 💤'); return true; }
     const crt = magicRt('compost');
     if (d.caca > 0 && crt){ compostTap(crt); return true; }
+    /* Sin caca que recoger ni balde que vaciar: a cavar (huerta.js). */
+    if (typeof palaDig === 'function'){ if (!palaDig(rt) && state.sleeping) say('Shh… está durmiendo 💤'); return true; }
     say(d.caca ? `💩 ${d.caca} de ${PALA_MAX} cacas en el balde: vacíalo en la compostera ♻️`
       : '💩 Cuando haya caca, toca la caca o la pala y la recoge', 2800);
     return true;
@@ -2657,7 +2659,8 @@ const PALA_ART = { w: 14, h: 24,
           if (Math.random() < 0.3){ const t = shovelTip(rt); fxSpawn({ x: t.x, y: 2, vx: -act.dir * rnd(10, 40), vy: rnd(30, 60), ay: -160, life: 600, shape: 'dust', colors: [FP.sandD, FP.brown, FP.brownL], layer: 'front', floor: 'die' }); }
           return null;
         } },
-        { anim: 'happy', ms: 700, fx: ['💎', '🐛', '🦴'], start: () => { if (rt.carry) rt.carry.tilt = 0; } },
+        /* A veces encuentra algo (huerta.js, con la misma espera que cavar a pedido). */
+        { anim: 'happy', ms: 900, start: (r, act) => { if (rt.carry) rt.carry.tilt = 0; if (typeof digFind === 'function') digFind(act, false); else petFx('🐛', act); } },
         { go: besideX(at, 5 * k) }, faceX(at),
         { anim: 'pet', ms: 380, end: () => { rt.carry = null; } },
         S.happy(600),

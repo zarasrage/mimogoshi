@@ -435,7 +435,13 @@ const STYLE_ITEMS = [
   { id:'retro',  kind:'screen', name:'Retro',   price: 70, lcd:['#8bac0f', '#a4c41a', '15,56,15',    '#306230'] },
 ];
 
+/* `group`: una sección que junta lo que lleva ese mismo `group`, sea del
+   tipo que sea (Esenciales, la huerta); las demás juntan por tipo lo que no
+   tiene grupo. Esenciales va primero, con lo más barato y útil de la tienda
+   (la mochila, huerta.js), y no sale en Personalizar: no se pone ni se saca. */
 const STYLE_SECTIONS = [
+  { group:'esencial', title:'Esenciales' },
+  { group:'huerta', title:'Huerta 🌱' },                       // objetos.js y huerta.js
   { kind:'furni',  title:'Objetos mágicos ✨', wow: true },   // objetos.js
   { kind:'furni',  title:'Muebles' },
   { kind:'shell',  title:'Carcasa' },
@@ -492,6 +498,7 @@ function roomOf(it){
 
 function isStyleEquipped(it){
   const st = state.style;
+  if (it.kind === 'tool') return !!st.owned[it.id];   // las herramientas no se ponen: se tienen
   if (it.kind === 'shell') return st.shell === it.id;
   if (it.kind === 'screen') return st.screen === it.id;
   if (it.kind === 'hat') return st.hat === it.id;
@@ -1663,6 +1670,21 @@ const PX_ICONS = {
       '.ppppppp.',
     ],
   },
+  /* Mochila (huerta.js): naranja, con la tapa y un bolsillo. */
+  bag: {
+    pal: { o:'#4a2410', b:'#e0813a', l:'#ffb36b', m:'#a8531f', w:'#c86a2a', p:'#ffcf8a' },
+    art: [
+      '...mmm...',
+      '..m...m..',
+      '.lbbbbbm.',
+      'lwwwwwwwm',
+      'lbbbbbbbm',
+      'lbbppbbbm',
+      'lbbppbbbm',
+      'lbbbbbbbm',
+      '.mmmmmmm.',
+    ],
+  },
   moon: {
     pal: { o:'#4a3f12', b:'#fff0a8', l:'#ffffff', m:'#d9c25a', w:'#ffffff' },
     art: [
@@ -2140,6 +2162,7 @@ const GIFT_HAPPINESS = 8;
    giro extra que no toca el gratis de cada 12 horas. Con un regalo cada
    ~12 h reales, sale un ticket cada ~24 h. */
 const GIFT_WHEEL_TICKET_CHANCE = 0.5;
+const GIFT_SEED_CHANCE = 0.5;
 
 const collectGift = () => {
   if (!tryWake()) return;
@@ -2151,6 +2174,9 @@ const collectGift = () => {
   state.happiness = clamp(state.happiness + GIFT_HAPPINESS);
   const ticket = Math.random() < GIFT_WHEEL_TICKET_CHANCE;
   if (ticket) state.wheelTickets = (state.wheelTickets || 0) + 1;
+  /* La mitad de las veces, un sobre de semillas para el huerto (huerta.js). */
+  const seed = typeof randomSeedId === 'function' && Math.random() < GIFT_SEED_CHANCE ? bagItem(randomSeedId()) : null;
+  if (seed) bagGain(seed.id, 1);
 
   floatFx(food.emoji);
   if (ticket) setTimeout(() => floatFx('🎫'), 250);
@@ -2162,6 +2188,7 @@ const collectGift = () => {
       { icon: food.emoji, text: food.name, amount: '+1' },
       { icon: '😊', text: 'Felicidad', amount: `+${GIFT_HAPPINESS}` },
       ...(ticket ? [{ icon: '🎫', text: 'Ticket de ruleta', amount: '+1' }] : []),
+      ...(seed ? [{ icon: '🌱', text: seed.name, amount: '+1' }] : []),
     ],
     note: ticket ? 'El ticket es un giro extra: úsalo en Juegos → Ruleta.' : '',
   });
@@ -2922,7 +2949,7 @@ function styleTile(it, mode){
   const rareza = it.gacha && typeof rarityById === 'function' ? rarityById(it.gacha) : null;
   const lugar = rareza ? `<small class="tile-slot" style="color:${rareza.color}">★ ${rareza.name}</small>`
     : it.kind === 'deco' ? `<small class="tile-slot">${DECO_SLOT_NAMES[it.slot]}</small>`
-    : it.kind === 'furni' ? `<small class="tile-slot">${it.use}</small>` : '';
+    : it.use ? `<small class="tile-slot">${it.use}</small>` : '';
   return `
     <button class="style-tile ${puesto ? 'on' : ''} ${owned ? 'owned' : ''} ${alcanza ? '' : 'locked'}" data-style="${it.id}">
       ${swatch}
@@ -2932,13 +2959,13 @@ function styleTile(it, mode){
 }
 
 function styleRows(mode){
-  return STYLE_SECTIONS.map(sec => {
+  return STYLE_SECTIONS.filter(sec => !(mode === 'mine' && sec.group === 'esencial')).map(sec => {
     /* Lo del gacha (premios.js) no se vende: en la tienda no sale. */
-    const items = STYLE_ITEMS.filter(it => it.kind === sec.kind && !!it.wow === !!sec.wow &&
-      (mode === 'shop' ? !it.gacha : state.style.owned[it.id]));
+    const inSec = it => sec.group ? it.group === sec.group : (!it.group && it.kind === sec.kind && !!it.wow === !!sec.wow);
+    const items = STYLE_ITEMS.filter(it => inSec(it) && (mode === 'shop' ? !it.gacha : state.style.owned[it.id]));
     const grid = items.length
       ? `<div class="style-grid">${items.map(it => styleTile(it, mode)).join('')}</div>`
-      : `<p class="style-empty">Nada todavía: se compra en la tienda, pestaña Estilo.</p>`;
+      : `<p class="style-empty">Nada todavía: se compra en la tienda, pestaña Objetos.</p>`;
     return `<div class="section-label">${sec.title}</div>${grid}`;
   }).join('');
 }
@@ -2993,7 +3020,7 @@ function openShop(aviso, gachaRes){
     <div class="shop-tabs">
       <button class="shop-tab ${shopTab === 'food' ? 'active' : ''}" id="shopTabFood">Comida</button>
       <button class="shop-tab ${shopTab === 'upgrades' ? 'active' : ''}" id="shopTabUpgrades">Mejoras</button>
-      <button class="shop-tab ${shopTab === 'style' ? 'active' : ''}" id="shopTabStyle">Estilo</button>
+      <button class="shop-tab ${shopTab === 'style' ? 'active' : ''}" id="shopTabStyle">Objetos</button>
       ${GACHA_ON ? `<button class="shop-tab ${shopTab === 'gacha' ? 'active' : ''}" id="shopTabGacha">Gacha</button>` : ''}
     </div>
     <div class="menu-list ${shopTab === 'style' ? 'style-list' : ''}">${
@@ -3041,14 +3068,14 @@ function openShop(aviso, gachaRes){
              puede achicar a un tamaño no entero sin deformarse. */
           boughtPopup({ icon: styleSwatch(it), rowIcon: it.kind === 'furni' ? '✨' : styleSwatch(it),
             name: it.name, amount: 'Nuevo', price: it.price,
-            note: puesto ? 'Ya lo tiene puesto. Cámbialo cuando quieras en Personalizar.'
-              : 'No había espacio para ponerlo: hazlo desde Personalizar.' });
+            note: it.boughtNote || (puesto ? 'Ya lo tiene puesto. Cámbialo cuando quieras en Personalizar.'
+              : 'No había espacio para ponerlo: hazlo desde Personalizar.') });
         });
         return;
       }
       /* Lo ya comprado se pone y se saca en Personalizar, no acá: la tienda
          es solo para comprar. */
-      reopen(`${it.name} ya es tuyo: póntelo o sácatelo en Personalizar`);
+      reopen(it.kind === 'tool' ? `${it.name} ya es tuya ✓` : `${it.name} ya es tuyo: póntelo o sácatelo en Personalizar`);
     });
   });
 
