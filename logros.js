@@ -270,6 +270,74 @@ let dexAnim = 0;   // requestAnimationFrame del personaje de la ficha
    para reclamar) y la vitrina (solo los íconos en filas y columnas: gris si
    no tiene ninguna, o con el color de la mejor que tiene). */
 let medalView = 'lista';
+
+/* La medalla es la silueta del emoji de su logro, hecha de metal: se dibuja
+   el emoji en un canvas, se toma su forma y se pinta con la rampa del nivel
+   (oscuro, medio, claro). El brillo de cada punto mezcla una luz de arriba a
+   la izquierda con la luz del emoji original, así se siguen leyendo los
+   detalles (el plato, la cara del pollito) en vez de quedar una mancha
+   plana. Alrededor, un borde del tono más oscuro del mismo metal. Se arma
+   una vez por emoji, nivel y tamaño. Fuera de la LCD, así que no es pixel
+   art y no va a escala entera. */
+const MEDAL_METAL = {
+  bronce: ['#4a230a', '#8e4f1f', '#d9905a', '#ffe0c0'],
+  plata:  ['#2f3746', '#7d889c', '#d3dbe8', '#ffffff'],
+  oro:    ['#5c3a00', '#b07a06', '#f2b82e', '#fff4c2'],
+  none:   ['#1f1b2c', '#3a3550', '#57516e', '#76708e'],
+};
+const medalIconCache = new Map();
+function medalIcon(emoji, tier, css){
+  const dpr = window.devicePixelRatio || 1;
+  const key = `${emoji}|${tier}|${css}|${dpr}`;
+  if (medalIconCache.has(key)) return medalIconCache.get(key);
+  const S = Math.round(css * dpr), c = document.createElement('canvas');
+  c.width = c.height = S;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.font = `${Math.round(S * 0.7)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+  x.fillText(emoji, S / 2, S / 2 + S * 0.04);
+  let img;
+  try { img = x.getImageData(0, 0, S, S); } catch (e) { return ''; }
+  const d = img.data, n = S * S, a = new Uint8Array(n), lum = new Float32Array(n);
+  let lo = 1, hi = 0;
+  for (let i = 0; i < n; i++){
+    if (d[i * 4 + 3] < 110) continue;
+    a[i] = 1;
+    const l = (0.3 * d[i * 4] + 0.59 * d[i * 4 + 1] + 0.11 * d[i * 4 + 2]) / 255;
+    lum[i] = l; if (l < lo) lo = l; if (l > hi) hi = l;
+  }
+  const span = Math.max(0.2, hi - lo);
+  /* El borde: lo que queda a menos de R de la silueta sin ser silueta. */
+  const R = Math.max(1, Math.round(S * 0.035)), edge = new Uint8Array(n);
+  for (let y = 0; y < S; y++) for (let x0 = 0; x0 < S; x0++){
+    const i = y * S + x0;
+    if (a[i]) continue;
+    search: for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++){
+      if (dx * dx + dy * dy > R * R) continue;
+      const yy = y + dy, xx = x0 + dx;
+      if (yy >= 0 && yy < S && xx >= 0 && xx < S && a[yy * S + xx]){ edge[i] = 1; break search; }
+    }
+  }
+  const rgb = h => [1, 3, 5].map(k => parseInt(h.slice(k, k + 2), 16));
+  const ramp = (MEDAL_METAL[tier] || MEDAL_METAL.none).map(rgb);
+  const mix = (p, q, t) => [0, 1, 2].map(k => p[k] + (q[k] - p[k]) * t);
+  for (let i = 0; i < n; i++){
+    const o = i * 4;
+    if (a[i]){
+      const px = i % S, py = (i / S) | 0;
+      const diag = 1 - (px + py) / (2 * S);
+      const t = Math.max(0, Math.min(1, 0.35 * diag + 0.65 * (lum[i] - lo) / span));
+      const col = t < 0.5 ? mix(ramp[1], ramp[2], t * 2) : mix(ramp[2], ramp[3], (t - 0.5) * 2);
+      d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = 255;
+    } else if (edge[i]){
+      d[o] = ramp[0][0]; d[o + 1] = ramp[0][1]; d[o + 2] = ramp[0][2]; d[o + 3] = 255;
+    } else d[o + 3] = 0;
+  }
+  x.putImageData(img, 0, 0);
+  const url = c.toDataURL();
+  medalIconCache.set(key, url);
+  return url;
+}
 function openLogros(tab = 'medallas'){
   cancelAnimationFrame(dexAnim);
   medalsTick();
@@ -338,7 +406,7 @@ function medalCard(m){
     ? `<button class="mclaim" data-claim="${m.id}">${tier.emoji} +${tier.coins}${tier.gacha ? ' 🎟️' : ''}</button>`
     : `<span class="mpips">${pips}</span>`;
   return `<div class="medal-card ${pend ? 'pending' : ''}">
-      <span class="medal-disc ${top}">${m.emoji}</span>
+      <img class="medal-sil ${top}" src="${medalIcon(m.emoji, top, 46)}" alt="">
       <div class="minfo"><b>${escapeHtml(m.name)}</b><small>${escapeHtml(meta)}</small>${bar}</div>
       ${right}
     </div>`;
@@ -363,14 +431,14 @@ function medalsHtml(){
 }
 
 /* La vitrina: un casillero por logro, solo el ícono. Gris sin ninguna
-   medalla; con el disco de bronce, plata u oro de la mejor que tiene.
+   medalla; con la silueta en bronce, plata u oro de la mejor que tiene.
    Tocar uno dice cuál es arriba. */
 function showcaseHtml(){
   const got = MEDALS.reduce((s, m) => s + medalReached(m), 0);
   const cells = MEDALS.map(m => {
     const r = medalReached(m);
     return `<button class="show-cell" data-show="${m.id}" title="${escapeHtml(m.name)}">
-        <span class="medal-disc ${r ? MEDAL_TIERS[r - 1].id : 'none gray'}">${m.emoji}</span></button>`;
+        <img class="medal-sil ${r ? MEDAL_TIERS[r - 1].id : 'none'}" src="${medalIcon(m.emoji, r ? MEDAL_TIERS[r - 1].id : 'none', 60)}" alt=""></button>`;
   }).join('');
   return `
     <div class="logros-sum"><span><b>${got}</b> / ${MEDALS.length * MEDAL_TIERS.length} medallas</span>
