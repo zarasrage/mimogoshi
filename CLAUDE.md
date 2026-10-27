@@ -412,7 +412,17 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   (`trayTab`): **Despensa** (lo de siempre) y **Hecho en casa** (los platos
   de la cocina que hay en la mochila, con cuántos en total; tocar uno es
   `bagEat()`, igual que una comida). Sin cocina ni platos la bandeja queda
-  como antes, sin pestañas. Tocar una gasta la porción en el acto (`feedFood()`) y
+  como antes, sin pestañas. **Mide lo mismo que el dock** (~150 px), así que
+  todo va en una sola fila arriba: las pestañas como selector segmentado (o
+  el título "¿Qué come?") y una ✕ redonda; debajo, dos filas de cuatro
+  casillas que se reparten el alto que queda (`grid-auto-rows:1fr`). Cada
+  casilla lleva cuántas quedan en un globito en la esquina; una agotada se
+  ve apagada pero entera, con un "+" en vez del número (tocarla abre la
+  tienda). Los avisos ("Primero que termine de comer", lo de la medicina)
+  salen en la burbuja de la mascota (`say()`), no en la bandeja. La
+  primera versión con pestañas apilaba título, subtítulo, pestañas y dos
+  filas, y se salía de la tarjeta por arriba y por abajo; las agotadas iban
+  al 38% de opacidad y se veían rotas. Tocar una gasta la porción en el acto (`feedFood()`) y
   **cae del cielo** en un lugar al azar de la pieza (`serveFood()`,
   `.floor-food`, lejos de la mascota si se puede; con plato puesto, en el
   plato). **La bandeja no se cierra**: se pueden tocar varias y caen todas
