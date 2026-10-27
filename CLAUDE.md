@@ -408,7 +408,11 @@ degradado de marca, rosa→violeta; `--sheet`, `--surface`, `--text`...).
   cerrada), y no tapa la pantalla: se ve comer y la barra de hambre. Todas
   las comidas con su stock, más la medicina en la misma fila (antes eran dos
   botones —Comer daba la elegida y Menú la elegía— y el botiquín era una
-  sección del menú). Tocar una gasta la porción en el acto (`feedFood()`) y
+  sección del menú). Con cocina o algún plato hecho aparecen dos pestañas
+  (`trayTab`): **Despensa** (lo de siempre) y **Hecho en casa** (los platos
+  de la cocina que hay en la mochila, con cuántos en total; tocar uno es
+  `bagEat()`, igual que una comida). Sin cocina ni platos la bandeja queda
+  como antes, sin pestañas. Tocar una gasta la porción en el acto (`feedFood()`) y
   **cae del cielo** en un lugar al azar de la pieza (`serveFood()`,
   `.floor-food`, lejos de la mascota si se puede; con plato puesto, en el
   plato). **La bandeja no se cierra**: se pueden tocar varias y caen todas
@@ -1293,9 +1297,10 @@ Los 22 (los dos últimos, pala y compostera, van más abajo en su propia secció
   mascota queda debajo se moja (+4 de higiene, una vez por lluvia). Tocarla
   hace un trueno.
 - **Árbol frutal**: una fruta cada `FRUIT_EVERY_MS` (6 h, hasta tres
-  colgando, también con la app cerrada). Tocarlo con fruta: la sacude y se
-  la come, **comida de verdad** (`FRUIT_FOOD`, +15 de hambre) que entra al
-  mismo montón de la bandeja (`serveFood()`).
+  colgando, también con la app cerrada). Tocarlo con fruta: la sacude y
+  cae una **manzana** a la mochila (`bagGain('manzana')`). No se come
+  cruda: como toda la cosecha, se cocina (compota, ver "Cocina"). Antes
+  se la comía en el acto (`FRUIT_FOOD`, +15 de hambre).
 - **Frijol mágico**: crece una etapa por riego, un riego cada
   `BEAN_WATER_EVERY_MS` (20 h), seis etapas. Arriba de todo, tocarlo la
   manda a trepar y encuentra un huevo de oro (`BEAN_REWARD` = 120 monedas,
@@ -1333,10 +1338,13 @@ Los 22 (los dos últimos, pala y compostera, van más abajo en su propia secció
   personaje que solo se dibuja, teñido con `filter`) y la imita reflejado y
   con un poco de retraso; al final vuelve a entrar.
 
-- **Pala y balde** y **Compostera**: ver "Pala y compostera" abajo.
+- **Pala recogecaca** y **Compostera**: ver "Pala y compostera" abajo.
 
-**Pala y compostera** (`PALA_ART`, `COMPOST_ART`). La pala se para en un
-balde. Con ella en la pieza, tocar la caca (o la pala) es una **tarea**
+**Pala y compostera** (`PALA_ART`, `COMPOST_ART`). La pala (en la tienda,
+"Pala recogecaca") se para en un balde y **solo recoge caca**: cavar es de
+otra, la pala de jardín (`palita`, ver "Tesoros al cavar"). Tocarla sin
+caca ni balde que vaciar solo dice para qué sirve, y su visita es
+patrullar buscando caca. Con ella en la pieza, tocar la caca (o la pala) es una **tarea**
 (`startChore()`, `kind:'chore'`: como las rutinas de comer y limpiarse, no
 la corta estar triste o enferma; dormida no va): la mascota toma la pala,
 camina hasta la caca, la palea (+10 de higiene, lo mismo que a mano, y
@@ -1362,7 +1370,7 @@ el balde) en la mano (`palaHand()`, baja: el cuerpo de casi todas las
 especies llena la mitad de abajo de su cuadro), subiendo lo que haga falta
 para que la punta no pase el piso. La pala es chica a propósito: una de su
 alto se veía como un arma. Probado: recoger, cortar a mitad, vaciar,
-cosechar, fertilizar, y las visitas (cavar en la pieza; oler la
+cosechar, fertilizar, y las visitas (patrullar buscando caca; oler la
 compostera y darle asco) solas y de a dos, sin errores y sin dejar nada
 en las manos.
 
@@ -1393,15 +1401,19 @@ comprarla) y usar lo que hay: los pop-ups de lo que se encuentra dicen si
 quedó en la mochila o que conviene comprarla (`bagNote()`). La hoja
 (`openBag(sel)`) muestra lo que hay por grupo, con cuántas; tocar algo
 abre su ficha arriba con la descripción y lo que se puede hacer: **comer**
-la cosecha (`bagEat()`: cae al mismo montón que la comida de la bandeja y
-las barras suben mientras se la come), **regalar** el girasol (+felicidad),
+lo cocinado (`bagEat()`: cae al mismo montón que la comida de la bandeja y
+las barras suben mientras se la come; **la cosecha cruda no se come**, por
+pedido: se cocina sí o sí), **regalar** la cosecha y el girasol (+felicidad),
 **plantar** una semilla (abre el huerto) y **vender** (1 o todos, al
 precio `sell`). Arriba, cuánta caca hay en el balde de la pala.
 
-**Tesoros al cavar.** Tocar la pala sin caca que recoger ni balde que
-vaciar la manda a cavar (`palaDig()`): toma la pala, va a otro lado de la
-pieza, cava y vuelve. La visita espontánea de cavar (objetos.js) también
-encuentra cosas. Encuentra algo una vez cada `DIG_GAP_MS` (40 min reales:
+**Tesoros al cavar.** Se cava con la **pala de jardín** (`palita`,
+`PALITA_ART`, sección Huerta, 45 monedas: una pala de punta con mango
+verde clavada en un montoncito de tierra), que es otra que la recogecaca
+(por pedido: antes la misma pala hacía las dos cosas). Tocarla la manda a
+cavar (`spadeDigSteps()`): toma la pala, va a otro lado de la pieza, cava
+y vuelve; su visita espontánea también cava y encuentra cosas. Las dos
+palas se llevan en la mano con el mismo cálculo (`toolPoseAt()`). Encuentra algo una vez cada `DIG_GAP_MS` (40 min reales:
 "la tierra descansa"; antes de eso, solo tierra), sorteado de
 `DIG_LOOT` por peso: solo tierra 22, caracola 18, semilla 20 (de un
 cultivo al azar), hueso 15, amuleto 8, topacio 6, zafiro 5, rubí 3,
@@ -1420,17 +1432,34 @@ a 4 desde su hoja (`HUERTO_PLOT_PRICE`: 60 y 90); las cerradas se ven
 tapadas con una tabla. Tocarlo abre su hoja (`openHuerto()`): cada
 parcela vacía (Plantar → elegir entre las semillas que hay), creciendo
 (cuánto falta; Fertilizar) o lista (Cosechar). Cultivos en `CROPS`:
-zanahoria 3 h (da 2), tomate 5 h (3), frutilla 8 h (4, +3 de felicidad al
-comerla), zapallo 12 h (1, llena 45) y girasol 6 h (no se come: se regala,
-y devuelve 2 semillas). Crecen con la **hora real** (`plotStage()`:
-semilla, brote, planta y lista, también con la app cerrada). El
-**fertilizante** de la compostera la hace crecer al doble de rápido (una
-vez por siembra). Plantar y fertilizar se anotan al tiro; cosechar, al
+zanahoria 3 h (da 2), tomate 5 h (3), frutilla 8 h (4), zapallo 12 h (1)
+y girasol 6 h (devuelve 2 semillas). Ninguna se come cruda: se cocinan
+(ver "Cocina") o se regalan.
+
+**Riego** (por pedido): las plantas **solo crecen regadas**. Cada riego
+dura `WATER_MS` (1 h real): cada parcela guarda `grown` (cuánto creció, en
+ms) y `t` (hasta cuándo se contó) y `huertoGrow()` suma solo el tiempo que
+cae dentro de lo regado (`objData('huerto').wateredUntil`), también con
+la app cerrada. Seco, se quedan donde estaban (no se mueren: castigar más
+se sentía injusto con una planta de 12 h). `plotStage()` sale de
+`grown / plotNeedMs()` (semilla, brote, planta y lista) y la tierra se ve
+más oscura mientras está regada (pieza `wet` por parcela). Se riega con la
+**regadera** (`REGADERA_ART`, sección Huerta, 25 monedas), que tiene que
+estar **en la misma habitación que el huerto**: tocarla (o "Regar" en la
+hoja del huerto, arriba, con "Regado / Seco" y cuánto le queda) manda a la
+mascota a tomarla y pasar por cada parcela abierta vaciándole agua
+(`waterGarden()`); el riego cuenta desde el primer chorro (y si se corta,
+igual). Su visita es mojarse ella misma y de a dos uno moja al otro: no
+riega, para que el riego sea siempre una decisión de quien juega. El
+**fertilizante** de la compostera la hace crecer al doble de rápido
+mientras está regada (una vez por siembra). Los saves de antes del riego
+(`p.at`, hora de siembra) se convierten a `grown` al cargar. Plantar y fertilizar se anotan al tiro; cosechar, al
 final de la tarea (`huertoChore()`: la mascota va a la parcela, planta,
 abona o cosecha; si se corta, el `cleanup` igual lo hace; dormida o de
 huevo pasa al tiro). La cosecha va a la mochila con pop-up. El dibujo
 tiene una pieza por parcela y por etapa (y una por cultivo para la lista,
-`CROP_ART`), y lo que está listo brilla. De visita, la mascota riega.
+`CROP_ART`), y lo que está listo brilla. De visita, la mascota mira las
+plantas (ya no riega: eso es de la regadera).
 
 Probado en Chromium: comprar la mochila (aparece la pestañita), vender,
 comer, plantar, fertilizar, ampliar, ver las cuatro etapas, cosechar,
@@ -1444,10 +1473,11 @@ Comida, al final: los ítems de `BAG_ITEMS` con `buy`) en recetas
 (`RECIPES`): **bocadillos** ×3 y **comida rica** ×2 (van a la despensa, a
 la bandeja de Comer) y platos que van a la mochila, grupo Cocina:
 **ensalada**, **sopa de zapallo** ×2, **pastel de frutilla**, **pie de
-zapallo** ×2 y **galletas de girasol** ×4 (cada uno con su `food`:
-panza, energía y felicidad; se comen y se venden desde la mochila).
-Cocinar **rinde más** que comerse la cosecha cruda (un zapallo crudo llena
-45; hecho sopa con una zanahoria, dos de 70): es la gracia. Tocarla abre
+zapallo** ×2, **galletas de girasol** ×4 y **compota de manzana** ×2
+(con dos manzanas del árbol; cada uno con su `food`: panza, energía y
+felicidad; se comen desde la bandeja de Comer, pestaña "Hecho en casa", o
+desde la mochila, y se venden). La cosecha cruda no se come: cocinar es
+la única forma de sacarle comida. Tocarla abre
 su hoja (`openCocina()`): cada receta con lo que pide (verde si alcanza,
 "faltan N" si no) y Cocinar; se cocina **una cosa a la vez** y tarda unos
 minutos reales (`mins`, de 2 a 10, `cocinaData()` = `{recipe, at}`; los
@@ -1456,8 +1486,12 @@ echa vapor; listo, el plato espera arriba con brillitos, y tocar la cocina
 manda a la mascota a sacarlo (`cocinaChore()` / `cocinaTake()`, con
 pop-up; igual que en el huerto, si la tarea se corta lo saca igual). De
 visita juega a ser chef; de a dos, uno cocina y el otro espera y se lo
-come. La comida de la mochila se come con `bagEat()`, que ahora lee el
-`food` de cualquier ítem (cosecha o plato) y el `gift` del girasol.
+come. La comida de la mochila se come con `bagEat()`, que lee el `food`
+de los platos (los que tienen `short` usan ese nombre en la bandeja).
+
+**Modo prueba** (`huertaDebugHtml()`/`wireHuertaDebug()`, sección "Huerta
+y cocina" del panel): plantas +1 h, plantas listas, regar ya, horno
+listo, compost listo, +3 de todo en la mochila y cavar sin esperar.
 
 ## Medallas y Mimodex (`logros.js`)
 
@@ -1483,7 +1517,15 @@ Coleccionista), cada uno con tres niveles (bronce, plata, oro;
 30 / 80 monedas, y el oro además una ficha del gacha** (con el gacha
 prendido).
 Se reclaman a mano (botón dorado en la tarjeta, pop-up con el premio): que
-se sienta. Al alcanzar un nivel baja un cartelito arriba (`#medalToast`,
+se sienta. Mientras hay un nivel por reclamar, la tarjeta muestra **ese**
+nivel (meta con ✓, barra llena, "¡Logrado! Reclama la medalla de X") y
+recién al reclamarlo pasa a la meta del siguiente: antes mostraba la del
+siguiente y parecía que el logro hecho era otro.
+
+La hoja de Medallas tiene dos vistas (`medalView`): **Lista** (las
+tarjetas) y **Vitrina** (`showcaseHtml()`): una rejilla de 4 con solo el
+ícono de cada logro, en gris si no tiene ninguna medalla o sobre el disco
+del nivel más alto alcanzado; tocar una dice cuál es y qué medalla tiene. Al alcanzar un nivel baja un cartelito arriba (`#medalToast`,
 z-index 25, encima de todo; tocarlo abre la pestaña) y la copa lleva un
 globito con cuántas hay por reclamar. Si llegan varias juntas van en un solo
 cartelito ("¡N medallas nuevas!"). Lo que mide cada una es un contador de

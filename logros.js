@@ -266,15 +266,32 @@ const fmtDate = ts => new Date(ts).toLocaleDateString('es-CL', { day: 'numeric',
 
 let dexAnim = 0;   // requestAnimationFrame del personaje de la ficha
 
+/* Las medallas se ven de dos formas: la lista (con metas, barras y el botón
+   para reclamar) y la vitrina (solo los íconos en filas y columnas: gris si
+   no tiene ninguna, o con el color de la mejor que tiene). */
+let medalView = 'lista';
 function openLogros(tab = 'medallas'){
   cancelAnimationFrame(dexAnim);
   medalsTick();
   const dex = tab === 'mimodex';
+  const views = dex ? '' : `<div class="shop-tabs">
+      <button class="shop-tab ${medalView === 'lista' ? 'active' : ''}" data-mview="lista">Lista</button>
+      <button class="shop-tab ${medalView === 'vitrina' ? 'active' : ''}" data-mview="vitrina">Vitrina</button>
+    </div>`;
   showOverlay(`
     <h3>${dex ? '📖 Mimodex' : '🏆 Medallas'}</h3>
-    ${dex ? dexHtml() : medalsHtml()}
+    ${views}
+    ${dex ? dexHtml() : medalView === 'vitrina' ? showcaseHtml() : medalsHtml()}
     <button class="overlay-btn secondary" id="btnCloseLogros">Cerrar</button>
   `, closeLogros);
+  document.querySelectorAll('[data-mview]').forEach(b => b.addEventListener('click', () => { medalView = b.dataset.mview; openLogros('medallas'); }));
+  document.querySelectorAll('[data-show]').forEach(b => b.addEventListener('click', () => {
+    const m = MEDALS.find(x => x.id === b.dataset.show), r = medalReached(m);
+    const cap = document.getElementById('showcaseCap');
+    document.querySelectorAll('.show-cell.on').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    if (cap) cap.innerHTML = `<b>${escapeHtml(m.name)}</b> · ${r ? `medalla de ${MEDAL_TIERS[r - 1].name}` : 'ninguna todavía'}`;
+  }));
   document.getElementById('overlayCard').classList.add('sheet-full');
   document.getElementById('btnCloseLogros').addEventListener('click', closeLogros);
   document.querySelectorAll('[data-claim]').forEach(b => b.addEventListener('click', () => {
@@ -292,18 +309,29 @@ function closeLogros(){ cancelAnimationFrame(dexAnim); hideOverlay(); }
 function medalCard(m){
   const at = medalAt(m), v = medalValue(m), reached = medalReached(m), claimed = medalClaimed(m);
   const top = reached ? MEDAL_TIERS[reached - 1].id : 'none';
-  const next = at[reached];
   const pend = reached > claimed;
   const pips = MEDAL_TIERS.map((t, i) => `<i class="mpip ${i < reached ? t.id : ''}"></i>`).join('');
+  /* Con un nivel por reclamar se muestra ESE nivel (lo que se logró y lo
+     que paga el botón), no la meta del siguiente: antes salía la meta que
+     venía y parecía que la medalla era de otra cosa. Reclamado, pasa a la
+     que viene. */
+  const shown = pend ? claimed : reached, goal = at[shown];
   let meta, bar = '';
-  if (next === undefined) meta = '¡Completa! Las tres medallas';
-  else if (m.steps) meta = m.steps[reached];
+  if (goal === undefined) meta = '¡Completa! Las tres medallas';
   else {
-    meta = m.desc(next);
-    const prev = reached ? at[reached - 1] : 0;
-    const frac = Math.max(0, Math.min(1, (v - prev) / (next - prev)));
-    bar = `<div class="mbar"><i style="width:${(frac * 100).toFixed(1)}%"></i></div>
-      <small class="mcount">${Math.min(v, next).toLocaleString('es-CL')} / ${next.toLocaleString('es-CL')}</small>`;
+    const txt = m.steps ? m.steps[shown] : m.desc(goal);
+    if (pend){
+      meta = `✓ ${txt}`;
+      bar = `<div class="mbar done"><i style="width:100%"></i></div><small class="mcount">¡Logrado! Reclama la medalla de ${MEDAL_TIERS[shown].name}</small>`;
+    } else {
+      meta = txt;
+      if (!m.steps){
+        const prev = shown ? at[shown - 1] : 0;
+        const frac = Math.max(0, Math.min(1, (v - prev) / (goal - prev)));
+        bar = `<div class="mbar"><i style="width:${(frac * 100).toFixed(1)}%"></i></div>
+          <small class="mcount">${Math.min(v, goal).toLocaleString('es-CL')} / ${goal.toLocaleString('es-CL')}</small>`;
+      }
+    }
   }
   const tier = MEDAL_TIERS[claimed];
   const right = pend
@@ -332,6 +360,22 @@ function medalsHtml(){
       ${pend ? `<span class="lpend">${pend} por reclamar</span>` : ''}
     </div>
     <div class="menu-list medal-list">${orden.map(medalCard).join('')}</div>`;
+}
+
+/* La vitrina: un casillero por logro, solo el ícono. Gris sin ninguna
+   medalla; con el disco de bronce, plata u oro de la mejor que tiene.
+   Tocar uno dice cuál es arriba. */
+function showcaseHtml(){
+  const got = MEDALS.reduce((s, m) => s + medalReached(m), 0);
+  const cells = MEDALS.map(m => {
+    const r = medalReached(m);
+    return `<button class="show-cell" data-show="${m.id}" title="${escapeHtml(m.name)}">
+        <span class="medal-disc ${r ? MEDAL_TIERS[r - 1].id : 'none gray'}">${m.emoji}</span></button>`;
+  }).join('');
+  return `
+    <div class="logros-sum"><span><b>${got}</b> / ${MEDALS.length * MEDAL_TIERS.length} medallas</span>
+      <span id="showcaseCap" class="show-cap">Toca una para ver cuál es</span></div>
+    <div class="menu-list showcase">${cells}</div>`;
 }
 
 function dexHtml(){
