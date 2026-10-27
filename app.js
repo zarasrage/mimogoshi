@@ -2815,9 +2815,11 @@ function trayDishes(){
 }
 function renderFoodTray(aviso){
   const tray = document.getElementById('foodTray');
+  /* Casilla: el emoji, el nombre y cuántas quedan en un globito. Una en 0
+     lleva un "+" (tocarla abre la tienda) en vez de verse rota. */
   const tile = (id, emoji, label, n, cls) => `
-      <button class="tray-food ${cls}" data-tray="${id}">
-        <span class="n">x${n}</span><span class="emo">${emoji}</span><b>${label}</b>
+      <button class="tray-food ${cls} ${n <= 0 ? 'out' : ''}" data-tray="${id}">
+        <span class="n">${n > 0 ? n : '+'}</span><span class="emo">${emoji}</span><b>${label}</b>
       </button>`;
   const dishes = trayDishes();
   const showTabs = dishes.length > 0 || !!(state.style && state.style.owned && state.style.owned.cocina);
@@ -2829,27 +2831,29 @@ function renderFoodTray(aviso){
   if (trayTab === 'home'){
     grid = dishes.length
       ? dishes.map(it => tile('bag:' + it.id, it.emoji, it.short || it.name, bagCount(it.id), 'home')).join('')
-      : '<div class="tray-empty">Nada cocinado todavía. Cosecha y cocina en la Cocina 🍳</div>';
+      : '<div class="tray-empty">Nada cocinado todavía.<br>Cosecha y cocina en la Cocina 🍳</div>';
   } else {
-    grid = FOODS.map(f => {
-      const n = foodStock(f.id);
-      return tile(f.id, f.emoji, short[f.id] || f.name, n,
-        (n <= 0 ? 'out ' : '') + (state.selectedFood === f.id ? 'last' : ''));
-    }).join('') + tile(MEDICINE.id, MEDICINE.emoji, MEDICINE.name, meds,
-      'med ' + (meds <= 0 ? 'out ' : '') + (state.sick ? 'urgent' : ''));
+    grid = FOODS.map(f => tile(f.id, f.emoji, short[f.id] || f.name, foodStock(f.id),
+      state.selectedFood === f.id ? 'last' : '')).join('') +
+      tile(MEDICINE.id, MEDICINE.emoji, MEDICINE.name, meds, 'med ' + (state.sick ? 'urgent' : ''));
   }
-  const sub = aviso
-    ? `<small class="warn">${escapeHtml(aviso)}</small>`
-    : `<small>${state.sick ? '¡Está enferma! Dale una medicina' : 'Toca varias: caen todas juntas'}</small>`;
-  const tabs = showTabs ? `<div class="tray-tabs">
-      <button class="${trayTab === 'pantry' ? 'active' : ''}" data-tray-tab="pantry">Despensa</button>
-      <button class="${trayTab === 'home' ? 'active' : ''}" data-tray-tab="home">Hecho en casa${dishes.length ? ` <i>${dishes.reduce((a, it) => a + bagCount(it.id), 0)}</i>` : ''}</button>
-    </div>` : '';
+  const nDish = dishes.reduce((a, it) => a + bagCount(it.id), 0);
+  /* Todo en una fila arriba (pestañas o título, y la ✕): la bandeja mide lo
+     mismo que el dock y con título, subtítulo y pestañas apiladas las dos
+     filas de comida se salían por abajo. */
+  const head = showTabs
+    ? `<div class="tray-seg">
+        <button class="${trayTab === 'pantry' ? 'active' : ''}" data-tray-tab="pantry">Despensa</button>
+        <button class="${trayTab === 'home' ? 'active' : ''}" data-tray-tab="home">Hecho en casa${nDish ? ` <i>${nDish}</i>` : ''}</button>
+      </div>`
+    : `<b class="tray-title">¿Qué come?</b>`;
   tray.innerHTML = `
-    <div class="tray-head"><span><b>¿Qué come?</b>${sub}</span>
-      <button class="tray-close" id="trayClose">Cerrar</button></div>
-    ${tabs}
+    <div class="tray-head">${head}
+      <button class="tray-close" id="trayClose" aria-label="Cerrar">✕</button></div>
     <div class="tray-foods">${grid}</div>`;
+  /* Los avisos van en la burbuja de la mascota: la bandeja no tapa la
+     pantalla y así no le roba una fila a las comidas. */
+  if (aviso) say(aviso, 2200);
   tray.querySelector('#trayClose').addEventListener('click', closeFoodTray);
   tray.querySelectorAll('[data-tray-tab]').forEach(el => el.addEventListener('click', () => {
     trayTab = el.dataset.trayTab; renderFoodTray();

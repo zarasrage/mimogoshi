@@ -1949,7 +1949,7 @@ body{
   transition:transform .14s var(--ease-spring), box-shadow .14s ease;
 }
 .pill-icon{
-  width:30px; height:30px;
+  width:28px; height:28px;
   display:grid; place-items:center;
   font-size:16px;
   border-radius:999px;
@@ -1982,72 +1982,93 @@ body{
   z-index:2;
   display:flex;
   flex-direction:column;
-  justify-content:center;
-  gap:8px;
-  padding:10px;
+  gap:6px;
+  padding:8px 10px 9px;
   border-radius:24px;
   background:#fff;
   box-shadow:0 14px 30px -14px rgba(70,10,90,.7);
   font-family:var(--font-ui);
   color:var(--tile-ink);
   animation:trayIn .22s var(--ease-spring);
+  overflow:hidden;
 }
 .food-tray.hidden{display:none;}
 .controls.tray-open .btn[data-badge]::after{display:none;}
 @keyframes trayIn{ from{opacity:0; transform:translateY(10px) scale(.98);} }
-.tray-head{display:flex; justify-content:space-between; align-items:center; gap:8px; padding:0 4px;}
-.tray-head b{font-size:13px; font-weight:900;}
-.tray-head small{display:block; font-size:11px; font-weight:700; color:#8a7a99;}
-.tray-head small.warn{color:#e0455a;}
+/* Una sola fila arriba: el título (o las pestañas) y la ✕. */
+.tray-head{display:flex; align-items:center; gap:8px; flex-shrink:0;}
+.tray-title{flex:1; padding-left:4px; font-size:14px; font-weight:900;}
 .tray-close{
   flex-shrink:0;
+  width:28px; height:28px;
+  display:grid; place-items:center;
   border:none;
-  border-radius:999px;
-  padding:6px 12px;
+  border-radius:50%;
   font-family:var(--font-ui);
   font-weight:900;
-  font-size:11.5px;
-  color:#5a4a68;
+  font-size:13px;
+  color:#6a5a78;
   background:#f1eaf6;
   cursor:pointer;
+  -webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation;
 }
+.tray-close:active{transform:scale(.9);}
+/* Pestañas como selector segmentado: la de ahora, blanca y en relieve. */
+.tray-seg{flex:1; display:flex; gap:2px; padding:3px; border-radius:12px; background:#f1ecf5;}
+.tray-seg button{
+  flex:1; border:0; border-radius:9px; padding:4px 4px; font:inherit; font-size:12px; font-weight:900;
+  background:transparent; color:#8a7a99; white-space:nowrap; cursor:pointer;
+  -webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation;
+}
+.tray-seg button.active{background:#fff; color:var(--tile-ink); box-shadow:0 1px 3px rgba(70,10,90,.18);}
+.tray-seg i{font-style:normal; display:inline-block; min-width:16px; padding:0 4px; margin-left:3px;
+  border-radius:8px; background:#ff8a5c; color:#fff; font-size:10px; line-height:16px;}
 /* Siete comidas más la medicina: dos filas de cuatro (con cinco por fila
    quedaban dos filas desparejas y la segunda casi vacía). */
-.tray-tabs{display:flex; gap:5px; margin:6px 0 6px;}
-.tray-tabs button{
-  flex:1; border:0; border-radius:10px; padding:6px 4px; font:inherit; font-size:11.5px; font-weight:900;
-  background:#f1ecf5; color:#8a7a99; -webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation;
-}
-.tray-tabs button.active{background:#fff; color:#4a3b5c; box-shadow:0 0 0 2px #ff8a5c inset;}
-.tray-tabs i{font-style:normal; background:#ff8a5c; color:#fff; border-radius:8px; padding:0 5px; margin-left:3px; font-size:10px;}
-.tray-food.home{background:#fff6e0;}
-.tray-empty{grid-column:1 / -1; padding:16px 8px; text-align:center; font-size:12px; font-weight:700; color:#8a7a99;}
-.overlay-card .water-row.wet{background:rgba(90,170,255,.16); box-shadow:inset 0 0 0 1.5px rgba(90,170,255,.45);}
-.overlay-card .water-row.dry{background:rgba(255,150,80,.14); box-shadow:inset 0 0 0 1.5px rgba(255,150,80,.45);}
-.tray-foods{display:grid; grid-template-columns:repeat(4, 1fr); gap:5px;}
+.tray-foods{flex:1; min-height:0; display:grid; grid-template-columns:repeat(4, 1fr); grid-auto-rows:1fr; gap:5px;}
 .tray-food{
   position:relative;
+  min-height:0;
   display:flex;
   flex-direction:column;
   align-items:center;
-  gap:2px;
-  padding:5px 0 4px;
+  justify-content:center;
+  gap:1px;
+  padding:2px;
   border:none;
-  border-radius:13px;
-  background:#fff4ec;
+  border-radius:14px;
+  background:#fff3e8;
   font-family:var(--font-ui);
   color:var(--tile-ink);
   cursor:pointer;
   transition:transform .12s var(--ease-spring);
+  -webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation;
 }
 .tray-food:active{transform:scale(.92);}
 .tray-food .emo{font-size:20px; line-height:1;}
-.tray-food b{font-size:10.5px; font-weight:900; white-space:nowrap;}
-.tray-food .n{position:absolute; top:3px; right:5px; font-size:10px; font-weight:900; color:#8a5a3a;}
-.tray-food.last{box-shadow:0 0 0 2.5px #ff8a5c;}
-.tray-food.out{opacity:.38; filter:grayscale(.7);}
-.tray-food.med{background:#ffe4e7;}
-.tray-food.med.urgent{box-shadow:0 0 0 2.5px #ff5d6c; animation:alertPulse 1s ease-in-out infinite;}
+.tray-food b{max-width:100%; overflow:hidden; text-overflow:ellipsis; font-size:10.5px; font-weight:900; line-height:1.2; white-space:nowrap;}
+/* Cuántas quedan: un globito en la esquina. */
+.tray-food .n{
+  position:absolute; top:-4px; right:-3px;
+  min-width:18px; height:18px; padding:0 5px;
+  display:grid; place-items:center;
+  border-radius:9px; border:2px solid #fff;
+  background:#ff8a5c; color:#fff;
+  font-size:10px; font-weight:900; line-height:1;
+}
+.tray-food.last{box-shadow:inset 0 0 0 2px #ff8a5c;}
+/* Agotada: apagada pero entera, con un "+" (tocarla lleva a la tienda). */
+.tray-food.out{background:#f6f3f8;}
+.tray-food.out .emo{filter:grayscale(1); opacity:.45;}
+.tray-food.out b{color:#a89cb4;}
+.tray-food.out .n{background:#cfc6d8;}
+.tray-food.home{background:#fff6dc;}
+.tray-food.home .n{background:#f0a020;}
+.tray-food.med{background:#ffe8eb;}
+.tray-food.med .n{background:#ff5d6c;}
+.tray-food.med.urgent{box-shadow:inset 0 0 0 2px #ff5d6c; animation:alertPulse 1s ease-in-out infinite;}
+.tray-empty{grid-column:1 / -1; grid-row:1 / span 2; display:grid; place-items:center; text-align:center;
+  font-size:12px; font-weight:700; color:#8a7a99; line-height:1.5;}
 
 /* ---------- mandos de los minijuegos ---------- */
 
@@ -2544,6 +2565,8 @@ body{
 }
 .seed-chip small{color:var(--amber); font-weight:900;}
 /* Cocina: lo que pide cada receta, en verde si alcanza. */
+.overlay-card .water-row.wet{background:rgba(90,170,255,.16); box-shadow:inset 0 0 0 1.5px rgba(90,170,255,.45);}
+.overlay-card .water-row.dry{background:rgba(255,150,80,.14); box-shadow:inset 0 0 0 1.5px rgba(255,150,80,.45);}
 .recipe-row{cursor:default; align-items:flex-start;}
 .recipe-row.locked{opacity:.75;}
 .recipe-row .mini-btn{align-self:center;}
