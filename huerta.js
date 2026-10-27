@@ -24,6 +24,7 @@ STYLE_ITEMS.push(
   { id:'mochila', kind:'tool', group:'esencial', name:'Mochila', emoji:'🎒', price: 10, use:'guarda lo que juntas',
     boughtNote: 'Ábrela con la mochila del borde izquierdo de la pantalla.' },
   { id:'huerto', kind:'furni', wow: true, group:'huerta', name:'Huerto', use:'siembra y cosecha', price: 80 },
+  { id:'cocina', kind:'furni', wow: true, group:'huerta', name:'Cocina', use:'pasteles y más', price: 90 },
 );
 
 /* ---------- catálogo ---------- */
@@ -48,6 +49,7 @@ const BAG_RARITY = {
 const BAG_GROUPS = [
   { id: 'huerta',  title: 'Huerta' },
   { id: 'cosecha', title: 'Cosecha' },
+  { id: 'cocina',  title: 'Cocina' },
   { id: 'tesoro',  title: 'Tesoros' },
 ];
 const BAG_ITEMS = [
@@ -56,8 +58,18 @@ const BAG_ITEMS = [
   ...CROP_IDS.map(id => ({ id: 'semilla_' + id, group: 'huerta', seed: id, name: `Semillas de ${CROPS[id].name.toLowerCase()}`,
     emoji: CROPS[id].emoji, desc: `Se plantan en el huerto. ${CROPS[id].name}: lista en ${CROPS[id].growH} h, da ${CROPS[id].yield}.` })),
   ...CROP_IDS.map(id => ({ id, group: 'cosecha', crop: id, name: CROPS[id].name, emoji: CROPS[id].emoji, sell: CROPS[id].sell,
-    desc: CROPS[id].food ? `Del huerto. Llena ${CROPS[id].food.restore} de panza${CROPS[id].food.happy ? ` y da +${CROPS[id].food.happy} de felicidad` : ''}.`
-      : `Del huerto. Regálaselo: +${CROPS[id].happy} de felicidad.` })),
+    food: CROPS[id].food, gift: CROPS[id].happy,
+    desc: CROPS[id].food ? `Del huerto. ${foodText(CROPS[id].food)} También se cocina.`
+      : `Del huerto. Regálaselo: +${CROPS[id].happy} de felicidad. También se cocina.` })),
+  /* La cocina: la harina se compra (Tienda → Comida) y los platos salen de
+     las recetas (RECIPES, abajo). */
+  { id: 'harina', group: 'cocina', name: 'Harina', emoji: '🌾', sell: 3, buy: 6,
+    desc: 'Para pasteles, pies y galletas. Se compra en la tienda, pestaña Comida.' },
+  { id: 'ensalada', group: 'cocina', name: 'Ensalada', emoji: '🥗', sell: 6,  food: { restore: 30, energy: 4, happy: 5 } },
+  { id: 'sopa',     group: 'cocina', name: 'Sopa de zapallo', emoji: '🍲', sell: 12, food: { restore: 70, energy: 8 } },
+  { id: 'pastel',   group: 'cocina', name: 'Pastel de frutilla', emoji: '🎂', sell: 25, food: { restore: 40, energy: 5, happy: 20 } },
+  { id: 'pie',      group: 'cocina', name: 'Pie de zapallo', emoji: '🥧', sell: 15, food: { restore: 60, energy: 6, happy: 10 } },
+  { id: 'galletas', group: 'cocina', name: 'Galletas de girasol', emoji: '🍪', sell: 3, food: { restore: 10, energy: 3, happy: 5 } },
   { id: 'caracola', group: 'tesoro', rar: 'comun', name: 'Caracola',        emoji: '🐚', sell: 3,   desc: 'Una caracola enterrada. ¿Qué hacía acá?' },
   { id: 'hueso',    group: 'tesoro', rar: 'comun', name: 'Hueso',           emoji: '🦴', sell: 2,   desc: 'Un hueso viejo. No es de nadie conocido… creo.' },
   { id: 'amuleto',  group: 'tesoro', rar: 'raro',  name: 'Amuleto antiguo', emoji: '🧿', sell: 15,  desc: 'Alguien lo enterró hace mucho para la buena suerte.' },
@@ -68,6 +80,8 @@ const BAG_ITEMS = [
   { id: 'fosil',    group: 'tesoro', rar: 'unico', name: 'Fósil misterioso', emoji: '🦕', sell: 0,
     desc: 'Un Mimogoshi de hace millones de años, de una especie que ya no existe. Guárdalo: algún día una máquina va a poder revivirlo.' },
 ];
+for (const it of BAG_ITEMS) if (it.food && !it.desc) it.desc = `Hecho en la cocina. ${foodText(it.food)}`;
+function foodText(f){ return `Llena ${f.restore} de panza${f.happy ? ` y da +${f.happy} de felicidad` : ''}.`; }
 function bagItem(id){ return BAG_ITEMS.find(it => it.id === id); }
 function hasBackpack(){ return !!(state && state.style && state.style.owned.mochila); }
 function randomSeedId(){ return 'semilla_' + pickOne(CROP_IDS); }
@@ -100,9 +114,8 @@ function openBag(sel, aviso){
   if (it){
     const n = bagCount(it.id), rar = it.rar && BAG_RARITY[it.rar];
     const acts = [];
-    const c = it.crop && CROPS[it.crop];
-    if (c && c.food) acts.push(`<button class="overlay-btn" data-bag-act="eat">Dárselo de comer</button>`);
-    if (c && c.happy) acts.push(`<button class="overlay-btn" data-bag-act="gift">Regalárselo</button>`);
+    if (it.food) acts.push(`<button class="overlay-btn" data-bag-act="eat">Dárselo de comer</button>`);
+    if (it.gift) acts.push(`<button class="overlay-btn" data-bag-act="gift">Regalárselo</button>`);
     if (it.seed) acts.push(`<button class="overlay-btn" data-bag-act="plant">Plantar en el huerto</button>`);
     if (it.sell){
       acts.push(`<button class="overlay-btn secondary" data-bag-act="sell1">Vender 1 · ${coinsLabel(it.sell)}</button>`);
@@ -134,7 +147,6 @@ function openBag(sel, aviso){
 }
 
 function bagAction(it, act){
-  const c = it.crop && CROPS[it.crop];
   if (act === 'sell1' || act === 'sellall'){
     const n = act === 'sell1' ? 1 : bagCount(it.id);
     bagAdd(it.id, -n);
@@ -152,9 +164,9 @@ function bagAction(it, act){
     if (!tryWake()) return;
     catchUp();
     bagAdd(it.id, -1);
-    state.happiness = clamp(state.happiness + c.happy);
+    state.happiness = clamp(state.happiness + it.gift);
     hideOverlay();
-    floatFx(c.emoji);
+    floatFx(it.emoji);
     say('¡Para mí! 🥰');
     triggerPetAction('celebrate');
     saveState(); render();
@@ -168,22 +180,23 @@ function bagAction(it, act){
   }
 }
 
-/* Comer algo de la cosecha: igual que una porción de la bandeja (cae al
-   montón, las barras suben mientras se la come), pero de la mochila. */
+/* Comer algo de la cosecha o de la cocina: igual que una porción de la
+   bandeja (cae al montón, las barras suben mientras se la come), pero de la
+   mochila. */
 function bagEat(id){
-  const it = bagItem(id), c = CROPS[it.crop];
+  const it = bagItem(id), c = it.food;
   if (bagCount(id) <= 0) return;
   if (state.stage === 'egg'){ say('Todavía es un huevo…'); return; }
   if (foodPile && foodPile.pieces.length >= FOOD_PILE_MAX){ say('¡Espera que se coma lo que tiene!'); return; }
   if (!tryWake()) return;
   catchUp();
   bagAdd(id, -1);
-  const food = { id, name: c.name, emoji: c.emoji, restore: c.food.restore, energy: c.food.energy };
+  const food = { id, name: it.name, emoji: it.emoji, restore: c.restore, energy: c.energy };
   const piece = { food, hunger: hungerFillPct(food), energy: food.energy, t: 0, done: 0 };
   const m = state.meal || (state.meal = { hunger: 0, energy: 0 });
   m.hunger += piece.hunger; m.energy += piece.energy;
-  if (c.food.happy) state.happiness = clamp(state.happiness + c.food.happy);
-  say('¡Del huerto! 😋');
+  if (c.happy) state.happiness = clamp(state.happiness + c.happy);
+  say(it.crop ? '¡Del huerto! 😋' : '¡Hecho en casa! 😋');
   serveFood(piece);
   medalAdd('comidas');   // logros.js
   saveState(); render();
@@ -485,6 +498,178 @@ const HUERTO_ART = { w: HUERTO_W, h: 16,
     },
   ] };
 FURNI_ART.huerto = HUERTO_ART;
+
+/* ---------- la cocina ----------
+   Una cocina con horno. Con lo cosechado (y harina de la tienda) se hacen
+   recetas: bocadillos y comida rica (van a la despensa, a la bandeja de
+   Comer), y platos que van a la mochila (ensalada, sopa, pastel, pie,
+   galletas). Cocinar rinde más que comerse la cosecha cruda: es la gracia.
+   Se cocina una cosa a la vez y tarda unos minutos reales (`mins`); al
+   estar lista, el plato espera en la cocina hasta que se toca. */
+const RECIPES = [
+  { id: 'bocadillos', out: { pantry: 'simple', n: 3 }, needs: { zanahoria: 1, tomate: 1 }, mins: 2 },
+  { id: 'rica',       out: { pantry: 'rica', n: 2 },   needs: { tomate: 2, zanahoria: 1, harina: 1 }, mins: 4 },
+  { id: 'ensalada',   out: { bag: 'ensalada', n: 1 },  needs: { zanahoria: 2, tomate: 1 }, mins: 2 },
+  { id: 'sopa',       out: { bag: 'sopa', n: 2 },      needs: { zapallo: 1, zanahoria: 1 }, mins: 6 },
+  { id: 'pastel',     out: { bag: 'pastel', n: 1 },    needs: { frutilla: 3, harina: 2 }, mins: 10 },
+  { id: 'pie',        out: { bag: 'pie', n: 2 },       needs: { zapallo: 1, harina: 2 }, mins: 10 },
+  { id: 'galletas',   out: { bag: 'galletas', n: 4 },  needs: { girasol: 1, harina: 1 }, mins: 5 },
+];
+const recipeById = id => RECIPES.find(r => r.id === id);
+/* Lo que sale de una receta: nombre y emoji (de la despensa o de la mochila). */
+function recipeOut(r){
+  const it = r.out.pantry ? foodById(r.out.pantry) : bagItem(r.out.bag);
+  return { name: it.name, emoji: it.emoji, n: r.out.n };
+}
+const recipeCan = r => Object.entries(r.needs).every(([id, n]) => bagCount(id) >= n);
+
+function cocinaData(){
+  const d = objData('cocina');
+  if (d.recipe && !recipeById(d.recipe)) d.recipe = null;
+  return d;
+}
+const cocinaLeftMs = d => d.recipe ? Math.max(0, d.at + recipeById(d.recipe).mins * 60000 - Date.now()) : 0;
+
+function openCocina(rt, aviso){
+  const d = cocinaData();
+  let top = '';
+  if (d.recipe){
+    const o = recipeOut(recipeById(d.recipe)), left = cocinaLeftMs(d);
+    top = left > 0
+      ? `<div class="menu-item plot-row"><span class="emoji">${o.emoji}</span><div class="info"><b>Cocinando: ${escapeHtml(o.name)}</b>
+          <small>Listo en ${fmtWait(left)}</small></div></div>`
+      : `<div class="menu-item plot-row ripe"><span class="emoji">${o.emoji}</span><div class="info"><b>¡${escapeHtml(o.name)} listo!</b>
+          <small>Da ${o.n}</small></div><button class="mini-btn go" data-cook-take>Sacar</button></div>`;
+  }
+  const rows = RECIPES.map(r => {
+    const o = recipeOut(r), can = recipeCan(r) && !d.recipe;
+    const chips = Object.entries(r.needs).map(([id, n]) => {
+      const it = bagItem(id), ok = bagCount(id) >= n;
+      return `<span class="need-chip ${ok ? 'ok' : ''}">${it.emoji} ×${n}${ok ? '' : ` · faltan ${n - bagCount(id)}`}</span>`;
+    }).join('');
+    return `<div class="menu-item recipe-row ${recipeCan(r) ? '' : 'locked'}">
+      <span class="emoji">${o.emoji}</span>
+      <div class="info"><b>${escapeHtml(o.name)} ×${o.n}</b><small>${r.out.pantry ? 'A la despensa' : 'A la mochila'} · ${r.mins} min</small>
+        <div class="need-chips">${chips}</div></div>
+      <button class="mini-btn ${can ? 'go' : ''}" data-cook="${r.id}" ${can ? '' : 'disabled'}>Cocinar</button></div>`;
+  }).join('');
+  showOverlay(`
+    <h3>🍳 Cocina</h3>
+    <p class="${aviso ? 'sheet-note' : ''}">${aviso ? escapeHtml(aviso) : d.recipe ? 'Una cosa a la vez: cuando esté lista, sácala.' : 'Con lo que cosechas en el huerto (y harina de la tienda).'}</p>
+    <div class="menu-list">${top}<div class="section-label">Recetas</div>${rows}</div>
+    <button class="overlay-btn secondary" id="btnCloseCocina">Cerrar</button>
+  `, hideOverlay);
+  document.getElementById('overlayCard').classList.add('sheet-tall');
+  document.getElementById('overlayCard').onclick = e => {
+    const take = e.target.closest('[data-cook-take]');
+    if (take){ hideOverlay(); cocinaChore(rt, 'take'); return; }
+    const b = e.target.closest('[data-cook]');
+    if (!b || b.disabled) return;
+    const r = recipeById(b.dataset.cook);
+    if (cocinaData().recipe || !recipeCan(r)) return;
+    for (const [id, n] of Object.entries(r.needs)) bagAdd(id, -n);
+    const dd = cocinaData();
+    dd.recipe = r.id; dd.at = Date.now();
+    saveState();
+    hideOverlay();
+    cocinaChore(rt, 'cook');
+    say(`🍳 ¡A cocinar! Listo en ${r.mins} min`, 2600);
+  };
+  document.getElementById('btnCloseCocina').addEventListener('click', hideOverlay);
+}
+
+/* Sacar lo que está listo: a la despensa o a la mochila, con pop-up. */
+function cocinaTake(){
+  const d = cocinaData();
+  if (!d.recipe || cocinaLeftMs(d) > 0) return;
+  const r = recipeById(d.recipe), o = recipeOut(r);
+  d.recipe = null;
+  if (r.out.pantry) state.pantry[r.out.pantry] = foodStock(r.out.pantry) + r.out.n;
+  else bagGain(r.out.bag, r.out.n);
+  saveState(); render();
+  if (typeof rewardSound === 'function') rewardSound();
+  showPopup({ icon: o.emoji, title: '¡Salió del horno!', items: [{ icon: o.emoji, text: o.name, amount: `+${o.n}` }],
+    note: r.out.pantry ? 'Está en la bandeja de Comer.' : bagNote() });
+}
+
+/* La mascota va a la cocina: a revolver la olla o a sacar el plato. */
+function cocinaChore(rt, kind){
+  let done = false;
+  const run = () => { if (!done){ done = true; if (kind === 'take') cocinaTake(); } };
+  if (state.sleeping || displayStage() === 'egg' || (walker.activity && (walker.activity.kind === 'eat' || walker.activity.kind === 'vaccine'))){ run(); return; }
+  const at = () => rt.x;
+  rt.pending = run;
+  const ok = startChore(rt, [
+    { go: besideX(at, 6 * furniK()) }, faceX(at),
+    kind === 'take'
+      ? { anim: 'pet', ms: 900, fx: ['✨'], end: () => { rt.pending = null; run(); } }
+      : { anim: 'clean', ms: 1800, fx: ['🍳', '🧂'], fxEvery: 700, end: () => { rt.pending = null; run(); } },
+    { anim: kind === 'take' ? 'celebrate' : 'happy', ms: 800 },
+  ]);
+  if (!ok){ rt.pending = null; run(); }
+}
+
+const COCINA_ART = { w: 20, h: 22,
+  init: rt => { rt.cook = 'idle'; rt.steamAt = 0; rt.pending = null; },
+  tick: (rt, now) => {
+    const d = cocinaData();
+    rt.cook = !d.recipe ? 'idle' : cocinaLeftMs(d) > 0 ? 'cooking' : 'ready';
+    if (rt.cook !== 'idle' && now - rt.steamAt > (rt.cook === 'cooking' ? 300 : 650)){
+      rt.steamAt = now;
+      const k = furniK();
+      if (rt.cook === 'cooking') fxSpawn({ x: rtPx(rt, -3.5 + rnd(-2, 2)), y: 22 * k, vx: rnd(-4, 4), vy: rnd(10, 18), wob: 4, wobF: 2,
+        life: 1400, color: 'rgba(240,240,250,.6)', layer: 'back' });
+      else fxSpawn({ x: rtPx(rt, 5 + rnd(-3, 3)), y: rnd(17, 22) * k, vy: 8, life: 700, shape: 'spark', color: '#fff6a8', layer: 'front' });
+    }
+  },
+  cleanup: rt => { if (rt.pending){ const f = rt.pending; rt.pending = null; f(); } },
+  tap: rt => {
+    const d = cocinaData();
+    if (d.recipe && cocinaLeftMs(d) <= 0 && !(walker.activity && walker.activity.kind === 'chore')){ cocinaChore(rt, 'take'); return true; }
+    openCocina(rt);
+    return true;
+  },
+  parts: [
+    { id: 'body', draw: p => {
+      p.box(0, 6, 20, 16, '#e8e4ef', '#ffffff');
+      p.r(1, 7, 18, 1, '#cfc8d6');
+      p.r(3, 5, 5, 1, FP.dark); p.r(12, 5, 5, 1, FP.dark);
+      p.r(3, 9, 2, 1, FP.red); p.r(9, 9, 2, 1, FP.red); p.r(15, 9, 2, 1, FP.red);
+      p.r(5, 11, 10, 1, FP.metalD);
+      p.box(3, 12, 14, 8, '#3a3448'); p.r(5, 14, 10, 4, '#26202e');
+      p.r(2, 21, 2, 1, FP.O); p.r(16, 21, 2, 1, FP.O);
+    } },
+    { id: 'glow', show: rt => rt.cook === 'cooking', flicker: true, draw: p => {
+      p.r(5, 14, 10, 4, '#ff8a3d'); p.r(6, 15, 8, 2, '#ffd25a'); p.r(7, 16, 1, 1, '#ffffff');
+    } },
+    { id: 'pot', show: rt => rt.cook === 'cooking', draw: p => {
+      p.box(2, 1, 8, 5, FP.metal, '#d9dee8'); p.r(1, 2, 1, 1, FP.O); p.r(10, 2, 1, 1, FP.O); p.r(5, 0, 2, 1, FP.O);
+    } },
+    { id: 'dish', show: rt => rt.cook === 'ready', draw: p => {
+      p.r(10, 5, 9, 1, FP.O); p.r(11, 4, 7, 1, '#ffffff');
+      p.box(12, 0, 5, 5, '#ffb3cf', '#ffffff'); p.r(14, 0, 1, 1, FP.red);
+    } },
+  ],
+  visits: [
+    /* Juega a ser chef: revuelve, prueba y le gusta. */
+    f => [
+      { go: besideX(() => f.rt.x, 6 * f.k) }, faceX(() => f.rt.x),
+      { anim: 'clean', ms: 2600, fx: ['🍳', '🧂', '🎶'], fxEvery: 800 },
+      { anim: 'eat', ms: 900, fx: ['😋'] },
+      S.happy(1000, { fx: ['⭐'] }),
+    ],
+  ],
+  duos: [
+    f => {
+      const at = () => f.rt.x;
+      return {
+        a: [{ go: besideX(at, 6 * f.k) }, faceX(at), S.sync('in'), { anim: 'clean', ms: 2600, fx: ['🍳'], fxEvery: 900 }, S.sync('plato'), S.happy(800, { dir: 'partner' }), S.sync('end')],
+        b: [{ go: f.x(-34) }, S.sync('in', { dir: 'partner' }), S.wait(2600, 'idle', { dir: 'partner', fx: ['🤤'], fxEvery: 1200 }), S.sync('plato'),
+          { anim: 'eat', ms: 1200, fx: ['😋'] }, S.sync('end'), { anim: 'celebrate', ms: 800 }],
+      };
+    },
+  ] };
+FURNI_ART.cocina = COCINA_ART;
 
 /* ---------- la pestañita de la mochila ---------- */
 
