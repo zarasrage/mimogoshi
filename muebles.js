@@ -1081,8 +1081,9 @@ function runFurniActivity(dt, now, act = walker){
 }
 
 /* Cuándo se corta una rutina a la mitad. La mascota: las de rutina (comer,
-   limpiarse) no se cortan por estar triste o enferma, que es justo cuando
-   más se la alimenta; la cama no se corta por dormir (es para eso) y termina
+   limpiarse, y las tareas de objetos.js como recoger la caca con la pala)
+   no se cortan por estar triste o enferma, que es justo cuando más se la
+   alimenta; la cama no se corta por dormir (es para eso) y termina
    sola al despertar. El acompañante no tiene barras: solo lo cortan que lo
    toquen o que la mascota se duerma (se va a dormir con ella). */
 function furniActivityBroken(mood, act = walker){
@@ -1094,7 +1095,7 @@ function furniActivityBroken(mood, act = walker){
     /* Entrar a una habitación: aunque esté triste o enferma, termina de entrar. */
     if (a.kind === 'enter') return !!state.sleeping;
     if (state.sleeping) return true;
-    if (a.kind === 'eat' || a.kind === 'clean' || a.kind === 'vaccine') return false;
+    if (a.kind === 'eat' || a.kind === 'clean' || a.kind === 'vaccine' || a.kind === 'chore') return false;
     return mood === 'sleepy' || mood === 'sad' || mood === 'sick';
   }
   if (act.action) return true;
