@@ -613,7 +613,7 @@ if (typeof window !== 'undefined'){
     const c = document.getElementById('buddyCanvas');
     c.addEventListener('click', (e) => {
       if (!state || gameOver || arranging || !buddyActive()) return;
-      e.stopPropagation();   // que no limpie la caca de pasada (listener de #screen)
+      e.stopPropagation();   // que no siga al piso (muebles, mimo)
       buddyAction('pet');
       buddy.happyUntil = performance.now() + 8000;
       petFx(pickOne(['💗', '💕', '😊']), buddy);

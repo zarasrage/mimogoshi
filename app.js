@@ -391,7 +391,7 @@ function coinsLabel(n){ return `💰 ${n}`; }
    nada ese día. */
 const UPGRADES = [
   { id:'autoClean', name:'Seguro de limpieza', emoji:'🧹', price: 30, armable: true,
-    desc:'Limpia sola la primera caca que aparezca.' },
+    desc:'Recoge sola la primera caca que aparezca.' },
   { id:'autoMed', name:'Seguro médico', emoji:'💉', price: 50, armable: true,
     desc:'Cura sola una enfermedad si aparece.' },
   { id:'sendVisit', name:'Pase de visita', emoji:'🚪', price: 20, armable: false,
@@ -637,8 +637,16 @@ const DECAY_PER_HOUR = {
      a HUNGER_CAP). Antes era 100 / 424.5 para todas, 7.1 horas reales. */
   happiness: 12 / 60,      // 12 por hora real: la barra entera en ~8.3 horas reales (antes 100/530.5, ~11.3 por hora)
   energy:    100 / 3395,   // 3395 h de juego ≈ 56.6 horas reales
-  hygiene:   100 / 212,    // 212 h de juego ≈ 3.5 horas reales, pero solo si hay caca (antes 424)
+  hygiene:   2 / 60,       // 2 por hora real, siempre; con caca, HYGIENE_POOP_DECAY
 };
+/* Con caca sin recoger la higiene baja a 18 por hora real en vez de 2
+   (pedido así). Antes no bajaba nada sin caca y con caca ~28 por hora. */
+const HYGIENE_POOP_DECAY = 18 / 60;
+/* Limpiar (el botón) baña: +25 y después hay que esperar CLEAN_COOLDOWN_MS
+   (5 min reales). La caca NO la saca el botón: se recoge tocándola, +10. */
+const CLEAN_HYGIENE = 25;
+const CLEAN_COOLDOWN_MS = 5 * 60 * 1000;
+const POOP_CLEAN_HYGIENE = 10;
 const ENERGY_RECOVER_PER_HOUR = 100 / 45;   // durmiendo: barra entera en 45 min reales (45 h de juego); con cama, 30 min
 
 /* Probabilidad de que aparezca caca, por hora de juego. Antes daba mediana a
@@ -762,6 +770,7 @@ function freshState(name, species){
     gift: false,
     stage: 'egg',
     selectedFood: 'simple',
+    lastClean: 0,        // último baño con el botón Limpiar (Date.now), ver CLEAN_COOLDOWN_MS
     coins: 0,
     pantry: { simple: FOOD_START_STOCK, [MEDICINE.id]: MED_START_STOCK },  // porciones en la mochila
     objData: {},         // lo que guardan los objetos mágicos (objetos.js): fruta, fotos, el frijol...
@@ -931,7 +940,8 @@ function stageFor(ageHours){
 
 /* Velocidad a la que baja una barra, ya con el castigo por estar en apuro. */
 function decayRate(stat, value){
-  const base = stat === 'hunger' ? hungerDecayPerHour() : DECAY_PER_HOUR[stat];
+  const base = stat === 'hunger' ? hungerDecayPerHour()
+    : stat === 'hygiene' && state.poop ? HYGIENE_POOP_DECAY : DECAY_PER_HOUR[stat];
   const umbral = DISTRESS_AT[stat];
   return (umbral !== undefined && value < umbral) ? base * DISTRESS_MULT : base;
 }
@@ -982,15 +992,14 @@ function applyDecay(hours){
     const seguro = upgradeState('autoClean');
     if (seguro.owned && seguro.armed){
       state.poop = false;
-      state.hygiene = clamp(state.hygiene + 35);   // mismo efecto que btnClean
+      state.hygiene = clamp(state.hygiene + POOP_CLEAN_HYGIENE);   // mismo efecto que recogerla a mano
       seguro.armed = false;
       seguro.timesUsed = (seguro.timesUsed || 0) + 1;
     }
   }
-  /* La higiene NO baja sola: solo se ensucia mientras haya caca sin limpiar. Así
-     limpiar deja de ser un trámite periódico y pasa a ser la respuesta a algo
-     que el jugador ve en pantalla. */
-  if (state.poop) state.hygiene = clamp(state.hygiene - hours * decayRate('hygiene', state.hygiene) * nightFactor);
+  /* La higiene baja de a poco siempre y mucho más rápido con caca sin
+     recoger (decayRate). Dormir no la frena; la noche sí. */
+  state.hygiene = clamp(state.hygiene - hours * decayRate('hygiene', state.hygiene) * nightFactor);
 
   if (!state.gift && Math.random() < hours * GIFT_CHANCE_PER_HOUR) state.gift = true;
 
@@ -2067,17 +2076,44 @@ window.addEventListener('DOMContentLoaded', () => {
   for (const type of ['pointerdown', 'click']) window.addEventListener(type, block, true);
 });
 
+/* Cuánto falta para poder volver a bañarla (ms reales; 0 = ya se puede).
+   Un reloj que vuelve atrás deja bañar, igual que la ruleta. */
+function cleanWaitMs(){
+  const t = state.lastClean || 0, now = Date.now();
+  return now < t ? 0 : Math.max(0, t + CLEAN_COOLDOWN_MS - now);
+}
+function fmtWait(ms){
+  const s = Math.ceil(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/* Limpiar: un baño, +CLEAN_HYGIENE cada CLEAN_COOLDOWN_MS. No recoge la
+   caca: eso es tocándola (cleanPoop). */
 const btnClean = () => {
+  const espera = cleanWaitMs();
+  if (espera > 0){ say(`Recién se bañó: otra vez en ${fmtWait(espera)}`); return; }
   if (!tryWake()) return;
   catchUp();
-  if (state.poop) medalAdd('cacas');   // logros.js
-  state.hygiene = clamp(state.hygiene + 35);
-  state.poop = false;
+  state.hygiene = clamp(state.hygiene + CLEAN_HYGIENE);
+  state.lastClean = Date.now();
   floatFx('🧼');
-  say(state.stage === 'egg' ? 'Huevo brillante' : '¡Ya quedó limpio!');
+  say(state.stage === 'egg' ? 'Huevo brillante'
+    : state.poop ? '¡Limpia! Pero queda la caca: tócala para recogerla' : '¡Ya quedó limpio!');
   if (state.stage !== 'egg') triggerPetAction('clean');
   saveState(); render();
 };
+
+/* Recoger la caca: solo tocándola. +POOP_CLEAN_HYGIENE. */
+function cleanPoop(){
+  if (!state.poop) return;
+  catchUp();
+  medalAdd('cacas');   // logros.js
+  state.poop = false;
+  state.hygiene = clamp(state.hygiene + POOP_CLEAN_HYGIENE);
+  floatFx('🧹');
+  say('¡Caca recogida!');
+  saveState(); render();
+}
 
 /* Comida de premio, no la de arranque: la gracia del regalo es que sea mejor
    que lo que ya se puede comprar barato. */
@@ -2290,13 +2326,16 @@ function updateDock(){
   const sleepy = !state.sleeping && state.energy < SLEEPY_THRESHOLD;
   const want = {
     btnFeed:  { need: state.hunger < 30 || !!state.sick, badge: state.sick ? '💊' : '' },
-    btnClean: { need: !!state.poop, badge: state.poop ? '💩' : '' },
+    btnClean: { need: state.hygiene < HEALTH_RISK_AT && cleanWaitMs() === 0, badge: '', wait: cleanWaitMs() },
     btnSleep: { need: sleepy, badge: sleepy ? 'zZ' : '', soft: !isExhausted(), asleep: !!state.sleeping },
     /* La ruleta vive dentro de Juegos: el giro gratis se avisa en Jugar. */
     btnPlay:  { need: false, badge: typeof wheelReady === 'function' && wheelReady() ? '🎡' : '', soft: true },
     /* La vacuna se compra (y se pone) en la tienda. */
     btnShop:  vaccineDue() ? { need: false, badge: VACCINE_EMOJI, soft: state.health >= SICK_LOW_HEALTH_AT } : { need: false, badge: '' },
   };
+  /* La espera de Limpiar va en su etiqueta (minutos:segundos), así la
+     llave cambia una vez por segundo nada más. */
+  want.btnClean.wait = want.btnClean.wait ? fmtWait(want.btnClean.wait) : '';
   const key = JSON.stringify(want);
   if (updateDock._key === key) return;
   updateDock._key = key;
@@ -2311,6 +2350,9 @@ function updateDock(){
   sl.title = want.btnSleep.asleep ? 'Despertar' : 'Dormir';
   document.getElementById('sleepIcon').textContent = want.btnSleep.asleep ? '☀️' : '🌙';
   document.getElementById('sleepLabel').textContent = want.btnSleep.asleep ? 'Despertar' : 'Dormir';
+  const cl = document.getElementById('btnClean');
+  cl.classList.toggle('cooling', !!want.btnClean.wait);
+  document.getElementById('cleanLabel').textContent = want.btnClean.wait || 'Limpiar';
 }
 
 /* ===================== Ficha de cada reloj =====================
@@ -2357,7 +2399,7 @@ function statRateNow(stat){
     if (state.sleeping) return ENERGY_RECOVER_PER_HOUR * (hasFurniAnywhere('cama') ? FURNI_BED_ENERGY_MULT : 1) * GAME_H;
     return -decayRate('energy', v) * statFactors('energy') * GAME_H;
   }
-  if (stat === 'hygiene') return state.poop ? -decayRate('hygiene', v) * statFactors('hygiene') * GAME_H : 0;
+  if (stat === 'hygiene') return -decayRate('hygiene', v) * statFactors('hygiene') * GAME_H;
   if (stat === 'health'){
     const night = isNightMode() ? NIGHT_DECAY_FACTOR : 1;
     let d = 0;
@@ -2382,7 +2424,6 @@ function statEta(stat, target){
     const r = statRateNow('health');
     return r < 0 && state.health > target ? (state.health - target) / -r : Infinity;
   }
-  if (stat === 'hygiene' && !state.poop) return Infinity;
   if (stat === 'energy' && state.sleeping) return Infinity;
   let v = state[stat], h = 0;
   if (v <= target) return 0;
@@ -2494,22 +2535,25 @@ function statInfoData(stat){
   }
 
   if (stat === 'hygiene'){
-    const base = DECAY_PER_HOUR.hygiene * GAME_H;
+    const base = DECAY_PER_HOUR.hygiene * GAME_H, conCaca = HYGIENE_POOP_DECAY * GAME_H;
+    const espera = cleanWaitMs();
     const poopH = 1 - Math.pow(1 - POOP_CHANCE_PER_HOUR, GAME_H);
     const poopMed = Math.log(2) / -Math.log(1 - POOP_CHANCE_PER_HOUR) / GAME_H;
     const seguro = upgradeState('autoClean');
     return {
-      big: nf(state.hygiene, 1), unit: '/ 100', sub: state.poop ? 'Hay caca: se está ensuciando' : 'No baja sola: solo con caca',
+      big: nf(state.hygiene, 1), unit: '/ 100', sub: state.poop ? 'Hay caca: se está ensuciando rápido' : 'Se ensucia de a poco',
       down: [
-        { e: '💩', t: 'Hay caca sin limpiar', d: `Solo mientras esté: de limpia a sucia en ~${fmtHours(100 / base)}`, v: `−${nf(base)}/h`, down: true, fx: true, on: !!state.poop },
+        { e: '⏳', t: 'Se ensucia sola', d: `Siempre, sin caca: de limpia a sucia en ~${fmtHours(100 / base)}`, v: `−${nf(base)}/h`, down: true, fx: true, on: !state.poop },
+        { e: '💩', t: 'Hay caca sin recoger', d: `En vez de lo de arriba: de limpia a sucia en ~${fmtHours(100 / conCaca)}`, v: `−${nf(conCaca)}/h`, down: true, fx: true, on: !!state.poop },
         { e: '🎲', t: 'Puede hacer caca', d: `La primera sale en ~${fmtHours(poopMed)} (mediana)`, v: `${nf(poopH * 100)}%/h`, fx: true, on: !state.poop },
         nightRow, distressRow(DISTRESS_AT.hygiene),
         { e: '🎮', t: 'Algunos minijuegos', d: 'Atrapa estrellas −5, Carrera en dupla −4, Espejo −3', v: 'hasta −5', down: true },
       ],
       up: [
-        { e: '🧹', t: 'Limpiar', d: 'Y saca la caca', v: '+35', up: true, on: !!state.poop },
-        { e: '🛡️', fx: true, t: 'Seguro de limpieza', d: seguro.owned ? (seguro.armed ? 'Activado: limpia sola la próxima caca' : 'Comprado, pero desactivado (Tienda → Mejoras)') : 'Mejora de la tienda: limpia sola una caca', v: '+35', up: true, on: !!(seguro.owned && seguro.armed) },
-        ...(typeof ROBOT_CLEAN_EVERY_MS !== 'undefined' ? [{ e: '🤖', fx: true, t: 'Robot aspiradora', d: `Aspira una caca cada ${ROBOT_CLEAN_EVERY_MS / 3600000} h (objeto mágico)`, v: '+35', up: true, on: hasFurniAnywhere('robot') }] : []),
+        { e: '🧼', t: 'Limpiar (bañarla)', d: espera ? `Otra vez en ${fmtWait(espera)} · una vez cada ${CLEAN_COOLDOWN_MS / 60000} min` : `Una vez cada ${CLEAN_COOLDOWN_MS / 60000} min · no recoge la caca`, v: `+${CLEAN_HYGIENE}`, up: true, on: !espera && state.hygiene < 100 - CLEAN_HYGIENE / 2 },
+        { e: '💩', t: 'Recoger la caca', d: 'Tocándola en la pantalla', v: `+${POOP_CLEAN_HYGIENE}`, up: true, on: !!state.poop },
+        { e: '🛡️', fx: true, t: 'Seguro de limpieza', d: seguro.owned ? (seguro.armed ? 'Activado: recoge sola la próxima caca' : 'Comprado, pero desactivado (Tienda → Mejoras)') : 'Mejora de la tienda: recoge sola una caca', v: `+${POOP_CLEAN_HYGIENE}`, up: true, on: !!(seguro.owned && seguro.armed) },
+        ...(typeof ROBOT_CLEAN_EVERY_MS !== 'undefined' ? [{ e: '🤖', fx: true, t: 'Robot aspiradora', d: `Aspira una caca cada ${ROBOT_CLEAN_EVERY_MS / 3600000} h (objeto mágico)`, v: `+${POOP_CLEAN_HYGIENE}`, up: true, on: hasFurniAnywhere('robot') }] : []),
         ...(typeof NUBE_ART !== 'undefined' ? [{ e: '🌧️', fx: true, t: 'Lluvia de la nubecita', d: 'Si queda debajo, una vez por lluvia (objeto mágico)', v: '+4', up: true, on: hasFurniAnywhere('nube') }] : []),
       ],
       marks: [riskMark, sadMark, distMark(DISTRESS_AT.hygiene)],
@@ -3542,21 +3586,17 @@ function wireButtons(){
   document.getElementById('btnDebug').addEventListener('click', requireAlive(toggleDebugPanel));
   document.getElementById('btnCloseDebugSide').addEventListener('click', closeDebugPanel);
   document.getElementById('petCanvas').addEventListener('click', requireAlive(() => {
-    if (state.poop) { btnClean(); return; } // tocar la caca limpia, no mima
     btnPet();
   }));
-  /* stopPropagation: si no, el click burbujea hasta el listener de #screen de
-     más abajo, que limpia la caca si hay una — tocar el regalo no tiene por
-     qué limpiar caca de arriba. */
   document.getElementById('dayNight').addEventListener('click', (e) => {
-    e.stopPropagation();   // que no limpie caca de pasada (listener de #screen)
+    e.stopPropagation();   // que no siga al piso (muebles, mimo)
     say(isNightMode()
       ? 'Es de noche (00:00 a 06:00): todo baja a la mitad y duerme más seguido'
       : `Es de día. De ${String(NIGHT_START_HOUR).padStart(2, '0')}:00 a ${String(NIGHT_END_HOUR).padStart(2, '0')}:00 es de noche`, 2800);
   });
   /* Cada reloj abre su ficha (ver openStatInfo). */
   document.querySelectorAll('#stats .stat').forEach(el => el.addEventListener('click', (e) => {
-    e.stopPropagation();   // que no limpie caca de pasada (listener de #screen)
+    e.stopPropagation();   // que no siga al piso (muebles, mimo)
     if (gameOver || activeMinigame) return;
     openStatInfo(el.dataset.stat);
   }));
@@ -3578,10 +3618,13 @@ function wireButtons(){
   }));
   document.getElementById('btnSettings').addEventListener('click', () => openSettings());
 
-  document.getElementById('screen').addEventListener('click', (e) => {
-    if (arranging || e.target.closest('.overlay') || e.target.closest('#gameCanvas')) return;
-    if (state.poop) { btnClean(); return; }
-  });
+  /* La caca se recoge solo tocándola a ella (antes cualquier toque en la
+     pantalla la limpiaba). */
+  document.getElementById('poopFx').addEventListener('click', requireAlive((e) => {
+    e.stopPropagation();
+    if (arranging) return;
+    cleanPoop();
+  }));
 }
 
 /* Configuración (⚙️ arriba, al lado del modo prueba). Por ahora solo

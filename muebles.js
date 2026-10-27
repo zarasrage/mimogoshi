@@ -733,7 +733,7 @@ if (typeof window !== 'undefined'){
     floor.addEventListener('click', e => {
       const rt = furniTapTarget(e);
       if (!rt) return;
-      e.stopPropagation();   // ni mimo ni limpiar la caca de pasada
+      e.stopPropagation();   // que no sea además un mimo
       commandFurniVisit(rt);
     }, true);
     /* Con mouse, la manito avisa que el mueble se puede tocar. */
