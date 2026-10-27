@@ -14,7 +14,7 @@ en ocho scripts clásicos que comparten el ámbito global:
 - `premios.js`: la ruleta y el gacha.
 - `muebles.js`: los muebles (catálogo, arte, guiones), las habitaciones y el
   **motor de actores** que también usa el acompañante.
-- `objetos.js`: los 20 objetos mágicos (ver "Objetos mágicos"), que son
+- `objetos.js`: los 22 objetos mágicos (ver "Objetos mágicos"), que son
   muebles con ganchos propios, y sus capas de efectos.
 - `duo.js`: el acompañante (`buddy`) y lo que hacen los dos juntos.
 - `duo-juegos.js`: los seis juegos de a dos.
@@ -567,7 +567,10 @@ hora. Se sube de dos formas distintas a propósito:
   cualquier toque en la pantalla (un listener en `#screen`) o en la
   mascota la limpiaba; ese listener se sacó y tocar a la mascota es
   siempre un mimo. El seguro de limpieza y el robot aspiradora la recogen
-  con el mismo +10.
+  con el mismo +10. **Con la pala en la pieza** (objeto mágico, ver
+  "Pala y compostera"), tocar la caca manda a la mascota a recogerla con
+  la pala (`palaTryScoop()`) y la caca queda guardada en el balde; dormida,
+  de huevo o con el balde lleno se recoge a mano como siempre.
 El tiempo hasta la muerte por descuido de arriba no cambia: el hambre cruza
 30 antes que la higiene, aun con caca, y el riesgo para la salud cuenta una
 sola vez.
@@ -1203,7 +1206,7 @@ abajo y en vez de tambalearse parece flotar.
 
 #### Objetos mágicos (`objetos.js`)
 
-Veinte objetos (`MAGIC_ITEMS`) que se compran, se ponen y se acomodan como
+Veintidós objetos (`MAGIC_ITEMS`) que se compran, se ponen y se acomodan como
 cualquier mueble (`kind:'furni'`, mismo `FURNI_MAX`, mismos guiones `visits`
 y `duos`, mismo motor), pero que hacen cosas que un mueble no hacía. Van
 marcados `wow:true` y salen en su propia sección de Estilo, "Objetos
@@ -1252,7 +1255,7 @@ accesorio se esconde mientras va dado vuelta.
 
 **Lo que guardan** va en `state.objData[id]` (`objData()`), en el save.
 
-Los 20:
+Los 22 (los dos últimos, pala y compostera, van más abajo en su propia sección):
 - **Puntero láser**: modo piso de 25 s, el punto rojo va donde se toca y
   la mascota lo persigue y se le tira encima. Sola, el punto anda sin rumbo.
 - **Jetpack**: vuela con inercia (un resorte hacia donde se toca, 20 s de
@@ -1315,6 +1318,39 @@ Los 20:
 - **Espejo mágico**: el reflejo sale del espejo (`CLONE`, un tercer
   personaje que solo se dibuja, teñido con `filter`) y la imita reflejado y
   con un poco de retraso; al final vuelve a entrar.
+
+- **Pala y balde** y **Compostera**: ver "Pala y compostera" abajo.
+
+**Pala y compostera** (`PALA_ART`, `COMPOST_ART`). La pala se para en un
+balde. Con ella en la pieza, tocar la caca (o la pala) es una **tarea**
+(`startChore()`, `kind:'chore'`: como las rutinas de comer y limpiarse, no
+la corta estar triste o enferma; dormida no va): la mascota toma la pala,
+camina hasta la caca, la palea (+10 de higiene, lo mismo que a mano, y
+cuenta para la medalla) y la echa al balde (`objData('pala').caca`, hasta
+`PALA_MAX` = 5; se ve el montón asomando y, desde 3, moscas). Si se corta
+con la caca en la pala, igual va al balde (`cleanup`). Tocar la compostera
+(o la pala, con caca en el balde) la manda a llevar el balde a la
+compostera y vaciarlo ahí (`palaEmptySteps()`); la pala tiene que estar en
+la misma habitación. Cada caca se vuelve **un saco de fertilizante** en
+`COMPOST_MS` (4 h reales, también con la app cerrada: `compostData()` lo
+cuenta con la hora; hasta `COMPOST_MAX` = 8 compostándose, con vapor y el
+montón a la vista); los sacos listos esperan al lado del cajón (hasta
+`FERT_READY_MAX` = 6, se ven dos) y al tocar la compostera la mascota los
+saca y pasan a la **mochila** (`state.bag.fertilizante`, `bagAdd()` /
+`bagCount()` en `app.js`: cosas juntadas que no son comida ni muebles,
+pensada para un inventario). El fertilizante se usa tocando el **árbol
+frutal** sin fruta (sale una al tiro) o el **frijol mágico** ya regado
+(crece una etapa sin esperar), con `fertilizeSteps()`; si no hay, esos dos
+dicen cuánto falta como siempre. Las piezas se llevan en las manos con
+`pose` (`rt.carry = {what: 'shovel'|'bucket', act, tilt, lift}`): todas
+giran en el mismo pivote (`PALA_PIVOT`) y `palaPoseAt()` pone el mango (o
+el balde) en la mano (`palaHand()`, baja: el cuerpo de casi todas las
+especies llena la mitad de abajo de su cuadro), subiendo lo que haga falta
+para que la punta no pase el piso. La pala es chica a propósito: una de su
+alto se veía como un arma. Probado: recoger, cortar a mitad, vaciar,
+cosechar, fertilizar, y las visitas (cavar en la pieza; oler la
+compostera y darle asco) solas y de a dos, sin errores y sin dejar nada
+en las manos.
 
 Los efectos de verdad son chicos a propósito, igual que los de los muebles:
 la fruta es poca comida, el robot limpia una caca al día y el frijol paga

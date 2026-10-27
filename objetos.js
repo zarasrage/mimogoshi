@@ -1,5 +1,5 @@
 /* ===================== Objetos mágicos =====================
-   Veinte objetos que se ponen como cualquier mueble (FURNI_ART, con sus
+   Veintidós objetos que se ponen como cualquier mueble (FURNI_ART, con sus
    partes, guiones `visits`/`duos` y el mismo motor de muebles.js), pero que
    hacen cosas que un mueble no hacía:
    - se manejan directo: el láser y el jetpack convierten los toques en el
@@ -41,6 +41,8 @@ const MAGIC_ITEMS = [
   { id:'gelatina',   name:'Gelatina gigante', use:'rebota y se hunde',        price:  75 },
   { id:'patineta',   name:'Patineta',         use:'hace trucos',              price:  60 },
   { id:'espejo',     name:'Espejo mágico',    use:'su reflejo cobra vida',    price: 120 },
+  { id:'pala',       name:'Pala y balde',     use:'recoge y guarda la caca',  price:  40 },
+  { id:'compost',    name:'Compostera',       use:'caca → fertilizante',      price:  70 },
 ];
 STYLE_ITEMS.push(...MAGIC_ITEMS.map(it => ({ ...it, kind: 'furni', wow: true })));
 
@@ -1291,6 +1293,16 @@ const ARBOL_ART = { w: 28, h: 34,
   tap: rt => {
     const d = treeFruit();
     if (d.fruit <= 0){
+      /* Con fertilizante de la compostera, da una fruta al tiro. */
+      if (bagCount('fertilizante') > 0 && !(walker.activity && walker.activity.pile)){
+        magicGo(rt, fertilizeSteps(rt, r => {
+          const dd = treeFruit();
+          dd.fruit = Math.min(3, dd.fruit + 1);
+          r.shakeAt = performance.now();
+          say('¡Salió una fruta! Toca el árbol para cosecharla 🍎', 2800);
+        }));
+        return true;
+      }
       say(`🍎 La próxima fruta sale en ${magicDur(FRUIT_EVERY_MS - (Date.now() - d.since))}`, 2600);
       return true;
     }
@@ -1423,7 +1435,21 @@ const FRIJOL_ART = { w: 22, h: 64,
       return true;
     }
     const wait = BEAN_WATER_EVERY_MS - (Date.now() - (d.lastWater || 0));
-    if (wait > 0){ say(`🌱 Ya la regó: crece de nuevo en ${magicDur(wait)}`, 2600); return true; }
+    if (wait > 0){
+      /* Con fertilizante de la compostera, crece una etapa sin esperar el riego. */
+      if (bagCount('fertilizante') > 0){
+        magicGo(rt, fertilizeSteps(rt, r => {
+          const dd = beanData();
+          dd.stage = Math.min(BEAN_TOP, dd.stage + 1);
+          r.growAt = performance.now();
+          petFx('🌱', walker);
+          if (dd.stage >= BEAN_TOP) say('¡Llegó hasta las nubes! Tócala para que suba ☁️', 3000);
+        }));
+        return true;
+      }
+      say(`🌱 Ya la regó: crece de nuevo en ${magicDur(wait)}`, 2600);
+      return true;
+    }
     magicGo(rt, f => [
       { go: f.x(-9) },
       { anim: 'clean', ms: 1700, dir: 1, fx: ['💧'], fxEvery: 500, start: r => {
@@ -2411,6 +2437,410 @@ const ESPEJO_ART = { w: 18, h: 30,
     }),
   ] };
 
+/* ===================== 21. Pala y balde =====================
+   Una pala parada en un balde. Con la pala en la pieza, tocar la caca (o
+   la pala) manda a la mascota a buscarla, ir hasta la caca, recogerla y
+   echarla al balde: la misma higiene que recogerla a mano (+10), pero la
+   caca no se pierde: queda guardada en el balde (hasta PALA_MAX, se ve el
+   montón asomando y con moscas cuando está harto lleno). El balde se vacía
+   en la compostera (abajo). Recoger y vaciar son tareas ('chore'): no se
+   cortan por estar triste o enferma, solo dormida no va.
+
+   Se lleva en las manos moviendo las piezas con `pose`: todas giran en el
+   mismo pivote (abajo al centro del balde) y la cuenta pone el mango justo
+   en la mano del personaje (palaHand). */
+const PALA_MAX = 5;
+const PALA_PIVOT = [7, 23];
+
+function palaData(){
+  const d = objData('pala');
+  if (typeof d.caca !== 'number') d.caca = 0;
+  return d;
+}
+/* Dónde está la caca (fracción del piso): la del DOM, que es la que se ve. */
+function poopX(){
+  const el = document.getElementById('poopFx'), fl = document.getElementById('creatureFloor');
+  if (el && fl && !el.classList.contains('hidden')){
+    const a = el.getBoundingClientRect(), b = fl.getBoundingClientRect();
+    if (b.width) return clampX((a.left + a.width / 2 - b.left) / b.width);
+  }
+  return clampX(ROBOT_POOP_X + 12 / floorWidth());
+}
+/* La mano del personaje, px CSS del piso (y hacia arriba). Baja: el
+   cuerpo de casi todas las especies llena la mitad de abajo de su cuadro. */
+function palaHand(act){
+  const h = actorCssH(act);
+  return { x: act.x * floorWidth() + act.dir * h * 0.3, y: act.y + h * 0.22 };
+}
+const SHOVEL_GRIP = [10, 10], SHOVEL_TIP = [10, 21];
+/* Pose de una pieza girando en PALA_PIVOT, con el punto (gx, gy) del arte
+   puesto en (hx, hy) del piso. */
+function palaPoseAt(rt, gx, gy, hx, hy, r){
+  const k = furniK(), dx = (gx - PALA_PIVOT[0]) * k, dy = (gy - PALA_PIVOT[1]) * k;
+  const c = Math.cos(r), s = Math.sin(r);
+  const pivotUp = (FURNI_ART.pala.h - PALA_PIVOT[1]) * k;
+  return { x: hx - rt.x * floorWidth() - (dx * c - dy * s), y: hy - pivotUp + (dx * s + dy * c), r };
+}
+/* Las piezas del balde (balde y montón): quietas, o en las manos. */
+function bucketPose(rt){
+  const c = rt.carry;
+  if (!c || c.what !== 'bucket') return null;
+  const hand = palaHand(c.act), k = furniK();
+  return palaPoseAt(rt, 7, 16, hand.x, c.lift ?? hand.y, c.act.dir * (c.tilt || 0));
+}
+/* La pala: con el balde, o sola en la mano (agarrada del mango). */
+function shovelPose(rt){
+  const c = rt.carry;
+  if (!c) return null;
+  if (c.what === 'bucket') return bucketPose(rt);
+  /* Cruzada, con la hoja adelante y abajo; `tilt` la baja más (palear).
+     La mano sube lo que haga falta para que la punta no pase el piso. */
+  const hand = palaHand(c.act), r = 1.15 - (c.tilt || 0);
+  const len = (SHOVEL_TIP[1] - SHOVEL_GRIP[1]) * furniK();
+  const y = Math.max(hand.y, c.act.y + len * Math.cos(r) + 1);
+  return palaPoseAt(rt, SHOVEL_GRIP[0], SHOVEL_GRIP[1], hand.x, y, -c.act.dir * r);
+}
+/* Dónde queda la punta de la pala (px CSS del piso), para las partículas. */
+function shovelTip(rt){
+  const c = rt.carry, hand = palaHand(c.act), r = 1.15 - (c.tilt || 0);
+  const len = (SHOVEL_TIP[1] - SHOVEL_GRIP[1]) * furniK();
+  return { x: hand.x + c.act.dir * len * Math.sin(r), y: Math.max(1, hand.y - len * Math.cos(r)) };
+}
+
+/* Pararse al lado de algo (fracción del piso), del lado donde ya está, a
+   `gap` px CSS más medio cuerpo. */
+const besideX = (targetX, gap) => (a, act) => {
+  const side = act.x <= targetX() ? -1 : 1;
+  return clampX(targetX() + side * (gap + actorCssH(act) * 0.34) / floorWidth());
+};
+const faceX = targetX => ({ anim: 'idle', ms: 120, start: (r, act) => { act.dir = targetX() > act.x ? 1 : -1; } });
+
+function palaScoopSteps(rt){
+  const k = furniK(), at = () => rt.x;
+  return [
+    { go: besideX(at, 5 * k) }, faceX(at),
+    { anim: 'pet', ms: 380, end: (r, act) => { rt.carry = { what: 'shovel', act, tilt: 0 }; } },
+    /* Se para a un largo de pala de la caca: la punta queda encima. */
+    { go: (a, act) => { const px = poopX(); return clampX(px + (act.x <= px ? -1 : 1) * actorCssH(act) * 0.6 / floorWidth()); } }, faceX(poopX),
+    { anim: 'clean', ms: 1300, fx: ['💪'], track: (r, el, act) => {
+      rt.carry.tilt = 0.55 * Math.sin(Math.min(1, el / 1300) * Math.PI);
+      if (Math.random() < 0.25){ const t = shovelTip(rt); fxSpawn({ x: t.x, y: 2, vx: rnd(-25, 25), vy: rnd(20, 50), ay: -150, life: 500, shape: 'dust', colors: ['#7a4a26', '#a06a3a'], layer: 'front', floor: 'die' }); }
+      return null;
+    }, end: () => {
+      if (!state.poop) return;
+      if (typeof catchUp === 'function') catchUp();
+      state.poop = false;
+      state.hygiene = clamp(state.hygiene + POOP_CLEAN_HYGIENE);
+      if (typeof medalAdd === 'function') medalAdd('cacas');
+      rt.loaded = true;
+      const t = shovelTip(rt);
+      fxBurst(t.x, t.y + 6, 7, { colors: ['#ffffff', MP.mint], shape: 'plus', speed: 45, life: 550, ay: 0 });
+      saveState(); render();
+    } },
+    { go: besideX(at, 5 * k) }, faceX(at),
+    { anim: 'pet', ms: 450, end: (r, act) => {
+      if (rt.loaded){
+        const d = palaData();
+        d.caca = Math.min(PALA_MAX, d.caca + 1);
+        rt.loaded = false;
+        saveState();
+        if (d.caca >= PALA_MAX) say('¡El balde está lleno! Vacíalo en la compostera ♻️', 2800);
+      }
+      rt.carry = null;
+    } },
+    S.happy(700, { fx: ['✨', '😌'] }),
+  ];
+}
+
+/* Llevar el balde hasta la compostera y vaciarlo ahí. */
+function palaEmptySteps(prt, crt){
+  const k = furniK(), at = () => prt.x, bin = () => compostBinX(crt);
+  let lift0 = 0, top = 0;
+  return [
+    { go: besideX(at, 5 * k) }, faceX(at),
+    { anim: 'pet', ms: 380, end: (r, act) => { prt.carry = { what: 'bucket', act, tilt: 0 }; } },
+    { go: (a, act) => clampX(bin() + (act.x <= bin() ? -1 : 1) * actorCssH(act) * 0.34 / floorWidth()) }, faceX(bin),
+    { anim: 'happy', ms: 450, start: (r, act) => { lift0 = palaHand(act).y; top = 15 * furniK(); }, track: (r, el) => {
+      prt.carry.lift = lift0 + (top - lift0) * Math.min(1, el / 450); return null; } },
+    { anim: 'clean', ms: 1300, fx: ['💩', '♻️'], fxEvery: 650, track: (r, el, act) => {
+      prt.carry.tilt = Math.min(1.7, el / 380);
+      if (el > 350 && Math.random() < 0.55){
+        const hand = palaHand(act);
+        fxSpawn({ x: hand.x + act.dir * rnd(2, 8) * furniK(), y: top + 4 * furniK(), vx: act.dir * rnd(0, 15), vy: rnd(-10, 10), ay: -260, life: 900,
+          shape: Math.random() < 0.5 ? 'big' : 'dust', colors: ['#6a3e1f', '#8a5a33', '#a06a3a'], layer: 'front', floor: 'die' });
+      }
+      return null;
+    }, end: () => {
+      const d = palaData(), c = compostData();
+      if (crt.removed) return;
+      const n = Math.min(d.caca, COMPOST_MAX - c.items.length), now = Date.now();
+      for (let i = 0; i < n; i++) c.items.push(now);
+      d.caca -= n;
+      crt.puffAt = performance.now();
+      saveState();
+    } },
+    { anim: 'idle', ms: 350, track: () => { prt.carry.tilt = 0; prt.carry.lift = null; return null; } },
+    { go: besideX(at, 5 * k) }, faceX(at),
+    { anim: 'pet', ms: 380, end: () => { prt.carry = null; } },
+  ];
+}
+
+const PALA_ART = { w: 14, h: 24,
+  init: rt => { rt.carry = null; rt.loaded = false; rt.flyAt = 0; },
+  tick: (rt, now) => {
+    rt.caca = palaData().caca;
+    /* Con el balde harto lleno, unas moscas dando vueltas. */
+    if (rt.caca >= 3 && !rt.carry && now - rt.flyAt > 900){
+      rt.flyAt = now;
+      const k = furniK();
+      fxSpawn({ x: rtPx(rt, rnd(-3, 3)), y: 13 * k, vx: rnd(-6, 6), vy: rnd(4, 9), wob: 9, wobF: rnd(5, 8), life: 1600,
+        color: '#2a2433', layer: 'front' });
+    }
+  },
+  cleanup: rt => {
+    /* Si se cortó con la caca en la pala, igual va al balde: no se pierde. */
+    if (rt.loaded){ const d = palaData(); d.caca = Math.min(PALA_MAX, d.caca + 1); saveState(); }
+    rt.loaded = false; rt.carry = null;
+  },
+  tap: rt => {
+    if (walker.activity && walker.activity.kind === 'chore'){ petFx('❗', walker); return true; }
+    const d = palaData();
+    if (state.poop){ if (!palaTryScoop() && state.sleeping) say('Shh… está durmiendo 💤'); return true; }
+    const crt = magicRt('compost');
+    if (d.caca > 0 && crt){ compostTap(crt); return true; }
+    say(d.caca ? `💩 ${d.caca} de ${PALA_MAX} cacas en el balde: vacíalo en la compostera ♻️`
+      : '💩 Cuando haya caca, toca la caca o la pala y la recoge', 2800);
+    return true;
+  },
+  parts: [
+    /* Chica a propósito: al lado de la mascota, una pala de su alto se
+       veía como un arma. La hoja queda dentro del balde. */
+    { id: 'shovel', pivot: PALA_PIVOT, pose: rt => shovelPose(rt), draw: p => {
+      p.box(8, 5, 5, 3, FP.wood, FP.woodL);
+      p.r(9, 8, 3, 8, FP.O); p.r(10, 8, 1, 8, FP.woodL);
+      p.r(8, 15, 5, 1, FP.metalD);
+      p.box(7, 16, 7, 5, FP.metal, '#d9dee8'); p.r(8, 17, 1, 2, '#d9dee8');
+      p.r(9, 21, 3, 1, FP.O);
+    } },
+    { id: 'load', pivot: PALA_PIVOT, show: 'loaded', pose: rt => shovelPose(rt), draw: p => {
+      p.r(8, 15, 5, 2, '#7a4a26'); p.r(9, 14, 3, 1, '#7a4a26'); p.r(10, 14, 1, 1, '#a06a3a'); p.r(9, 13, 2, 1, FP.O);
+    } },
+    { id: 'bucket', pivot: PALA_PIVOT, pose: rt => bucketPose(rt), draw: p => {
+      p.r(0, 14, 14, 2, FP.O); p.r(1, 14, 12, 1, FP.redL);
+      for (let y = 16; y <= 22; y++){
+        const i = Math.floor((y - 16) / 4), x0 = 1 + i, x1 = 12 - i;
+        p.r(x0, y, x1 - x0 + 1, 1, FP.O); p.r(x0 + 1, y, x1 - x0 - 1, 1, y === 18 || y === 19 ? FP.redD : FP.red);
+      }
+      p.r(3, 16, 1, 2, FP.redL); p.r(2, 23, 10, 1, FP.O);
+    } },
+    ...[1, 2, 3, 4, 5].map(n => ({ id: 'pile' + n, pivot: PALA_PIVOT, show: rt => Math.min(PALA_MAX, rt.caca || 0) === n,
+      pose: rt => bucketPose(rt), draw: p => {
+        const B = '#7a4a26', L = '#a06a3a';
+        const rows = [[13, 3, 6], [13, 2, 10], [12, 4, 8], [12, 3, 10], [11, 5, 8], [11, 4, 9], [10, 5, 7], [9, 6, 7]];
+        const upTo = [0, 1, 3, 5, 6, 8][n];
+        for (let i = 0; i < upTo; i++){ const [y, a, b] = rows[i]; p.span(y, a, b, B); }
+        const topRow = rows[upTo - 1];
+        p.r(topRow[1] + 1, topRow[0], 1, 1, L);
+      } })),
+  ],
+  /* Sola: juega a cavar en otro lado y deja la pala de vuelta. */
+  visits: [
+    f => {
+      const rt = f.rt, k = f.k, at = () => rt.x;
+      let spot = 0.5;
+      return [
+        { go: besideX(at, 5 * k) }, faceX(at),
+        { anim: 'pet', ms: 380, end: (r, act) => { rt.carry = { what: 'shovel', act, tilt: 0 }; spot = clampX(rt.x + (rt.x < 0.5 ? 0.3 : -0.3)); } },
+        { go: () => spot },
+        { anim: 'clean', ms: 2600, fx: ['🕳️', '😆'], fxEvery: 900, track: (r, el, act) => {
+          rt.carry.tilt = 0.45 * Math.abs(Math.sin(el / 260));
+          if (Math.random() < 0.3){ const t = shovelTip(rt); fxSpawn({ x: t.x, y: 2, vx: -act.dir * rnd(10, 40), vy: rnd(30, 60), ay: -160, life: 600, shape: 'dust', colors: [FP.sandD, FP.brown, FP.brownL], layer: 'front', floor: 'die' }); }
+          return null;
+        } },
+        { anim: 'happy', ms: 700, fx: ['💎', '🐛', '🦴'], start: () => { if (rt.carry) rt.carry.tilt = 0; } },
+        { go: besideX(at, 5 * k) }, faceX(at),
+        { anim: 'pet', ms: 380, end: () => { rt.carry = null; } },
+        S.happy(600),
+      ];
+    },
+  ],
+  duos: [
+    f => {
+      const rt = f.rt, k = f.k, at = () => rt.x;
+      return {
+        a: [{ go: besideX(at, 5 * k) }, faceX(at),
+          { anim: 'pet', ms: 380, end: (r, act) => { rt.carry = { what: 'shovel', act, tilt: 0 }; } }, S.sync('dig'),
+          { anim: 'clean', ms: 3000, fx: ['🕳️'], fxEvery: 1000, track: (r, el, act) => {
+            rt.carry.tilt = 0.45 * Math.abs(Math.sin(el / 260));
+            if (Math.random() < 0.3){ const t = shovelTip(rt); fxSpawn({ x: t.x, y: 2, vx: -act.dir * rnd(10, 40), vy: rnd(30, 60), ay: -160, life: 600, shape: 'dust', colors: [FP.sandD, FP.brown], layer: 'front', floor: 'die' }); }
+            return null; } },
+          { anim: 'pet', ms: 380, end: () => { rt.carry = null; } }, S.sync('end'), S.happy(800, { dir: 'partner', fx: ['💎'] })],
+        b: [{ go: f.x(-30) }, S.sync('dig', { dir: 'partner' }), S.wait(3000, 'idle', { dir: 'partner', fx: ['👀', '😮'], fxEvery: 1200 }),
+          S.sync('end'), { anim: 'celebrate', ms: 900, fx: ['👏'] }],
+      };
+    },
+  ] };
+
+/* Lo llama tocar la caca (app.js). Con la pala en esta pieza y la mascota
+   despierta, ella va a recogerla; si no, false y se recoge a mano. */
+function palaTryScoop(){
+  const rt = magicRt('pala');
+  if (!rt || !state.poop || displayStage() === 'egg' || state.sleeping) return false;
+  if (walker.activity && walker.activity.kind === 'chore'){ petFx('❗', walker); return true; }
+  if (walker.activity && (walker.activity.kind === 'eat' || walker.activity.kind === 'vaccine')) return false;
+  if (palaData().caca >= PALA_MAX){
+    say('El balde de la pala está lleno: vacíalo en la compostera ♻️', 2800);
+    return false;
+  }
+  return startChore(rt, palaScoopSteps(rt));
+}
+
+/* Una tarea de la mascota con un objeto (recoger, vaciar, cosechar): corta
+   lo que estuviera haciendo, como tocar un mueble, pero no la frena estar
+   triste o enferma. */
+function startChore(rt, steps){
+  if (state.sleeping){ say('Shh… está durmiendo 💤'); return false; }
+  if (walker.activity && (walker.activity.kind === 'eat' || walker.activity.kind === 'vaccine')){ say('Primero que termine'); return false; }
+  petAction = null;
+  for (const act of allActors()) if (act.activity && act.activity.rt === rt) endFurniActivity(act);
+  if (walker.activity) endFurniActivity(walker);
+  if (walker.y > 1) steps.unshift({ hop: { x: walker.x, y: 0 }, ms: 300, h: 6 });
+  startActivity(walker, steps, { rt, kind: 'chore' });
+  petFx('❗', walker);
+  return true;
+}
+
+/* ===================== 22. Compostera =====================
+   Un cajón de tablas. Lo que se vacía del balde de la pala se composta: cada
+   caca se vuelve un saco de fertilizante en COMPOST_MS (tiempo real, también
+   con la app cerrada; se ve el montón y un vapor). Los sacos listos esperan
+   al lado del cajón (FERT_READY_MAX) hasta que se toca la compostera: la
+   mascota los saca y quedan en la mochila (state.bag.fertilizante). El
+   fertilizante hace crecer al árbol frutal (una fruta al tiro) y al frijol
+   mágico (una etapa sin esperar el riego). */
+const COMPOST_MS = 4 * 60 * 60 * 1000;
+const COMPOST_MAX = 8;
+const FERT_READY_MAX = 6;
+
+function compostData(){
+  const d = objData('compost');
+  if (!Array.isArray(d.items)) d.items = [];
+  if (typeof d.fert !== 'number') d.fert = 0;
+  const now = Date.now();
+  while (d.items.length && now - d.items[0] >= COMPOST_MS && d.fert < FERT_READY_MAX){ d.items.shift(); d.fert++; }
+  return d;
+}
+/* El centro del cajón (el arte trae los sacos a la derecha). */
+function compostBinX(rt){ return clampX(rt.x + (8.5 - FURNI_ART.compost.w / 2) * furniK() / floorWidth()); }
+
+function compostCollectSteps(crt){
+  const bin = () => compostBinX(crt);
+  return [
+    { go: besideX(bin, 6 * furniK()) }, faceX(bin),
+    { anim: 'pet', ms: 1300, fx: ['🌱'], track: (r, el, act) => {
+      if (Math.random() < 0.3) fxSpawn({ x: compostBinX(crt) * floorWidth() + rnd(-8, 8), y: 13 * furniK(), vx: rnd(-20, 20), vy: rnd(30, 60), ay: -150, life: 500,
+        shape: 'dust', colors: ['#5a3a22', MP.leaf], layer: 'front', floor: 'die' });
+      return null;
+    }, end: () => {
+      const c = compostData(), n = c.fert;
+      if (!n) return;
+      c.fert = 0;
+      bagAdd('fertilizante', n);
+      saveState();
+      if (typeof rewardSound === 'function') rewardSound();
+      const usos = [magicRt('arbol') || state.style.owned.arbol ? 'el árbol frutal' : null, magicRt('frijol') || state.style.owned.frijol ? 'el frijol mágico' : null].filter(Boolean);
+      showPopup({ icon: '🌱', title: '¡Fertilizante!', items: [{ icon: '🌱', text: 'Fertilizante', amount: `+${n}` }],
+        note: `Tienes ${bagCount('fertilizante')}. ${usos.length ? `Hace crecer ${usos.join(' y ')}: tócalo cuando esté esperando.` : 'Hace crecer al árbol frutal y al frijol mágico.'}` });
+    } },
+    { anim: 'celebrate', ms: 900, fx: ['✨'] },
+  ];
+}
+
+function compostTap(crt){
+  if (walker.activity && walker.activity.kind === 'chore'){ petFx('❗', walker); return; }
+  const c = compostData(), p = palaData(), prt = magicRt('pala');
+  const vaciar = p.caca > 0 && prt && c.items.length < COMPOST_MAX;
+  if (!vaciar && !c.fert){
+    const prox = c.items.length ? ` · el próximo saco en ${magicDur(COMPOST_MS - (Date.now() - c.items[0]))}` : '';
+    const saco = bagCount('fertilizante') ? ` · tienes ${bagCount('fertilizante')} de fertilizante` : '';
+    if (p.caca > 0 && !prt) say('♻️ Trae la pala a esta habitación para vaciar el balde aquí', 2800);
+    else if (p.caca > 0) say(`♻️ Está llena: espera que se haga fertilizante${prox}`, 2800);
+    else if (c.items.length) say(`♻️ Compostando ${c.items.length} caca${c.items.length > 1 ? 's' : ''}${prox}${saco}`, 2800);
+    else say(`♻️ Vacía aquí el balde de la pala: la caca se vuelve fertilizante${saco}`, 2800);
+    return;
+  }
+  startChore(vaciar ? prt : crt, [...(vaciar ? palaEmptySteps(prt, crt) : []), ...(c.fert ? compostCollectSteps(crt) : [])]);
+}
+
+const COMPOST_ART = { w: 24, h: 16,
+  init: rt => { rt.puffAt = -1e9; rt.steamAt = 0; },
+  tick: (rt, now) => {
+    const c = compostData();
+    rt.items = c.items.length; rt.fert = c.fert;
+    if (rt.items && now - rt.steamAt > 650){
+      rt.steamAt = now;
+      const k = furniK();
+      fxSpawn({ x: compostBinX(rt) * floorWidth() + rnd(-6, 6) * k, y: 15 * k, vx: rnd(-4, 4), vy: rnd(8, 14), wob: 4, wobF: 2,
+        life: 1800, color: 'rgba(230,230,240,.55)', layer: 'back' });
+    }
+  },
+  tap: rt => { compostTap(rt); return true; },
+  parts: [
+    { id: 'heap1', show: rt => (rt.items || 0) >= 1, pose: (rt, now) => ({ sy: now - rt.puffAt < 400 ? 1.15 : 1 }), pivot: [8, 6], draw: p => {
+      p.span(3, 3, 13, '#5a3a22'); p.r(5, 3, 1, 1, MP.leaf); p.r(10, 3, 1, 1, '#7a4a26');
+    } },
+    { id: 'heap2', show: rt => (rt.items || 0) >= 4, pose: (rt, now) => ({ sy: now - rt.puffAt < 400 ? 1.15 : 1 }), pivot: [8, 6], draw: p => {
+      p.span(2, 5, 11, '#5a3a22'); p.span(1, 7, 9, '#5a3a22'); p.r(8, 1, 1, 1, MP.leafL); p.r(6, 2, 1, 1, '#7a4a26');
+    } },
+    { id: 'bin', draw: p => {
+      p.box(0, 4, 17, 12, '#3a2618');
+      for (const y of [5, 8, 11]){ p.r(1, y, 15, 2, FP.wood); p.r(1, y, 15, 1, FP.woodL); }
+      p.r(1, 14, 15, 1, FP.woodD);
+      p.r(1, 4, 2, 11, FP.woodD); p.r(14, 4, 2, 11, FP.woodD);
+      p.r(0, 3, 3, 1, FP.O); p.r(14, 3, 3, 1, FP.O);
+      p.r(7, 8, 3, 2, MP.leaf); p.r(8, 8, 1, 1, MP.leafL); p.r(7, 10, 1, 1, MP.leafD);
+    } },
+    ...[0, 1].map(i => ({ id: 'sack' + i, show: rt => (rt.fert || 0) > i, draw: p => {
+      const y = i ? 3 : 9;
+      p.box(17, y + 1, 7, 6, '#d8c08a', '#efd9a0'); p.r(19, y, 3, 1, FP.O); p.r(20, y - 1, 1, 1, '#d8c08a');
+      p.r(19, y + 3, 3, 2, MP.leaf); p.r(20, y + 3, 1, 1, MP.leafL);
+    } })),
+  ],
+  visits: [
+    /* Va a oler: le da asco, se tapa y se ríe. */
+    f => [
+      { go: besideX(() => compostBinX(f.rt), 4 * f.k) }, faceX(() => compostBinX(f.rt)),
+      S.wait(1200, 'idle', { fx: ['👃'] }),
+      { anim: 'sad', ms: 1100, fx: ['🤢', '💨'] },
+      { bounce: 1, ms: 420, h: 10, fx: ['😝'] },
+      S.happy(1200, { fx: ['♻️', '🌱'], fxEvery: 600 }),
+    ],
+  ],
+  duos: [
+    f => {
+      const bin = () => compostBinX(f.rt);
+      return {
+        a: [{ go: besideX(bin, 4 * f.k) }, faceX(bin), S.sync('in'), S.wait(1000, 'idle', { fx: ['👃'] }), { anim: 'sad', ms: 1000, fx: ['🤢'] }, S.sync('end'), S.happy(900, { dir: 'partner', fx: ['😂'] })],
+        b: [{ go: f.x(-34) }, S.sync('in', { dir: 'partner' }), S.wait(2000, 'idle', { dir: 'partner', fx: ['👀'] }), S.sync('end'), { anim: 'celebrate', ms: 900, fx: ['😂'] }],
+      };
+    },
+  ] };
+
+/* Echarle fertilizante a una planta (árbol frutal, frijol): la mascota va,
+   lo esparce y después pasa `grow`. */
+function fertilizeSteps(rt, grow){
+  return f => [
+    { go: f.x(-9) },
+    { anim: 'clean', ms: 1500, dir: 1, fx: ['🌱'], start: r => {
+      for (let i = 0; i < 14; i++) setTimeout(() => { if (!r.removed) fxSpawn({ x: rtPx(r, rnd(-4, 4)), y: 14 * furniK(), vx: rnd(-12, 12), vy: -rnd(20, 50), life: 700,
+        shape: 'dust', colors: ['#5a3a22', '#7a4a26', MP.leaf], layer: 'front', floor: 'die' }); }, i * 90);
+    } },
+    { call: r => { if (bagCount('fertilizante') <= 0) return; bagAdd('fertilizante', -1); grow(r); saveState(); } },
+    { anim: 'celebrate', ms: 1000, dir: 1, fx: ['✨'] },
+    S.happy(600),
+  ];
+}
+
 Object.assign(FURNI_ART, {
   laser: LASER_ART, jetpack: JETPACK_ART, burbujas: BURBUJAS_ART, camara: CAMARA_ART, cristal: CRISTAL_ART,
 });
@@ -2418,3 +2848,4 @@ Object.assign(FURNI_ART, {
 Object.assign(FURNI_ART, { robot: ROBOT_ART, nube: NUBE_ART, arbol: ARBOL_ART, frijol: FRIJOL_ART });
 Object.assign(FURNI_ART, { fuegos: FUEGOS_ART, prisma: PRISMA_ART, planetario: PLANETARIO_ART, nieve: NIEVE_ART, lava: LAVA_ART, portal: PORTAL_ART });
 Object.assign(FURNI_ART, { musica: MUSICA_ART, canon: CANON_ART, gelatina: GELATINA_ART, patineta: PATINETA_ART, espejo: ESPEJO_ART });
+Object.assign(FURNI_ART, { pala: PALA_ART, compost: COMPOST_ART });

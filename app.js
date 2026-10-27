@@ -787,6 +787,7 @@ function freshState(name, species){
     wheel: { last: null, angle: 0 },   // ruleta (premios.js): último giro y dónde quedó la rueda
     gachaTickets: 0,     // fichas de la ruleta para el gacha
     wheelTickets: 0,     // tickets de ruleta: giros extra, aparte del gratis (premios.js)
+    bag: {},             // cosas juntadas que no son comida ni muebles: { fertilizante: n } (bagAdd)
   };
 }
 
@@ -907,6 +908,7 @@ function loadState(){
     if (!s.wheel || typeof s.wheel !== 'object') s.wheel = { last: null, angle: 0 };
     if (typeof s.gachaTickets !== 'number' || !isFinite(s.gachaTickets)) s.gachaTickets = 0;
     if (typeof s.wheelTickets !== 'number' || !isFinite(s.wheelTickets)) s.wheelTickets = 0;
+    if (!s.bag || typeof s.bag !== 'object') s.bag = {};   // de antes de la compostera
     // saves con 'grown' (antes de la escalera de tamaños) o con una etapa fantasma
     if (!ALL_STAGES.includes(s.stage)) s.stage = 'adult';
     return s;
@@ -2075,6 +2077,14 @@ window.addEventListener('DOMContentLoaded', () => {
   };
   for (const type of ['pointerdown', 'click']) window.addEventListener(type, block, true);
 });
+
+/* La mochila: cosas que se juntan y no son comida ni muebles (el
+   fertilizante de la compostera, objetos.js). */
+function bagCount(id){ return (state.bag && state.bag[id]) || 0; }
+function bagAdd(id, n){
+  if (!state.bag || typeof state.bag !== 'object') state.bag = {};
+  state.bag[id] = Math.max(0, bagCount(id) + n);
+}
 
 /* Cuánto falta para poder volver a bañarla (ms reales; 0 = ya se puede).
    Un reloj que vuelve atrás deja bañar, igual que la ruleta. */
@@ -3626,11 +3636,13 @@ function wireButtons(){
   }));
   document.getElementById('btnSettings').addEventListener('click', () => openSettings());
 
-  /* La caca se recoge solo tocándola a ella (antes cualquier toque en la
-     pantalla la limpiaba). */
+  /* La caca se recoge tocándola a ella (antes cualquier toque en la
+     pantalla la limpiaba). Con la pala en la pieza, la mascota va a
+     recogerla con la pala y la guarda en el balde (objetos.js). */
   document.getElementById('poopFx').addEventListener('click', requireAlive((e) => {
     e.stopPropagation();
     if (arranging) return;
+    if (typeof palaTryScoop === 'function' && palaTryScoop()) return;
     cleanPoop();
   }));
 }
