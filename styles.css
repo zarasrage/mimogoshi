@@ -2013,6 +2013,17 @@ body{
 }
 /* Siete comidas más la medicina: dos filas de cuatro (con cinco por fila
    quedaban dos filas desparejas y la segunda casi vacía). */
+.tray-tabs{display:flex; gap:5px; margin:6px 0 6px;}
+.tray-tabs button{
+  flex:1; border:0; border-radius:10px; padding:6px 4px; font:inherit; font-size:11.5px; font-weight:900;
+  background:#f1ecf5; color:#8a7a99; -webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation;
+}
+.tray-tabs button.active{background:#fff; color:#4a3b5c; box-shadow:0 0 0 2px #ff8a5c inset;}
+.tray-tabs i{font-style:normal; background:#ff8a5c; color:#fff; border-radius:8px; padding:0 5px; margin-left:3px; font-size:10px;}
+.tray-food.home{background:#fff6e0;}
+.tray-empty{grid-column:1 / -1; padding:16px 8px; text-align:center; font-size:12px; font-weight:700; color:#8a7a99;}
+.overlay-card .water-row.wet{background:rgba(90,170,255,.16); box-shadow:inset 0 0 0 1.5px rgba(90,170,255,.45);}
+.overlay-card .water-row.dry{background:rgba(255,150,80,.14); box-shadow:inset 0 0 0 1.5px rgba(255,150,80,.45);}
 .tray-foods{display:grid; grid-template-columns:repeat(4, 1fr); gap:5px;}
 .tray-food{
   position:relative;
@@ -2543,3 +2554,14 @@ body{
   color:#ffb3b3; background:rgba(255,93,108,.14);
 }
 .need-chip.ok{color:#8ff0b8; background:rgba(78,224,138,.14);}
+/* Medallas: la barra llena de un nivel por reclamar, y la vitrina (solo
+   íconos en rejilla: gris sin medalla, con su disco con medalla). */
+.mbar.done i{background:linear-gradient(90deg, #ffd25a, #fff0a8);}
+.overlay-card .menu-list.showcase{display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; justify-items:center; padding:6px 4px 10px;}
+.show-cell{border:none; background:none; padding:4px; border-radius:50%; cursor:pointer;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;}
+.show-cell .medal-disc{width:56px; height:56px; font-size:26px;}
+.show-cell.on{box-shadow:0 0 0 2px #ff8cc0;}
+.medal-disc.gray{filter:grayscale(1) brightness(.75); opacity:.5;}
+.show-cap{font-weight:700;}
+.show-cap b{font-size:13px;}

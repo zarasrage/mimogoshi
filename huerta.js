@@ -4,7 +4,8 @@
    (BAG_ITEMS):
    - la huerta: el fertilizante de la compostera (objetos.js) y las
      semillas (salen de los regalos y de cavar);
-   - la cosecha del huerto: se come o se vende;
+   - la cosecha del huerto y del árbol: no se come cruda, se cocina (o se
+     vende);
    - los tesoros que salen al cavar con la pala: piedras preciosas, un
      hueso, un amuleto... y, muy de vez en cuando, un fósil de Mimogoshi
      (algún día una máquina lo va a revivir; por ahora se guarda).
@@ -25,17 +26,20 @@ STYLE_ITEMS.push(
     boughtNote: 'Ábrela con la mochila del borde izquierdo de la pantalla.' },
   { id:'huerto', kind:'furni', wow: true, group:'huerta', name:'Huerto', use:'siembra y cosecha', price: 80 },
   { id:'cocina', kind:'furni', wow: true, group:'huerta', name:'Cocina', use:'pasteles y más', price: 90 },
+  { id:'regadera', kind:'furni', wow: true, group:'huerta', name:'Regadera', use:'riega el huerto', price: 25 },
+  { id:'palita', kind:'furni', wow: true, group:'huerta', name:'Pala de jardín', use:'cava tesoros', price: 45 },
 );
 
 /* ---------- catálogo ---------- */
 
-/* Lo que se planta. growH: horas reales hasta cosechar; yield: cuánto da;
-   food: lo que llena al comerlo (puntos de panza, como FOODS). */
+/* Lo que se planta. growH: horas REGADAS hasta cosechar (ver la regadera);
+   yield: cuánto da. Los vegetales y frutas no se comen crudos (pedido así):
+   se cocinan. El girasol es una flor: se regala. */
 const CROPS = {
-  zanahoria: { name: 'Zanahoria', emoji: '🥕', growH: 3,  yield: 2, sell: 2, food: { restore: 12, energy: 3 } },
-  tomate:    { name: 'Tomate',    emoji: '🍅', growH: 5,  yield: 3, sell: 2, food: { restore: 10, energy: 2 } },
-  frutilla:  { name: 'Frutilla',  emoji: '🍓', growH: 8,  yield: 4, sell: 3, food: { restore: 8, energy: 2, happy: 3 } },
-  zapallo:   { name: 'Zapallo',   emoji: '🎃', growH: 12, yield: 1, sell: 8, food: { restore: 45, energy: 6 } },
+  zanahoria: { name: 'Zanahoria', emoji: '🥕', growH: 3,  yield: 2, sell: 2 },
+  tomate:    { name: 'Tomate',    emoji: '🍅', growH: 5,  yield: 3, sell: 2 },
+  frutilla:  { name: 'Frutilla',  emoji: '🍓', growH: 8,  yield: 4, sell: 3 },
+  zapallo:   { name: 'Zapallo',   emoji: '🎃', growH: 12, yield: 1, sell: 8 },
   girasol:   { name: 'Girasol',   emoji: '🌻', growH: 6,  yield: 1, sell: 4, seeds: 2, happy: 10 },
 };
 const CROP_IDS = Object.keys(CROPS);
@@ -58,18 +62,21 @@ const BAG_ITEMS = [
   ...CROP_IDS.map(id => ({ id: 'semilla_' + id, group: 'huerta', seed: id, name: `Semillas de ${CROPS[id].name.toLowerCase()}`,
     emoji: CROPS[id].emoji, desc: `Se plantan en el huerto. ${CROPS[id].name}: lista en ${CROPS[id].growH} h, da ${CROPS[id].yield}.` })),
   ...CROP_IDS.map(id => ({ id, group: 'cosecha', crop: id, name: CROPS[id].name, emoji: CROPS[id].emoji, sell: CROPS[id].sell,
-    food: CROPS[id].food, gift: CROPS[id].happy,
-    desc: CROPS[id].food ? `Del huerto. ${foodText(CROPS[id].food)} También se cocina.`
-      : `Del huerto. Regálaselo: +${CROPS[id].happy} de felicidad. También se cocina.` })),
+    gift: CROPS[id].happy,
+    desc: CROPS[id].happy ? `Del huerto. Regálaselo: +${CROPS[id].happy} de felicidad, o úsalo en la cocina.`
+      : 'Del huerto. Crudo no se come: hay que cocinarlo en la cocina.' })),
+  { id: 'manzana', group: 'cosecha', name: 'Manzana', emoji: '🍎', sell: 2,
+    desc: 'Del árbol frutal. Cruda no se come: hay que cocinarla en la cocina.' },
   /* La cocina: la harina se compra (Tienda → Comida) y los platos salen de
      las recetas (RECIPES, abajo). */
   { id: 'harina', group: 'cocina', name: 'Harina', emoji: '🌾', sell: 3, buy: 6,
     desc: 'Para pasteles, pies y galletas. Se compra en la tienda, pestaña Comida.' },
   { id: 'ensalada', group: 'cocina', name: 'Ensalada', emoji: '🥗', sell: 6,  food: { restore: 30, energy: 4, happy: 5 } },
-  { id: 'sopa',     group: 'cocina', name: 'Sopa de zapallo', emoji: '🍲', sell: 12, food: { restore: 70, energy: 8 } },
-  { id: 'pastel',   group: 'cocina', name: 'Pastel de frutilla', emoji: '🎂', sell: 25, food: { restore: 40, energy: 5, happy: 20 } },
-  { id: 'pie',      group: 'cocina', name: 'Pie de zapallo', emoji: '🥧', sell: 15, food: { restore: 60, energy: 6, happy: 10 } },
-  { id: 'galletas', group: 'cocina', name: 'Galletas de girasol', emoji: '🍪', sell: 3, food: { restore: 10, energy: 3, happy: 5 } },
+  { id: 'sopa',     group: 'cocina', short: 'Sopa', name: 'Sopa de zapallo', emoji: '🍲', sell: 12, food: { restore: 70, energy: 8 } },
+  { id: 'pastel',   group: 'cocina', short: 'Pastel', name: 'Pastel de frutilla', emoji: '🎂', sell: 25, food: { restore: 40, energy: 5, happy: 20 } },
+  { id: 'pie',      group: 'cocina', short: 'Pie', name: 'Pie de zapallo', emoji: '🥧', sell: 15, food: { restore: 60, energy: 6, happy: 10 } },
+  { id: 'galletas', group: 'cocina', short: 'Galletas', name: 'Galletas de girasol', emoji: '🍪', sell: 3, food: { restore: 10, energy: 3, happy: 5 } },
+  { id: 'compota',  group: 'cocina', short: 'Compota', name: 'Compota de manzana', emoji: '🥣', sell: 4, food: { restore: 25, energy: 3, happy: 5 } },
   { id: 'caracola', group: 'tesoro', rar: 'comun', name: 'Caracola',        emoji: '🐚', sell: 3,   desc: 'Una caracola enterrada. ¿Qué hacía acá?' },
   { id: 'hueso',    group: 'tesoro', rar: 'comun', name: 'Hueso',           emoji: '🦴', sell: 2,   desc: 'Un hueso viejo. No es de nadie conocido… creo.' },
   { id: 'amuleto',  group: 'tesoro', rar: 'raro',  name: 'Amuleto antiguo', emoji: '🧿', sell: 15,  desc: 'Alguien lo enterró hace mucho para la buena suerte.' },
@@ -202,10 +209,11 @@ function bagEat(id){
   saveState(); render();
 }
 
-/* ---------- cavar con la pala ----------
-   Cavar encuentra algo una vez cada DIG_GAP_MS (tiempo real): la tierra
-   "descansa". Mandada (tocar la pala sin caca) o sola (la visita de jugar a
-   cavar, objetos.js). Lo que sale, por peso: */
+/* ---------- cavar con la pala de jardín ----------
+   La pala de jardín (palita) es otra que la recogecaca (objetos.js): una
+   pala de punta, clavada en un montoncito de tierra. Cavar encuentra algo
+   una vez cada DIG_GAP_MS (tiempo real): la tierra "descansa". Mandada
+   (tocarla) o sola (su visita). Lo que sale, por peso: */
 const DIG_GAP_MS = 40 * 60 * 1000;
 const DIG_LOOT = [
   { id: null, w: 22 },                      // solo tierra
@@ -215,7 +223,7 @@ const DIG_LOOT = [
 ];
 
 function digFind(act, player){
-  const d = palaData(), now = Date.now(), last = d.lastDig || 0;
+  const d = objData('palita'), now = Date.now(), last = d.lastDig || 0;
   const wait = last + DIG_GAP_MS - now;
   if (wait > 0 && now >= last){
     if (player) say(`Solo tierra 🕳️ La tierra descansa: vuelve a cavar en ${magicDur(wait)}`, 2800);
@@ -247,24 +255,91 @@ function digFind(act, player){
   return id;
 }
 
-/* Tocar la pala sin caca: la toma, va a cavar a otro lado y vuelve. */
-function palaDig(rt){
+/* Una herramienta en la mano: la pieza gira en `pivot` (abajo al centro
+   del arte) y el punto (gx, gy) del arte queda en la mano. Lo mismo que
+   palaPoseAt() de objetos.js, para cualquier objeto. */
+function toolPoseAt(rt, art, pivot, gx, gy, hx, hy, r, sx = 1){
+  const k = furniK(), dx = (gx - pivot[0]) * k * sx, dy = (gy - pivot[1]) * k;
+  const c = Math.cos(r), s = Math.sin(r);
+  return { x: hx - rt.x * floorWidth() - (dx * c - dy * s), y: hy - (art.h - pivot[1]) * k + (dx * s + dy * c), r, sx };
+}
+
+/* La pala de jardín: cruzada en la mano con la punta adelante, como la
+   recogecaca; `tilt` la baja para cavar. */
+const SPADE_PIVOT = [5, 21], SPADE_GRIP = [5, 4], SPADE_TIP = [5, 20];
+function spadePose(rt){
+  const c = rt.carry;
+  if (!c) return null;
+  const hand = palaHand(c.act), r = 1.15 - (c.tilt || 0), len = (SPADE_TIP[1] - SPADE_GRIP[1]) * furniK();
+  const y = Math.max(hand.y, c.act.y + len * Math.cos(r) + 1);
+  return toolPoseAt(rt, PALITA_ART, SPADE_PIVOT, SPADE_GRIP[0], SPADE_GRIP[1], hand.x, y, -c.act.dir * r);
+}
+function spadeTip(rt){
+  const c = rt.carry, hand = palaHand(c.act), r = 1.15 - (c.tilt || 0), len = (SPADE_TIP[1] - SPADE_GRIP[1]) * furniK();
+  return { x: hand.x + c.act.dir * len * Math.sin(r), y: Math.max(1, hand.y - len * Math.cos(r)) };
+}
+
+/* Toma la pala, va a cavar a otro lado de la pieza, (a veces) encuentra
+   algo y la deja de vuelta. `player`: lo pidió quien juega (pop-up). */
+function spadeDigSteps(rt, player){
   const k = furniK(), at = () => rt.x;
   let spot = 0.5;
-  return startChore(rt, [
-    { go: besideX(at, 5 * k) }, faceX(at),
-    { anim: 'pet', ms: 380, end: (r, act) => { rt.carry = { what: 'shovel', act, tilt: 0 }; spot = clampX(rt.x + (rt.x < 0.5 ? 0.28 : -0.28)); } },
+  return [
+    { go: besideX(at, 4 * k) }, faceX(at),
+    { anim: 'pet', ms: 380, end: (r, act) => { rt.carry = { act, tilt: 0 }; spot = clampX(rt.x + (rt.x < 0.5 ? 0.28 : -0.28)); } },
     { go: () => spot },
-    { anim: 'clean', ms: 2400, fx: ['🕳️'], track: (r, el, act) => {
+    { anim: 'clean', ms: 2400, fx: ['🕳️'], fxEvery: player ? 0 : 1200, track: (r, el, act) => {
       rt.carry.tilt = 0.45 * Math.abs(Math.sin(el / 260));
-      if (Math.random() < 0.3){ const t = shovelTip(rt); fxSpawn({ x: t.x, y: 2, vx: -act.dir * rnd(10, 40), vy: rnd(30, 60), ay: -160, life: 600, shape: 'dust', colors: [FP.sandD, FP.brown, FP.brownL], layer: 'front', floor: 'die' }); }
+      if (Math.random() < 0.3){ const t = spadeTip(rt); fxSpawn({ x: t.x, y: 2, vx: -act.dir * rnd(10, 40), vy: rnd(30, 60), ay: -160, life: 600, shape: 'dust', colors: [FP.sandD, FP.brown, FP.brownL], layer: 'front', floor: 'die' }); }
       return null;
-    }, end: (r, act) => { if (rt.carry) rt.carry.tilt = 0; digFind(act, true); } },
+    }, end: (r, act) => { if (rt.carry) rt.carry.tilt = 0; digFind(act, player); } },
     { anim: 'happy', ms: 800 },
-    { go: besideX(at, 5 * k) }, faceX(at),
+    { go: besideX(at, 4 * k) }, faceX(at),
     { anim: 'pet', ms: 380, end: () => { rt.carry = null; } },
-  ]);
+  ];
 }
+
+const PALITA_ART = { w: 10, h: 22,
+  init: rt => { rt.carry = null; },
+  cleanup: rt => { rt.carry = null; },
+  tap: rt => {
+    if (walker.activity && walker.activity.kind === 'chore'){ petFx('❗', walker); return true; }
+    if (!startChore(rt, spadeDigSteps(rt, true)) && state.sleeping) say('Shh… está durmiendo 💤');
+    return true;
+  },
+  parts: [
+    /* La pala: mango verde con agarradera, hoja de punta (la punta queda
+       metida en la tierra). */
+    { id: 'spade', pivot: SPADE_PIVOT, pose: rt => spadePose(rt), draw: p => {
+      p.box(3, 0, 5, 3, MP.leafD, MP.leaf);
+      p.r(4, 3, 3, 9, FP.O); p.r(5, 3, 1, 9, FP.wood);
+      p.r(3, 12, 5, 1, FP.metalD);
+      p.r(2, 13, 7, 4, FP.O); p.r(3, 13, 5, 4, FP.metal); p.r(3, 13, 1, 3, '#d9dee8');
+      p.r(3, 17, 5, 2, FP.O); p.r(4, 17, 3, 2, FP.metal); p.r(4, 19, 3, 1, FP.O); p.r(5, 20, 1, 1, FP.O);
+    } },
+    { id: 'mound', draw: p => {
+      p.r(1, 19, 8, 3, FP.O); p.r(2, 19, 6, 2, '#6a4428'); p.r(0, 21, 10, 1, FP.O);
+      p.r(3, 19, 1, 1, '#7d5534'); p.r(6, 20, 1, 1, '#7d5534');
+    } },
+  ],
+  visits: [ f => spadeDigSteps(f.rt, false) ],
+  duos: [
+    f => {
+      const rt = f.rt, k = f.k, at = () => rt.x;
+      return {
+        a: [{ go: besideX(at, 4 * k) }, faceX(at),
+          { anim: 'pet', ms: 380, end: (r, act) => { rt.carry = { act, tilt: 0 }; } }, S.sync('dig'),
+          { anim: 'clean', ms: 3000, fx: ['🕳️'], fxEvery: 1000, track: (r, el, act) => {
+            rt.carry.tilt = 0.45 * Math.abs(Math.sin(el / 260));
+            if (Math.random() < 0.3){ const t = spadeTip(rt); fxSpawn({ x: t.x, y: 2, vx: -act.dir * rnd(10, 40), vy: rnd(30, 60), ay: -160, life: 600, shape: 'dust', colors: [FP.sandD, FP.brown], layer: 'front', floor: 'die' }); }
+            return null; } },
+          { anim: 'pet', ms: 380, end: () => { rt.carry = null; } }, S.sync('end'), S.happy(800, { dir: 'partner', fx: ['💎'] })],
+        b: [{ go: f.x(-30) }, S.sync('dig', { dir: 'partner' }), S.wait(3000, 'idle', { dir: 'partner', fx: ['👀', '😮'], fxEvery: 1200 }),
+          S.sync('end'), { anim: 'celebrate', ms: 900, fx: ['👏'] }],
+      };
+    },
+  ] };
+FURNI_ART.palita = PALITA_ART;
 
 /* ---------- el huerto ---------- */
 
@@ -272,23 +347,58 @@ const HUERTO_START = 2;
 const HUERTO_MAX = 4;
 const HUERTO_PLOT_PRICE = [0, 0, 60, 90];   // lo que cuesta abrir la parcela 3 y la 4
 
+/* Las plantas crecen solo mientras el huerto está regado: cada riego (la
+   regadera, abajo) sirve WATER_MS (una hora real) y hay que volver a
+   regar para que sigan; seco, no crecen (tampoco se mueren). Cada parcela
+   guarda cuánto lleva crecido (`grown`, ms regados) y hasta cuándo se
+   contó (`t`); huertoGrow() suma lo regado entre `t` y ahora, también con
+   la app cerrada (se cuenta con la hora). El fertilizante la hace crecer
+   al doble de rápido (una vez por siembra). */
+const WATER_MS = 60 * 60 * 1000;
+const plotNeedMs = p => CROPS[p.crop].growH * 3600000;
+
 function huertoData(){
   const d = objData('huerto');
   if (!Array.isArray(d.plots)) d.plots = [];
   if (!Number.isInteger(d.n) || d.n < HUERTO_START) d.n = HUERTO_START;
   d.n = Math.min(HUERTO_MAX, d.n);
   while (d.plots.length < HUERTO_MAX) d.plots.push({ crop: null });
-  for (const p of d.plots) if (p.crop && !CROPS[p.crop]) p.crop = null;
+  const now = Date.now();
+  for (const p of d.plots){
+    if (p.crop && !CROPS[p.crop]) p.crop = null;
+    /* Siembras de antes del riego (crecían con la hora): lo que llevaban. */
+    if (p.crop && typeof p.grown !== 'number'){
+      p.grown = Math.min(plotNeedMs(p), Math.max(0, now - (p.at || now)) * (p.fert ? 2 : 1));
+      p.t = now; delete p.at;
+    }
+  }
+  huertoGrow(d, now);
   return d;
 }
-/* El fertilizante la deja crecer al doble de rápido (una vez por siembra). */
-const plotGrowMs = p => CROPS[p.crop].growH * 3600000 * (p.fert ? 0.5 : 1);
+function huertoGrow(d, now = Date.now()){
+  const wet = d.wateredUntil || 0;
+  for (const p of d.plots){
+    if (!p.crop) continue;
+    if (!p.t || now < p.t){ p.t = now; continue; }   // reloj que vuelve atrás: no crece
+    const dt = Math.max(0, Math.min(now, wet) - p.t);
+    if (dt) p.grown = Math.min(plotNeedMs(p), p.grown + dt * (p.fert ? 2 : 1));
+    p.t = now;
+  }
+}
+const huertoWet = (d = huertoData()) => Date.now() < (d.wateredUntil || 0);
+function huertoWater(){
+  const d = huertoData(), now = Date.now();
+  huertoGrow(d, now);
+  d.wateredUntil = now + WATER_MS;
+  saveState();
+}
 function plotStage(p){
   if (!p.crop) return -1;
-  const t = (Date.now() - p.at) / plotGrowMs(p);
+  const t = p.grown / plotNeedMs(p);
   return t >= 1 ? 3 : t >= 0.6 ? 2 : t >= 0.25 ? 1 : 0;
 }
-const plotLeftMs = p => Math.max(0, p.at + plotGrowMs(p) - Date.now());
+/* Cuánto riego le falta (ms regados, ya con el x2 del fertilizante). */
+const plotLeftMs = p => Math.max(0, (plotNeedMs(p) - p.grown) / (p.fert ? 2 : 1));
 
 const HUERTO_W = 34;
 const plotArtX = i => 2 + 8 * i;   // x del arte donde empieza la parcela i (mide 6)
@@ -328,7 +438,7 @@ function openHuerto(rt, aviso, pick = -1){
       icon = c.emoji; title = c.name; sub = `¡Lista! Da ${c.yield}${c.seeds ? ` y ${c.seeds} semillas` : ''}`;
       btns = `<button class="mini-btn go" data-plot-harvest="${i}">Cosechar</button>`;
     } else {
-      icon = '🌱'; title = c.name; sub = `Lista en ${magicDur(plotLeftMs(p))}${p.fert ? ' · fertilizada' : ''}`;
+      icon = '🌱'; title = c.name; sub = `Le faltan ${magicDur(plotLeftMs(p))} regada${p.fert ? ' · fertilizada' : ''}`;
       if (!p.fert) btns = `<button class="mini-btn" data-plot-fert="${i}" ${bagCount('fertilizante') ? '' : 'disabled'}>Fertilizar</button>`;
     }
     rows.push(`<div class="menu-item plot-row ${st === 3 ? 'ripe' : ''}"><span class="emoji">${icon}</span>
@@ -346,33 +456,43 @@ function openHuerto(rt, aviso, pick = -1){
       <span class="menu-record">${coinsLabel(price)}</span></div>`);
   }
   const fert = bagCount('fertilizante');
+  /* El riego, arriba de todo: sin agua no crece nada. */
+  const reg = magicRt('regadera'), wet = huertoWet(d), left = (d.wateredUntil || 0) - Date.now();
+  const water = `<div class="menu-item plot-row water-row ${wet ? 'wet' : 'dry'}">
+      <span class="emoji">${wet ? '💧' : '🥀'}</span>
+      <div class="info"><b>${wet ? 'Regado' : 'Seco: no crece'}</b>
+        <small>${wet ? `Sigue creciendo ${magicDur(left)} más` : reg ? 'Riégalo con la regadera: cada riego dura 1 hora'
+          : state.style.owned.regadera ? 'Trae la regadera a esta habitación para regarlo' : 'Hace falta una regadera (Tienda → Objetos → Huerta y cocina)'}</small></div>
+      ${reg ? `<button class="mini-btn ${wet ? '' : 'go'}" data-water>Regar</button>` : ''}</div>`;
   showOverlay(`
     <h3>🌱 Huerto</h3>
-    <p class="${aviso ? 'sheet-note' : ''}">${aviso ? escapeHtml(aviso) : `Planta semillas y vuelve cuando estén listas.${fert ? ` Tienes ${fert} de fertilizante 🌿.` : ''}`}</p>
-    <div class="menu-list">${rows.join('')}</div>
+    <p class="${aviso ? 'sheet-note' : ''}">${aviso ? escapeHtml(aviso) : `Planta, riega cada hora y cosecha.${fert ? ` Tienes ${fert} de fertilizante 🌿.` : ''}`}</p>
+    <div class="menu-list">${water}${rows.join('')}</div>
     <button class="overlay-btn secondary" id="btnCloseHuerto">Cerrar</button>
   `, hideOverlay);
   const card = document.getElementById('overlayCard');
   card.onclick = e => {
-    const t = e.target.closest('[data-plot-plant],[data-plot-harvest],[data-plot-fert],[data-seed],[data-huerto-expand]');
+    const t = e.target.closest('[data-plot-plant],[data-plot-harvest],[data-plot-fert],[data-seed],[data-huerto-expand],[data-water]');
     if (!t) return;
+    if (t.dataset.water !== undefined){ const reg = magicRt('regadera'); hideOverlay(); if (reg) waterGarden(reg); return; }
     if (t.dataset.plotPlant !== undefined){ const i = +t.dataset.plotPlant; openHuerto(rt, null, pick === i ? -1 : i); return; }
     if (t.dataset.seed){
       const [i, crop] = t.dataset.seed.split(':');
       if (bagCount('semilla_' + crop) <= 0) return;
       bagAdd('semilla_' + crop, -1);
       const p = huertoData().plots[+i];
-      p.crop = crop; p.at = Date.now(); p.fert = false;
+      p.crop = crop; p.grown = 0; p.t = Date.now(); p.fert = false;
       saveState();
       hideOverlay();
       huertoChore(rt, +i, 'plant', () => {});
-      say(`${CROPS[crop].emoji} ¡Plantada! Lista en ${CROPS[crop].growH} h`, 2600);
+      say(`${CROPS[crop].emoji} ¡Plantada! Necesita ${CROPS[crop].growH} h regada`, 2600);
       return;
     }
     if (t.dataset.plotFert !== undefined){
       const p = huertoData().plots[+t.dataset.plotFert];
       if (!p.crop || p.fert || bagCount('fertilizante') <= 0) return;
       bagAdd('fertilizante', -1);
+      huertoGrow(huertoData());
       p.fert = true;
       saveState();
       hideOverlay();
@@ -436,6 +556,7 @@ const HUERTO_ART = { w: HUERTO_W, h: 16,
   tick: (rt, now) => {
     const d = huertoData();
     rt.n = d.n;
+    rt.wet = huertoWet(d);
     rt.st = d.plots.map(p => ({ stage: plotStage(p), crop: p.crop }));
     if (now - rt.sparkAt > 700){
       rt.sparkAt = now;
@@ -460,6 +581,10 @@ const HUERTO_ART = { w: HUERTO_W, h: 16,
     ...[0, 1, 2, 3].flatMap(i => {
       const x = plotArtX(i), st = rt => (rt.st && rt.st[i]) || { stage: -1 };
       return [
+        /* Regado, la tierra se ve oscura y húmeda. */
+        { id: 'wet' + i, show: rt => i < rt.n && rt.wet, draw: p => {
+          p.r(x, 9, 6, 2, '#4a2e18'); p.r(x + 1, 8, 4, 1, '#4a2e18'); p.r(x + 1, 9, 1, 1, '#7fb4e0'); p.r(x + 4, 10, 1, 1, '#7fb4e0');
+        } },
         { id: 'lock' + i, show: rt => i >= (rt.n || HUERTO_START), draw: p => {
           p.r(x - 1, 7, 8, 3, FP.O); p.r(x, 8, 6, 1, FP.woodD); p.r(x, 7, 6, 1, FP.wood); p.r(x + 1, 8, 1, 1, FP.metal); p.r(x + 4, 8, 1, 1, FP.metal);
         } },
@@ -475,16 +600,15 @@ const HUERTO_ART = { w: HUERTO_W, h: 16,
     }),
   ],
   visits: [
-    /* Va a regar: mira una parcela, la riega y se pone contenta. */
+    /* Va a mirar sus plantas: las huele, les habla y se pone contenta (el
+       riego de verdad es con la regadera). */
     f => {
       const rt = f.rt, i = Math.floor(Math.random() * ((rt.n || HUERTO_START))), at = () => plotX(rt, i);
       return [
         { go: besideX(at, 3 * f.k) }, faceX(at),
-        S.wait(900, 'idle', { fx: ['👀'] }),
-        { anim: 'clean', ms: 2200, fx: ['💧'], fxEvery: 700, track: () => {
-          if (Math.random() < 0.35) fxSpawn({ x: at() * floorWidth() + rnd(-6, 6), y: 14 * furniK(), vy: -rnd(40, 70), life: 600, shape: 'drop', color: MP.sky, layer: 'front', floor: 'die' });
-          return null; } },
-        S.happy(1200, { fx: ['🌱', '😊'], fxEvery: 600 }),
+        S.wait(1200, 'idle', { fx: ['👀'] }),
+        { anim: 'pet', ms: 1600, fx: ['🌱', '💬'], fxEvery: 800 },
+        S.happy(1200, { fx: [rt.wet ? '😊' : '🥀'], fxEvery: 600 }),
       ];
     },
   ],
@@ -492,12 +616,106 @@ const HUERTO_ART = { w: HUERTO_W, h: 16,
     f => {
       const rt = f.rt, at = i => () => plotX(rt, i);
       return {
-        a: [{ go: besideX(at(0), 3 * f.k) }, faceX(at(0)), S.sync('in'), { anim: 'clean', ms: 2400, fx: ['💧'], fxEvery: 800 }, S.sync('end'), S.happy(800, { dir: 'partner' })],
+        a: [{ go: besideX(at(0), 3 * f.k) }, faceX(at(0)), S.sync('in'), { anim: 'pet', ms: 2400, fx: ['🌱'], fxEvery: 800 }, S.sync('end'), S.happy(800, { dir: 'partner' })],
         b: [{ go: besideX(at(1), 3 * f.k) }, faceX(at(1)), S.sync('in'), S.wait(2400, 'idle', { fx: ['🌱', '👀'], fxEvery: 1200 }), S.sync('end'), { anim: 'celebrate', ms: 900 }],
       };
     },
   ] };
 FURNI_ART.huerto = HUERTO_ART;
+
+/* ---------- la regadera ----------
+   Tiene que estar en la habitación del huerto. Tocarla (o "Regar" en la
+   hoja del huerto) manda a la mascota a tomarla, pasar por cada parcela
+   abierta echándole agua y dejarla de vuelta: el huerto queda regado una
+   hora (WATER_MS, huertoWater() al echar la primera agua). Sola juega con
+   ella (se moja), pero eso no riega: regar es cosa de quien juega. */
+const CAN_PIVOT = [7, 11], CAN_GRIP = [7, 2];
+function canPose(rt){
+  const c = rt.carry;
+  if (!c) return null;
+  const hand = palaHand(c.act), dir = c.act.dir;
+  return toolPoseAt(rt, REGADERA_ART, CAN_PIVOT, CAN_GRIP[0], CAN_GRIP[1], hand.x, hand.y + 3 * furniK(), dir * (c.tilt || 0), dir);
+}
+/* Dónde cae el agua: la punta del pico, adelante y abajo. */
+function canSpout(rt){
+  const c = rt.carry, hand = palaHand(c.act), k = furniK();
+  return { x: hand.x + c.act.dir * 7 * k, y: hand.y + k };
+}
+const pour = (rt, ms, onDone) => ({ anim: 'idle', ms, track: (r, el) => {
+  rt.carry.tilt = Math.min(0.7, el / 250);
+  if (Math.random() < 0.6){ const s = canSpout(rt); fxSpawn({ x: s.x + rnd(-2, 2), y: s.y, vx: rnd(-6, 6), vy: -rnd(30, 60), ay: -260, life: 900, shape: 'drop', color: Math.random() < 0.5 ? MP.sky : '#d6f1ff', layer: 'front', floor: 'die' }); }
+  return null;
+}, end: () => { rt.carry.tilt = 0; if (onDone) onDone(); } });
+
+function waterGarden(rt){
+  const hrt = magicRt('huerto');
+  if (!hrt){ say(state.style.owned.huerto ? 'Pon la regadera en la habitación del huerto 🌱' : 'Primero un huerto para regar 🌱', 2600); return; }
+  if (walker.activity && walker.activity.kind === 'chore'){ petFx('❗', walker); return; }
+  const k = furniK(), at = () => rt.x, n = huertoData().n;
+  let watered = false;
+  const water = () => { if (!watered){ watered = true; huertoWater(); } };
+  rt.pending = water;
+  const steps = [
+    { go: besideX(at, 4 * k) }, faceX(at),
+    { anim: 'pet', ms: 380, end: (r, act) => { rt.carry = { act, tilt: 0 }; } },
+  ];
+  for (let i = 0; i < n; i++){
+    const px = () => plotX(hrt, i);
+    steps.push({ go: (a, act) => clampX(px() + (act.x <= px() ? -1 : 1) * actorCssH(act) * 0.45 / floorWidth()) }, faceX(px),
+      pour(rt, 900, water));
+  }
+  steps.push({ anim: 'happy', ms: 600, fx: ['💧', '🌱'] }, { go: besideX(at, 4 * k) }, faceX(at),
+    { anim: 'pet', ms: 380, end: () => { rt.carry = null; rt.pending = null; say('💧 ¡Regado! Crece por una hora', 2400); } });
+  if (!startChore(rt, steps)){ rt.pending = null; if (state.sleeping) say('Shh… está durmiendo 💤'); }
+}
+
+const REGADERA_ART = { w: 16, h: 12,
+  init: rt => { rt.carry = null; rt.pending = null; },
+  cleanup: rt => { rt.carry = null; if (rt.pending){ const f = rt.pending; rt.pending = null; f(); } },
+  tap: rt => { waterGarden(rt); return true; },
+  parts: [
+    { id: 'can', pivot: CAN_PIVOT, pose: rt => canPose(rt), draw: p => {
+      p.r(4, 0, 7, 1, FP.O); p.r(4, 1, 1, 3, FP.O); p.r(10, 1, 1, 3, FP.O);   // asa
+      p.box(2, 3, 11, 9, MP.mintD, MP.mint); p.r(3, 5, 9, 1, '#24a074');
+      p.r(13, 6, 1, 1, FP.O); p.r(14, 5, 1, 1, FP.O); p.r(15, 3, 1, 3, FP.O); p.r(14, 3, 1, 1, MP.sky);   // pico
+      p.r(4, 7, 2, 2, '#ffffff');
+    } },
+  ],
+  /* Sola: se moja con la regadera, de puro jugar. */
+  visits: [
+    f => {
+      const rt = f.rt, at = () => rt.x;
+      return [
+        { go: besideX(at, 4 * f.k) }, faceX(at),
+        { anim: 'pet', ms: 380, end: (r, act) => { rt.carry = { act, tilt: 0 }; } },
+        { anim: 'happy', ms: 1200, fx: ['😄'] },
+        { anim: 'clean', ms: 1800, fx: ['💦', '😆'], fxEvery: 700, track: (r, el, act) => {
+          rt.carry.tilt = 0.5 + 0.3 * Math.sin(el / 200);
+          if (Math.random() < 0.5) fxSpawn({ x: act.x * floorWidth() + rnd(-8, 8), y: actorCssH(act) * 0.8, vy: -rnd(20, 50), ay: -200, life: 700, shape: 'drop', color: MP.sky, layer: 'front', floor: 'die' });
+          return null; } },
+        { anim: 'pet', ms: 380, end: () => { rt.carry = null; } },
+        S.happy(800, { fx: ['💧'] }),
+      ];
+    },
+  ],
+  /* Uno moja al otro y se ríen. */
+  duos: [
+    f => {
+      const rt = f.rt, at = () => rt.x;
+      return {
+        a: [{ go: besideX(at, 4 * f.k) }, faceX(at), { anim: 'pet', ms: 380, end: (r, act) => { rt.carry = { act, tilt: 0 }; } },
+          S.sync('in', { dir: 'partner' }),
+          { anim: 'happy', ms: 1800, dir: 'partner', fx: ['😈'], track: (r, el, act, a) => {
+            rt.carry.tilt = 0.6;
+            const s = canSpout(rt);
+            if (Math.random() < 0.6) fxSpawn({ x: s.x + rnd(-2, 2), y: s.y, vx: act.dir * rnd(10, 30), vy: -rnd(10, 40), ay: -240, life: 900, shape: 'drop', color: MP.sky, layer: 'front', floor: 'die' });
+            return null; } },
+          { anim: 'pet', ms: 380, end: () => { rt.carry = null; } }, S.sync('end'), S.happy(800, { dir: 'partner' })],
+        b: [{ go: f.x(-24) }, S.sync('in', { dir: 'partner' }), { anim: 'sad', ms: 900, fx: ['💦'] }, { anim: 'celebrate', ms: 1300, fx: ['😂'] }, S.sync('end'), S.happy(600, { dir: 'partner' })],
+      };
+    },
+  ] };
+FURNI_ART.regadera = REGADERA_ART;
 
 /* ---------- la cocina ----------
    Una cocina con horno. Con lo cosechado (y harina de la tienda) se hacen
@@ -514,6 +732,7 @@ const RECIPES = [
   { id: 'pastel',     out: { bag: 'pastel', n: 1 },    needs: { frutilla: 3, harina: 2 }, mins: 10 },
   { id: 'pie',        out: { bag: 'pie', n: 2 },       needs: { zapallo: 1, harina: 2 }, mins: 10 },
   { id: 'galletas',   out: { bag: 'galletas', n: 4 },  needs: { girasol: 1, harina: 1 }, mins: 5 },
+  { id: 'compota',    out: { bag: 'compota', n: 2 },   needs: { manzana: 2 }, mins: 3 },
 ];
 const recipeById = id => RECIPES.find(r => r.id === id);
 /* Lo que sale de una receta: nombre y emoji (de la despensa o de la mochila). */
@@ -670,6 +889,37 @@ const COCINA_ART = { w: 20, h: 22,
     },
   ] };
 FURNI_ART.cocina = COCINA_ART;
+
+/* ---------- modo prueba ----------
+   Botones del panel de prueba para no esperar horas: crecer el huerto,
+   terminar lo que está en el horno o en la compostera, y llenar la mochila. */
+function huertaDebugHtml(){
+  return `<div class="debug-section"><h4>Huerta y cocina</h4>
+    <div class="debug-grid" style="grid-template-columns:1fr 1fr">
+      <button class="debug-btn" data-hdbg="grow1">🌱 Plantas +1 h</button>
+      <button class="debug-btn" data-hdbg="ripe">🌱 Plantas listas</button>
+      <button class="debug-btn" data-hdbg="water">💧 Regar ya</button>
+      <button class="debug-btn" data-hdbg="cook">🍳 Horno listo</button>
+      <button class="debug-btn" data-hdbg="compost">♻️ Compost listo</button>
+      <button class="debug-btn" data-hdbg="bag">🎒 +3 de todo</button>
+      <button class="debug-btn" data-hdbg="dig">⛏️ Cavar sin esperar</button>
+    </div></div>`;
+}
+function wireHuertaDebug(){
+  document.querySelectorAll('[data-hdbg]').forEach(b => b.addEventListener('click', () => {
+    const what = b.dataset.hdbg, d = huertoData();
+    if (what === 'grow1' || what === 'ripe'){
+      for (const p of d.plots) if (p.crop) p.grown = what === 'ripe' ? plotNeedMs(p) : Math.min(plotNeedMs(p), p.grown + 3600000);
+    }
+    if (what === 'water') huertoWater();
+    if (what === 'cook'){ const c = cocinaData(); if (c.recipe) c.at = Date.now() - 24 * 3600000; }
+    if (what === 'compost' && typeof compostData === 'function'){ const c = compostData(); c.items = c.items.map(() => 0); compostData(); }
+    if (what === 'bag') for (const it of BAG_ITEMS) if (it.id !== 'fosil') bagAdd(it.id, 3);
+    if (what === 'dig') objData('palita').lastDig = 0;
+    saveState(); render();
+    say('🧪 Listo', 1200);
+  }));
+}
 
 /* ---------- la pestañita de la mochila ---------- */
 

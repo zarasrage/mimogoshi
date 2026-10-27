@@ -2513,7 +2513,6 @@ function statInfoData(stat){
       e: f.emoji, t: f.name,
       d: f.fill ? `Llena la panza entera · ${f.price} 💰` : `Llena ${nf(hungerFillPct(f), 0)}% siendo ${STAGE_NAME[st]} · ${f.price} 💰`,
       v: f.fill ? 'lleno' : `+${f.restore} pts`, up: true }));
-    if (typeof FRUIT_FOOD !== 'undefined') foods.push({ e: FRUIT_FOOD.emoji, t: 'Fruta del árbol frutal', d: `Gratis, una cada ${FRUIT_EVERY_MS / 3600000} h (objeto mágico)`, v: `+${FRUIT_FOOD.restore} pts`, up: true, on: hasFurniAnywhere('arbol') });
     return {
       big: nf(pts, 0), unit: `/ ${cap} pts`, sub: `${nf(state.hunger, 0)}% de su panza de ${STAGE_NAME[st]}`,
       down: [
@@ -2567,7 +2566,6 @@ function statInfoData(stat){
         { e: '💤', t: sleeping ? 'Está durmiendo' : 'Dormir', d: `La barra entera en ${fmtHours(100 / rec)}`, v: `+${nf(rec, 0)}/h`, up: true, fx: true, on: sleeping },
         { e: '🛏️', t: 'Cama puesta', d: `En cualquier habitación: durmiendo, la barra en ${fmtHours(100 / rec / FURNI_BED_ENERGY_MULT)}`, v: `×${nf(FURNI_BED_ENERGY_MULT)}`, up: true, fx: true, on: bed && sleeping },
         ...foods,
-        ...(typeof FRUIT_FOOD !== 'undefined' ? [{ e: FRUIT_FOOD.emoji, t: 'Fruta del árbol frutal', d: 'Objeto mágico', v: `+${FRUIT_FOOD.energy}`, up: true }] : []),
       ],
       marks: [
         { v: WAKE_AT, t: 'Se despierta sola', above: true },
@@ -2807,32 +2805,62 @@ function toggleFoodTray(){
   document.getElementById('controls').classList.add('tray-open');   // esconde los globitos de aviso
 }
 
+/* Dos pestañas: la despensa (lo que se compra, más la medicina) y "Hecho en
+   casa" (los platos de la cocina, que viven en la mochila: huerta.js). La
+   segunda sale recién cuando hay cocina o algún plato; si no, la bandeja es
+   la de siempre. La cosecha cruda no aparece: se cocina sí o sí. */
+let trayTab = 'pantry';
+function trayDishes(){
+  return typeof BAG_ITEMS === 'undefined' ? [] : BAG_ITEMS.filter(it => it.food && bagCount(it.id) > 0);
+}
 function renderFoodTray(aviso){
   const tray = document.getElementById('foodTray');
   const tile = (id, emoji, label, n, cls) => `
       <button class="tray-food ${cls}" data-tray="${id}">
         <span class="n">x${n}</span><span class="emo">${emoji}</span><b>${label}</b>
       </button>`;
+  const dishes = trayDishes();
+  const showTabs = dishes.length > 0 || !!(state.style && state.style.owned && state.style.owned.cocina);
+  if (!showTabs) trayTab = 'pantry';
   const short = { simple: 'Simple', rica: 'Rica', especial: 'Especial', redbull: 'Red Bull',
     banquete: 'Banquete', cafe: 'Café', jugo: 'Jugo' };
-  const foods = FOODS.map(f => {
-    const n = foodStock(f.id);
-    return tile(f.id, f.emoji, short[f.id] || f.name, n,
-      (n <= 0 ? 'out ' : '') + (state.selectedFood === f.id ? 'last' : ''));
-  }).join('');
   const meds = foodStock(MEDICINE.id);
-  const med = tile(MEDICINE.id, MEDICINE.emoji, MEDICINE.name, meds,
-    'med ' + (meds <= 0 ? 'out ' : '') + (state.sick ? 'urgent' : ''));
+  let grid;
+  if (trayTab === 'home'){
+    grid = dishes.length
+      ? dishes.map(it => tile('bag:' + it.id, it.emoji, it.short || it.name, bagCount(it.id), 'home')).join('')
+      : '<div class="tray-empty">Nada cocinado todavía. Cosecha y cocina en la Cocina 🍳</div>';
+  } else {
+    grid = FOODS.map(f => {
+      const n = foodStock(f.id);
+      return tile(f.id, f.emoji, short[f.id] || f.name, n,
+        (n <= 0 ? 'out ' : '') + (state.selectedFood === f.id ? 'last' : ''));
+    }).join('') + tile(MEDICINE.id, MEDICINE.emoji, MEDICINE.name, meds,
+      'med ' + (meds <= 0 ? 'out ' : '') + (state.sick ? 'urgent' : ''));
+  }
   const sub = aviso
     ? `<small class="warn">${escapeHtml(aviso)}</small>`
     : `<small>${state.sick ? '¡Está enferma! Dale una medicina' : 'Toca varias: caen todas juntas'}</small>`;
+  const tabs = showTabs ? `<div class="tray-tabs">
+      <button class="${trayTab === 'pantry' ? 'active' : ''}" data-tray-tab="pantry">Despensa</button>
+      <button class="${trayTab === 'home' ? 'active' : ''}" data-tray-tab="home">Hecho en casa${dishes.length ? ` <i>${dishes.reduce((a, it) => a + bagCount(it.id), 0)}</i>` : ''}</button>
+    </div>` : '';
   tray.innerHTML = `
     <div class="tray-head"><span><b>¿Qué come?</b>${sub}</span>
       <button class="tray-close" id="trayClose">Cerrar</button></div>
-    <div class="tray-foods">${foods}${med}</div>`;
+    ${tabs}
+    <div class="tray-foods">${grid}</div>`;
   tray.querySelector('#trayClose').addEventListener('click', closeFoodTray);
+  tray.querySelectorAll('[data-tray-tab]').forEach(el => el.addEventListener('click', () => {
+    trayTab = el.dataset.trayTab; renderFoodTray();
+  }));
   tray.querySelectorAll('[data-tray]').forEach(el => el.addEventListener('click', requireAlive(() => {
     const id = el.dataset.tray;
+    if (id.startsWith('bag:')){
+      bagEat(id.slice(4));   // huerta.js
+      renderFoodTray();
+      return;
+    }
     if (id === MEDICINE.id){
       if (mealBusy()){ renderFoodTray('Primero que termine de comer'); return; }
       if (meds <= 0){ closeFoodTray(); shopTab = 'food'; openShop('No te quedan medicinas'); return; }
@@ -3480,7 +3508,7 @@ function renderDebugPanel(){
     <button class="debug-btn ${debugForcedSpecies===id ? 'active':''}" data-species="${id}">${SPECIES_RAW[id].name}</button>
   `).join('');
 
-  const extraDebug = typeof duoDebugHtml === 'function' ? duoDebugHtml() : '';
+  const extraDebug = (typeof duoDebugHtml === 'function' ? duoDebugHtml() : '') + (typeof huertaDebugHtml === 'function' ? huertaDebugHtml() : '');
   document.getElementById('debugPanelBody').innerHTML = `
     <div class="debug-panel">
       <div class="debug-section">
@@ -3624,6 +3652,7 @@ function renderDebugPanel(){
     render(); renderDebugPanel();
   });
   if (typeof wireDuoDebug === 'function') wireDuoDebug();
+  if (typeof wireHuertaDebug === 'function') wireHuertaDebug();
   document.getElementById('dbgPoop').addEventListener('click', () => {
     state.poop = true; saveState(); render(); renderDebugPanel();
   });

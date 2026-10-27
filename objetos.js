@@ -41,7 +41,7 @@ const MAGIC_ITEMS = [
   { id:'gelatina',   name:'Gelatina gigante', use:'rebota y se hunde',        price:  75 },
   { id:'patineta',   name:'Patineta',         use:'hace trucos',              price:  60 },
   { id:'espejo',     name:'Espejo mágico',    use:'su reflejo cobra vida',    price: 120 },
-  { id:'pala',       name:'Pala y balde',     use:'recoge caca y cava',       price:  40, group: 'huerta' },
+  { id:'pala',       name:'Pala recogecaca',  use:'recoge y guarda la caca',  price:  40, group: 'huerta' },
   { id:'compost',    name:'Compostera',       use:'caca → fertilizante',      price:  70, group: 'huerta' },
 ];
 STYLE_ITEMS.push(...MAGIC_ITEMS.map(it => ({ ...it, kind: 'furni', wow: true })));
@@ -1248,11 +1248,9 @@ const NUBE_ART = { w: 24, h: 12, free: true, keep: ['cx', 'tcx', 'waitUntil', 'r
 /* ===================== 8. Árbol frutal =====================
    Da una fruta cada FRUIT_EVERY_MS (hasta tres colgando), aunque la app
    esté cerrada (se cuenta con la hora). Tocarlo: si hay fruta, la mascota
-   sacude el árbol, la fruta cae y se la come (es comida de verdad, entra al
-   mismo montón que la de la bandeja, ver serveFood). Comida gratis pero
-   poca: unas cuatro frutas al día, +15 de hambre cada una. */
+   sacude el árbol y la manzana cae a la mochila (huerta.js): cruda no se
+   come, se cocina. Unas cuatro al día. */
 const FRUIT_EVERY_MS = 6 * 60 * 60 * 1000;
-const FRUIT_FOOD = { id: 'fruta', name: 'Fruta del árbol', emoji: '🍎', restore: 15, energy: 3 };
 const FRUIT_SPOTS = [[8, 13], [20, 9], [14, 17]];
 
 function treeFruit(){
@@ -1263,19 +1261,18 @@ function treeFruit(){
   if (d.fruit >= 3) d.since = Date.now();
   return d;
 }
+/* La manzana cae y va a la mochila: cruda no se come, se cocina
+   (compota, huerta.js). Antes se la comía ahí mismo. */
 function harvestFruit(rt){
   const d = treeFruit();
   if (d.fruit <= 0 || rt.removed) return;
   if (d.fruit >= 3) d.since = Date.now();
   d.fruit--;
-  const piece = { food: FRUIT_FOOD, hunger: hungerFillPct(FRUIT_FOOD), energy: FRUIT_FOOD.energy, t: 0, done: 0 };
-  const m = state.meal || (state.meal = { hunger: 0, energy: 0 });
-  m.hunger += piece.hunger; m.energy += piece.energy;
   const k = furniK();
-  foodPile = { x: clampX(rt.x + 7 * k / floorWidth()), side: -1, standX: clampX(rt.x - 6 * k / floorWidth()), plate: null, pieces: [], n: 0 };
-  serveFood(piece);
-  if (piece.el) piece.el.style.setProperty('--drop', Math.round(20 * k) + 'px');
-  say('¡Una fruta! 🍎');
+  fxSpawn({ x: rtPx(rt, 7), y: 20 * k, vy: 0, ay: -300, life: 700, shape: 'big', color: FP.red, layer: 'front', floor: 'die' });
+  if (typeof bagGain === 'function') bagGain('manzana', 1);
+  petFx('🍎', walker);
+  say('¡Una manzana! A la mochila: se cocina 🍎', 2600);
   saveState();
 }
 
@@ -2608,8 +2605,6 @@ const PALA_ART = { w: 14, h: 24,
     if (state.poop){ if (!palaTryScoop() && state.sleeping) say('Shh… está durmiendo 💤'); return true; }
     const crt = magicRt('compost');
     if (d.caca > 0 && crt){ compostTap(crt); return true; }
-    /* Sin caca que recoger ni balde que vaciar: a cavar (huerta.js). */
-    if (typeof palaDig === 'function'){ if (!palaDig(rt) && state.sleeping) say('Shh… está durmiendo 💤'); return true; }
     say(d.caca ? `💩 ${d.caca} de ${PALA_MAX} cacas en el balde: vacíalo en la compostera ♻️`
       : '💩 Cuando haya caca, toca la caca o la pala y la recoge', 2800);
     return true;
@@ -2645,7 +2640,8 @@ const PALA_ART = { w: 14, h: 24,
         p.r(topRow[1] + 1, topRow[0], 1, 1, L);
       } })),
   ],
-  /* Sola: juega a cavar en otro lado y deja la pala de vuelta. */
+  /* Sola: sale a patrullar con la pala buscando caca (no cava: para eso
+     está la pala de jardín, huerta.js) y la deja de vuelta. */
   visits: [
     f => {
       const rt = f.rt, k = f.k, at = () => rt.x;
@@ -2654,13 +2650,9 @@ const PALA_ART = { w: 14, h: 24,
         { go: besideX(at, 5 * k) }, faceX(at),
         { anim: 'pet', ms: 380, end: (r, act) => { rt.carry = { what: 'shovel', act, tilt: 0 }; spot = clampX(rt.x + (rt.x < 0.5 ? 0.3 : -0.3)); } },
         { go: () => spot },
-        { anim: 'clean', ms: 2600, fx: ['🕳️', '😆'], fxEvery: 900, track: (r, el, act) => {
-          rt.carry.tilt = 0.45 * Math.abs(Math.sin(el / 260));
-          if (Math.random() < 0.3){ const t = shovelTip(rt); fxSpawn({ x: t.x, y: 2, vx: -act.dir * rnd(10, 40), vy: rnd(30, 60), ay: -160, life: 600, shape: 'dust', colors: [FP.sandD, FP.brown, FP.brownL], layer: 'front', floor: 'die' }); }
-          return null;
-        } },
-        /* A veces encuentra algo (huerta.js, con la misma espera que cavar a pedido). */
-        { anim: 'happy', ms: 900, start: (r, act) => { if (rt.carry) rt.carry.tilt = 0; if (typeof digFind === 'function') digFind(act, false); else petFx('🐛', act); } },
+        S.wait(1400, 'idle', { fx: ['👀', '🔍'], fxEvery: 700, start: (r, act) => { act.dir = -act.dir; } }),
+        S.wait(1400, 'idle', { fx: ['👃'], start: (r, act) => { act.dir = -act.dir; } }),
+        { anim: 'happy', ms: 900, fx: [state.poop ? '💩' : '✨'] },
         { go: besideX(at, 5 * k) }, faceX(at),
         { anim: 'pet', ms: 380, end: () => { rt.carry = null; } },
         S.happy(600),
@@ -2673,11 +2665,8 @@ const PALA_ART = { w: 14, h: 24,
       return {
         a: [{ go: besideX(at, 5 * k) }, faceX(at),
           { anim: 'pet', ms: 380, end: (r, act) => { rt.carry = { what: 'shovel', act, tilt: 0 }; } }, S.sync('dig'),
-          { anim: 'clean', ms: 3000, fx: ['🕳️'], fxEvery: 1000, track: (r, el, act) => {
-            rt.carry.tilt = 0.45 * Math.abs(Math.sin(el / 260));
-            if (Math.random() < 0.3){ const t = shovelTip(rt); fxSpawn({ x: t.x, y: 2, vx: -act.dir * rnd(10, 40), vy: rnd(30, 60), ay: -160, life: 600, shape: 'dust', colors: [FP.sandD, FP.brown], layer: 'front', floor: 'die' }); }
-            return null; } },
-          { anim: 'pet', ms: 380, end: () => { rt.carry = null; } }, S.sync('end'), S.happy(800, { dir: 'partner', fx: ['💎'] })],
+          { anim: 'idle', ms: 3000, fx: ['🔍'], fxEvery: 1000, track: (r, el, act) => { rt.carry.tilt = 0.2 * Math.sin(el / 300); return null; } },
+          { anim: 'pet', ms: 380, end: () => { rt.carry = null; } }, S.sync('end'), S.happy(800, { dir: 'partner', fx: ['✨'] })],
         b: [{ go: f.x(-30) }, S.sync('dig', { dir: 'partner' }), S.wait(3000, 'idle', { dir: 'partner', fx: ['👀', '😮'], fxEvery: 1200 }),
           S.sync('end'), { anim: 'celebrate', ms: 900, fx: ['👏'] }],
       };
