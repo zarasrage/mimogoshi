@@ -1760,7 +1760,7 @@ body{
 
 /* Los botones avisan cuando hacen falta (render()): un anillo de su color
    alrededor del ícono (.need) y, si hay algo concreto, un globito arriba
-   (data-badge: zZ sueño, 💊 enferma). Así no hay que leer las barras
+   (data-badge: zZ sueño, 💊 enferma, 💩 caca si ya se puede bañar). Así no hay que leer las barras
    para saber qué apretar. Limpiar, mientras espera sus 5 minutos, se apaga
    y su etiqueta es la cuenta regresiva (.cooling, updateDock()). */
 .btn.cooling .btn-icon{filter:saturate(.25) brightness(.95); opacity:.6;}

@@ -2087,23 +2087,30 @@ function fmtWait(ms){
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-/* Limpiar: un baño, +CLEAN_HYGIENE cada CLEAN_COOLDOWN_MS. No recoge la
-   caca: eso es tocándola (cleanPoop). */
+/* Limpiar: un baño, +CLEAN_HYGIENE cada CLEAN_COOLDOWN_MS. Si hay caca,
+   también la recoge (con su +POOP_CLEAN_HYGIENE, igual que tocarla); tocarla
+   sigue sirviendo mientras el botón espera. */
 const btnClean = () => {
   const espera = cleanWaitMs();
   if (espera > 0){ say(`Recién se bañó: otra vez en ${fmtWait(espera)}`); return; }
   if (!tryWake()) return;
   catchUp();
+  const habiaCaca = state.poop;
+  if (habiaCaca){
+    medalAdd('cacas');   // logros.js
+    state.poop = false;
+    state.hygiene = clamp(state.hygiene + POOP_CLEAN_HYGIENE);
+  }
   state.hygiene = clamp(state.hygiene + CLEAN_HYGIENE);
   state.lastClean = Date.now();
   floatFx('🧼');
   say(state.stage === 'egg' ? 'Huevo brillante'
-    : state.poop ? '¡Limpia! Pero queda la caca: tócala para recogerla' : '¡Ya quedó limpio!');
+    : habiaCaca ? '¡Limpia y sin caca!' : '¡Ya quedó limpio!');
   if (state.stage !== 'egg') triggerPetAction('clean');
   saveState(); render();
 };
 
-/* Recoger la caca: solo tocándola. +POOP_CLEAN_HYGIENE. */
+/* Recoger la caca tocándola (o con el botón Limpiar). +POOP_CLEAN_HYGIENE. */
 function cleanPoop(){
   if (!state.poop) return;
   catchUp();
@@ -2326,7 +2333,8 @@ function updateDock(){
   const sleepy = !state.sleeping && state.energy < SLEEPY_THRESHOLD;
   const want = {
     btnFeed:  { need: state.hunger < 30 || !!state.sick, badge: state.sick ? '💊' : '' },
-    btnClean: { need: state.hygiene < HEALTH_RISK_AT && cleanWaitMs() === 0, badge: '', wait: cleanWaitMs() },
+    btnClean: { need: (state.hygiene < HEALTH_RISK_AT || !!state.poop) && cleanWaitMs() === 0,
+      badge: state.poop && cleanWaitMs() === 0 ? '💩' : '', wait: cleanWaitMs() },
     btnSleep: { need: sleepy, badge: sleepy ? 'zZ' : '', soft: !isExhausted(), asleep: !!state.sleeping },
     /* La ruleta vive dentro de Juegos: el giro gratis se avisa en Jugar. */
     btnPlay:  { need: false, badge: typeof wheelReady === 'function' && wheelReady() ? '🎡' : '', soft: true },
@@ -2550,8 +2558,8 @@ function statInfoData(stat){
         { e: '🎮', t: 'Algunos minijuegos', d: 'Atrapa estrellas −5, Carrera en dupla −4, Espejo −3', v: 'hasta −5', down: true },
       ],
       up: [
-        { e: '🧼', t: 'Limpiar (bañarla)', d: espera ? `Otra vez en ${fmtWait(espera)} · una vez cada ${CLEAN_COOLDOWN_MS / 60000} min` : `Una vez cada ${CLEAN_COOLDOWN_MS / 60000} min · no recoge la caca`, v: `+${CLEAN_HYGIENE}`, up: true, on: !espera && state.hygiene < 100 - CLEAN_HYGIENE / 2 },
-        { e: '💩', t: 'Recoger la caca', d: 'Tocándola en la pantalla', v: `+${POOP_CLEAN_HYGIENE}`, up: true, on: !!state.poop },
+        { e: '🧼', t: 'Limpiar (bañarla)', d: espera ? `Otra vez en ${fmtWait(espera)} · una vez cada ${CLEAN_COOLDOWN_MS / 60000} min` : `Una vez cada ${CLEAN_COOLDOWN_MS / 60000} min · si hay caca, la recoge (+${POOP_CLEAN_HYGIENE})`, v: `+${CLEAN_HYGIENE}`, up: true, on: !espera && state.hygiene < 100 - CLEAN_HYGIENE / 2 },
+        { e: '💩', t: 'Recoger la caca', d: 'Tocándola en la pantalla, o con Limpiar', v: `+${POOP_CLEAN_HYGIENE}`, up: true, on: !!state.poop },
         { e: '🛡️', fx: true, t: 'Seguro de limpieza', d: seguro.owned ? (seguro.armed ? 'Activado: recoge sola la próxima caca' : 'Comprado, pero desactivado (Tienda → Mejoras)') : 'Mejora de la tienda: recoge sola una caca', v: `+${POOP_CLEAN_HYGIENE}`, up: true, on: !!(seguro.owned && seguro.armed) },
         ...(typeof ROBOT_CLEAN_EVERY_MS !== 'undefined' ? [{ e: '🤖', fx: true, t: 'Robot aspiradora', d: `Aspira una caca cada ${ROBOT_CLEAN_EVERY_MS / 3600000} h (objeto mágico)`, v: `+${POOP_CLEAN_HYGIENE}`, up: true, on: hasFurniAnywhere('robot') }] : []),
         ...(typeof NUBE_ART !== 'undefined' ? [{ e: '🌧️', fx: true, t: 'Lluvia de la nubecita', d: 'Si queda debajo, una vez por lluvia (objeto mágico)', v: '+4', up: true, on: hasFurniAnywhere('nube') }] : []),
