@@ -441,7 +441,7 @@ const STYLE_ITEMS = [
    (la mochila, huerta.js), y no sale en Personalizar: no se pone ni se saca. */
 const STYLE_SECTIONS = [
   { group:'esencial', title:'Esenciales' },
-  { group:'huerta', title:'Huerta 🌱' },                       // objetos.js y huerta.js
+  { group:'huerta', title:'Huerta y cocina 🌱' },              // objetos.js y huerta.js
   { kind:'furni',  title:'Objetos mágicos ✨', wow: true },   // objetos.js
   { kind:'furni',  title:'Muebles' },
   { kind:'shell',  title:'Carcasa' },
@@ -2996,6 +2996,16 @@ function openShop(aviso, gachaRes){
         </div>
         <span class="menu-record">${coinsLabel(MEDICINE.price)}</span>
       </div>`;
+  /* Ingredientes para la cocina (huerta.js): lo de la mochila que trae `buy`. */
+  const ingRows = typeof BAG_ITEMS === 'undefined' ? '' : BAG_ITEMS.filter(it => it.buy).map(it => `
+      <div class="menu-item ${state.coins >= it.buy ? '' : 'locked'}" data-buy-bag="${it.id}">
+        <span class="emoji">${it.emoji}</span>
+        <div class="info">
+          <b>${escapeHtml(it.name)}</b>
+          <small>Para la cocina · tienes ${bagCount(it.id)}</small>
+        </div>
+        <span class="menu-record">${coinsLabel(it.buy)}</span>
+      </div>`).join('');
   const upgradeRows = roomUpgradeRow() + UPGRADES.map(upgradeRow).join('');
   /* La vacuna: solo la de su etapa (la de antes ya no sirve y la de después
      todavía no). */
@@ -3024,7 +3034,7 @@ function openShop(aviso, gachaRes){
       ${GACHA_ON ? `<button class="shop-tab ${shopTab === 'gacha' ? 'active' : ''}" id="shopTabGacha">Gacha</button>` : ''}
     </div>
     <div class="menu-list ${shopTab === 'style' ? 'style-list' : ''}">${
-      shopTab === 'food' ? foodRows + medShopRow : shopTab === 'upgrades' ? vacShopRow + upgradeRows
+      shopTab === 'food' ? foodRows + medShopRow + ingRows : shopTab === 'upgrades' ? vacShopRow + upgradeRows
         : shopTab === 'gacha' ? gachaTabHtml(gachaRes) : styleRows('shop')}</div>
     <button class="overlay-btn secondary" id="btnCloseShop">Cerrar</button>
   `, hideOverlay);
@@ -3107,6 +3117,21 @@ function openShop(aviso, gachaRes){
       reopen();
       boughtPopup({ icon: MEDICINE.emoji, name: MEDICINE.name, amount: `+${n}`, price: MEDICINE.price * n,
         note: `Ahora tienes ${foodStock(MEDICINE.id)}. Se da desde Comer.` });
+    });
+  });
+
+  document.querySelectorAll('[data-buy-bag]').forEach(el => {
+    el.addEventListener('click', () => {
+      const it = bagItem(el.dataset.buyBag);
+      if (state.coins < it.buy){ openShop(`Te faltan ${coinsLabel(it.buy - state.coins)} para ${it.name}`); return; }
+      confirmBuy({ icon: it.emoji, name: it.name, price: it.buy, multi: true }, n => {
+        state.coins -= it.buy * n;
+        bagGain(it.id, n);
+        saveState(); render();
+        reopen();
+        boughtPopup({ icon: it.emoji, name: it.name, amount: `+${n}`, price: it.buy * n,
+          note: `Ahora tienes ${bagCount(it.id)}. Se usa en la cocina.` });
+      });
     });
   });
 

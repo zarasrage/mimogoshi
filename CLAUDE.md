@@ -17,7 +17,7 @@ en nueve scripts clásicos que comparten el ámbito global:
 - `objetos.js`: los 22 objetos mágicos (ver "Objetos mágicos"), que son
   muebles con ganchos propios, y sus capas de efectos.
 - `huerta.js`: la mochila (inventario), los tesoros que se encuentran
-  cavando y el huerto (ver "Mochila, tesoros y huerto").
+  cavando, el huerto y la cocina (ver "Mochila, tesoros, huerto y cocina").
 - `duo.js`: el acompañante (`buddy`) y lo que hacen los dos juntos.
 - `duo-juegos.js`: los seis juegos de a dos.
 - `logros.js`: las medallas y el Mimodex (ver "Medallas y Mimodex"), que
@@ -1379,7 +1379,7 @@ modo piso ni reflejo colgando. También una visita espontánea a cada uno
 (`maybeStartFurniVisit()`). Al sumar o cambiar un guion, repetir eso.
 
 
-## Mochila, tesoros y huerto (`huerta.js`)
+## Mochila, tesoros, huerto y cocina (`huerta.js`)
 
 **Mochila.** Todo lo que se junta y no es comida de la despensa ni un
 mueble va en `state.bag` (`bagAdd()`/`bagCount()` en `app.js`;
@@ -1436,6 +1436,28 @@ Probado en Chromium: comprar la mochila (aparece la pestañita), vender,
 comer, plantar, fertilizar, ampliar, ver las cuatro etapas, cosechar,
 cavar con pop-up, semillas en los regalos, y las visitas del huerto y de
 la pala solas y de a dos, sin errores.
+
+**Cocina** (`COCINA_ART`, sección "Huerta y cocina", 90 monedas; no
+confundir con la **Cocinita**, el mueble de juguete de `muebles.js`):
+cocina lo cosechado (y **harina**, que se compra en la tienda, pestaña
+Comida, al final: los ítems de `BAG_ITEMS` con `buy`) en recetas
+(`RECIPES`): **bocadillos** ×3 y **comida rica** ×2 (van a la despensa, a
+la bandeja de Comer) y platos que van a la mochila, grupo Cocina:
+**ensalada**, **sopa de zapallo** ×2, **pastel de frutilla**, **pie de
+zapallo** ×2 y **galletas de girasol** ×4 (cada uno con su `food`:
+panza, energía y felicidad; se comen y se venden desde la mochila).
+Cocinar **rinde más** que comerse la cosecha cruda (un zapallo crudo llena
+45; hecho sopa con una zanahoria, dos de 70): es la gracia. Tocarla abre
+su hoja (`openCocina()`): cada receta con lo que pide (verde si alcanza,
+"faltan N" si no) y Cocinar; se cocina **una cosa a la vez** y tarda unos
+minutos reales (`mins`, de 2 a 10, `cocinaData()` = `{recipe, at}`; los
+ingredientes se gastan al empezar). Mientras, el horno brilla y la olla
+echa vapor; listo, el plato espera arriba con brillitos, y tocar la cocina
+manda a la mascota a sacarlo (`cocinaChore()` / `cocinaTake()`, con
+pop-up; igual que en el huerto, si la tarea se corta lo saca igual). De
+visita juega a ser chef; de a dos, uno cocina y el otro espera y se lo
+come. La comida de la mochila se come con `bagEat()`, que ahora lee el
+`food` de cualquier ítem (cosecha o plato) y el `gift` del girasol.
 
 ## Medallas y Mimodex (`logros.js`)
 

@@ -82,7 +82,7 @@ const FURNI_ITEMS = [
   { id:'caballito',  name:'Caballito',   use:'cabalga',        price: 65 },
   { id:'bateria',    name:'Batería',     use:'toca tambor',    price: 90 },
   { id:'caballete',  name:'Caballete',   use:'pinta',          price: 55 },
-  { id:'cocinita',   name:'Cocinita',    use:'cocina',         price: 75 },
+  { id:'cocinita',   name:'Cocinita',    use:'de juguete',     price: 75 },
   { id:'cofre',      name:'Cofre',       use:'busca tesoros',  price: 60 },
   { id:'escalada',   name:'Muro',        use:'escala',         price: 85 },
   { id:'ventilador', name:'Ventilador',  use:'se refresca',    price: 40 },
