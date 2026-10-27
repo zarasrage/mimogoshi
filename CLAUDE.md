@@ -518,7 +518,11 @@ descuidada muriera en una mediana de ~12 horas reales. Después, **a propósito
 y por pedido**, se rompió esa proporción en dos lugares:
 - hambre, felicidad e higiene bajan **al doble** de rápido (hay que atenderla
   más seguido): 100/424.5, 100/530.5 y 100/212 h de juego (el hambre después
-  pasó a depender de la etapa, ver "Hambre por etapa" más abajo);
+  pasó a depender de la etapa, ver "Hambre por etapa" más abajo, y la
+  felicidad pasó, por pedido, a un número redondo: **12 por hora real**,
+  `12 / 60` por hora de juego, la barra entera en ~8.3 h; antes ~11.3. No
+  cambia el tiempo hasta la muerte de abajo: el hambre cruza 30 bastante
+  antes y el riesgo para la salud cuenta una sola vez);
 - la salud dejó de seguir ese escalado: sus ritmos van **en números redondos
   de tiempo real, por pedido** (ver "Salud que se recupera sola" y "Vacunas" en "Dinero y tienda"): hambre,
   felicidad o higiene bajo 30 cuesta **3 por hora**

@@ -635,7 +635,7 @@ function isExhausted(){ return !state.sleeping && state.energy < EXHAUSTED_AT; }
 const DECAY_PER_HOUR = {
   /* El hambre ya no va acá: depende de la etapa (hungerDecayPerHour(), junto
      a HUNGER_CAP). Antes era 100 / 424.5 para todas, 7.1 horas reales. */
-  happiness: 100 / 530.5,  // 530.5 h de juego ≈ 8.8 horas reales (antes 1061)
+  happiness: 12 / 60,      // 12 por hora real: la barra entera en ~8.3 horas reales (antes 100/530.5, ~11.3 por hora)
   energy:    100 / 3395,   // 3395 h de juego ≈ 56.6 horas reales
   hygiene:   100 / 212,    // 212 h de juego ≈ 3.5 horas reales, pero solo si hay caca (antes 424)
 };
