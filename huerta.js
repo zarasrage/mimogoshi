@@ -721,9 +721,17 @@ FURNI_ART.regadera = REGADERA_ART;
    Una cocina con horno. Con lo cosechado (y harina de la tienda) se hacen
    recetas: bocadillos y comida rica (van a la despensa, a la bandeja de
    Comer), y platos que van a la mochila (ensalada, sopa, pastel, pie,
-   galletas). Cocinar rinde más que comerse la cosecha cruda: es la gracia.
-   Se cocina una cosa a la vez y tarda unos minutos reales (`mins`); al
-   estar lista, el plato espera en la cocina hasta que se toca. */
+   galletas, compota). Cocinar rinde más que comerse la cosecha cruda: es la
+   gracia.
+
+   Tiene **cola** (por pedido): se pueden encargar varias recetas y se
+   cocinan de a una, cada una con su tiempo (`mins`, reales, también con la
+   app cerrada). Los ingredientes se descuentan al encargarla (y vuelven si
+   se cancela). Lo que termina espera en la cocina y sale un globito con
+   cuántas hay listas (con corona cuando ya no queda nada en el horno);
+   tocar el globito saca todo lo listo y lo demás se sigue cocinando.
+   Caben COCINA_MAX cosas entre la cola y lo listo. */
+const COCINA_MAX = 6;
 const RECIPES = [
   { id: 'bocadillos', out: { pantry: 'simple', n: 3 }, needs: { zanahoria: 1, tomate: 1 }, mins: 2 },
   { id: 'rica',       out: { pantry: 'rica', n: 2 },   needs: { tomate: 2, zanahoria: 1, harina: 1 }, mins: 4 },
@@ -735,6 +743,7 @@ const RECIPES = [
   { id: 'compota',    out: { bag: 'compota', n: 2 },   needs: { manzana: 2 }, mins: 3 },
 ];
 const recipeById = id => RECIPES.find(r => r.id === id);
+const recipeMs = id => recipeById(id).mins * 60000;
 /* Lo que sale de una receta: nombre y emoji (de la despensa o de la mochila). */
 function recipeOut(r){
   const it = r.out.pantry ? foodById(r.out.pantry) : bagItem(r.out.bag);
@@ -742,76 +751,175 @@ function recipeOut(r){
 }
 const recipeCan = r => Object.entries(r.needs).every(([id, n]) => bagCount(id) >= n);
 
+/* `queue`: lo encargado, en orden; el primero se está cocinando desde `at`.
+   `ready`: lo que ya salió y espera que lo saquen. Al leerla se pasa a
+   `ready` todo lo que ya terminó: cada uno empieza justo cuando termina el
+   anterior, así la cola avanza igual con la app cerrada. */
 function cocinaData(){
   const d = objData('cocina');
-  if (d.recipe && !recipeById(d.recipe)) d.recipe = null;
+  if (!Array.isArray(d.queue)) d.queue = [];
+  if (!Array.isArray(d.ready)) d.ready = [];
+  /* Saves de cuando se cocinaba una cosa a la vez: {recipe, at}. */
+  if (d.recipe){ if (recipeById(d.recipe)) d.queue.unshift(d.recipe); delete d.recipe; }
+  d.queue = d.queue.filter(recipeById);
+  d.ready = d.ready.filter(recipeById);
+  if (typeof d.at !== 'number') d.at = Date.now();
+  const now = Date.now();
+  while (d.queue.length && now >= d.at + recipeMs(d.queue[0])){
+    d.at += recipeMs(d.queue[0]);
+    d.ready.push(d.queue.shift());
+  }
   return d;
 }
-const cocinaLeftMs = d => d.recipe ? Math.max(0, d.at + recipeById(d.recipe).mins * 60000 - Date.now()) : 0;
+/* Cuándo termina cada cosa de la cola (hora real, ms). */
+function cocinaEnds(d){
+  let t = d.at;
+  return d.queue.map(id => (t += recipeMs(id)));
+}
+const cocinaFull = d => d.queue.length + d.ready.length >= COCINA_MAX;
 
-function openCocina(rt, aviso){
-  const d = cocinaData();
-  let top = '';
-  if (d.recipe){
-    const o = recipeOut(recipeById(d.recipe)), left = cocinaLeftMs(d);
-    top = left > 0
-      ? `<div class="menu-item plot-row"><span class="emoji">${o.emoji}</span><div class="info"><b>Cocinando: ${escapeHtml(o.name)}</b>
-          <small>Listo en ${fmtWait(left)}</small></div></div>`
-      : `<div class="menu-item plot-row ripe"><span class="emoji">${o.emoji}</span><div class="info"><b>¡${escapeHtml(o.name)} listo!</b>
-          <small>Da ${o.n}</small></div><button class="mini-btn go" data-cook-take>Sacar</button></div>`;
+/* Lo listo, agrupado: [{r, times}] en el orden en que salió. */
+function cocinaReadyGroups(d){
+  const out = [];
+  for (const id of d.ready){
+    const g = out.find(x => x.r.id === id);
+    if (g) g.times++; else out.push({ r: recipeById(id), times: 1 });
   }
-  const rows = RECIPES.map(r => {
-    const o = recipeOut(r), can = recipeCan(r) && !d.recipe;
+  return out;
+}
+
+function cocinaListHtml(){
+  const d = cocinaData(), ends = cocinaEnds(d), now = Date.now();
+  let html = '';
+  if (d.ready.length){
+    const groups = cocinaReadyGroups(d);
+    const txt = groups.map(g => { const o = recipeOut(g.r); return `${o.emoji} ${escapeHtml(o.name)} ×${o.n * g.times}`; }).join(' · ');
+    html += `<div class="menu-item plot-row ripe"><span class="emoji">${recipeOut(groups[0].r).emoji}</span>
+      <div class="info"><b>¡Listo para sacar!</b><small>${txt}</small></div>
+      <button class="mini-btn go" data-cook-take>Sacar</button></div>`;
+  }
+  if (d.queue.length){
+    html += `<div class="section-label">En el horno (${d.queue.length})</div>`;
+    html += d.queue.map((id, i) => {
+      const r = recipeById(id), o = recipeOut(r), ms = recipeMs(id);
+      const pct = i === 0 ? Math.max(0, Math.min(100, (now - d.at) / ms * 100)) : 0;
+      return `<div class="menu-item plot-row cook-q ${i === 0 ? 'cooking' : ''}"><span class="emoji">${o.emoji}</span>
+        <div class="info"><b>${escapeHtml(o.name)} ×${o.n}</b>
+          <small>${i === 0 ? 'Cocinando' : 'En espera'} · listo en <span data-cook-end="${ends[i]}">${fmtWait(ends[i] - now)}</span></small>
+          ${i === 0 ? `<div class="cook-bar"><i data-cook-bar="${d.at}" data-cook-ms="${ms}" style="width:${pct.toFixed(1)}%"></i></div>` : ''}</div>
+        <button class="mini-btn" data-cook-cancel="${i}:${id}">Cancelar</button></div>`;
+    }).join('');
+  }
+  const full = cocinaFull(d);
+  html += `<div class="section-label">Recetas</div>` + RECIPES.map(r => {
+    const o = recipeOut(r), can = recipeCan(r) && !full;
     const chips = Object.entries(r.needs).map(([id, n]) => {
       const it = bagItem(id), ok = bagCount(id) >= n;
       return `<span class="need-chip ${ok ? 'ok' : ''}">${it.emoji} ×${n}${ok ? '' : ` · faltan ${n - bagCount(id)}`}</span>`;
     }).join('');
+    const label = full && recipeCan(r) ? 'Llena' : d.queue.length ? 'A la cola' : 'Cocinar';
     return `<div class="menu-item recipe-row ${recipeCan(r) ? '' : 'locked'}">
       <span class="emoji">${o.emoji}</span>
       <div class="info"><b>${escapeHtml(o.name)} ×${o.n}</b><small>${r.out.pantry ? 'A la despensa' : 'A la mochila'} · ${r.mins} min</small>
         <div class="need-chips">${chips}</div></div>
-      <button class="mini-btn ${can ? 'go' : ''}" data-cook="${r.id}" ${can ? '' : 'disabled'}>Cocinar</button></div>`;
+      <button class="mini-btn ${can ? 'go' : ''}" data-cook="${r.id}" ${can ? '' : 'disabled'}>${label}</button></div>`;
   }).join('');
+  return html;
+}
+const cocinaSig = () => { const d = cocinaData(); return d.queue.join() + '|' + d.ready.join(); };
+
+/* La hoja se queda abierta mientras se encarga: se pueden poner varias en
+   la cola seguidas. Cada segundo se mueven las cuentas regresivas; la lista
+   entera se rehace solo cuando algo termina (rehacerla cada segundo se
+   comería los toques). */
+let cocinaTimer = 0;
+function openCocina(rt, aviso){
   showOverlay(`
     <h3>🍳 Cocina</h3>
-    <p class="${aviso ? 'sheet-note' : ''}">${aviso ? escapeHtml(aviso) : d.recipe ? 'Una cosa a la vez: cuando esté lista, sácala.' : 'Con lo que cosechas en el huerto (y harina de la tienda).'}</p>
-    <div class="menu-list">${top}<div class="section-label">Recetas</div>${rows}</div>
+    <p class="sheet-note" id="cocinaNote"></p>
+    <div class="menu-list" id="cocinaList"></div>
     <button class="overlay-btn secondary" id="btnCloseCocina">Cerrar</button>
   `, hideOverlay);
+  const list = document.getElementById('cocinaList'), note = document.getElementById('cocinaNote');
+  const defNote = () => {
+    const d = cocinaData();
+    return d.queue.length || d.ready.length ? `Se cocinan de a una, en orden. Caben ${COCINA_MAX} entre el horno y lo listo.`
+      : 'Con lo que cosechas en el huerto (y harina de la tienda).';
+  };
+  let sig = '';
+  const draw = msg => {
+    list.innerHTML = cocinaListHtml();
+    note.textContent = msg || defNote();
+    sig = cocinaSig();
+  };
+  draw(aviso);
   document.getElementById('overlayCard').classList.add('sheet-tall');
   document.getElementById('overlayCard').onclick = e => {
-    const take = e.target.closest('[data-cook-take]');
-    if (take){ hideOverlay(); cocinaChore(rt, 'take'); return; }
+    if (e.target.closest('[data-cook-take]')){ hideOverlay(); cocinaChore(rt, 'take'); return; }
+    const cancel = e.target.closest('[data-cook-cancel]');
+    if (cancel){
+      const [i, id] = cancel.dataset.cookCancel.split(':');
+      const d = cocinaData(), idx = +i;
+      if (d.queue[idx] !== id){ draw(); return; }
+      const r = recipeById(id);
+      d.queue.splice(idx, 1);
+      if (idx === 0) d.at = Date.now();      // el que seguía empieza ahora
+      for (const [k, n] of Object.entries(r.needs)) bagAdd(k, n);
+      saveState();
+      draw(`Cancelado: ${recipeOut(r).name}. Los ingredientes volvieron a la mochila.`);
+      return;
+    }
     const b = e.target.closest('[data-cook]');
     if (!b || b.disabled) return;
-    const r = recipeById(b.dataset.cook);
-    if (cocinaData().recipe || !recipeCan(r)) return;
+    const r = recipeById(b.dataset.cook), d = cocinaData();
+    if (!recipeCan(r) || cocinaFull(d)) return;
     for (const [id, n] of Object.entries(r.needs)) bagAdd(id, -n);
-    const dd = cocinaData();
-    dd.recipe = r.id; dd.at = Date.now();
+    const first = !d.queue.length;
+    if (first) d.at = Date.now();
+    d.queue.push(r.id);
     saveState();
-    hideOverlay();
-    cocinaChore(rt, 'cook');
-    say(`🍳 ¡A cocinar! Listo en ${r.mins} min`, 2600);
+    const ends = cocinaEnds(d);
+    draw(`${recipeOut(r).emoji} ${recipeOut(r).name}: listo en ${fmtWait(ends[ends.length - 1] - Date.now())}`);
+    /* La primera de la tanda: va a revolver la olla (se ve al cerrar). */
+    if (first && !(walker.activity && walker.activity.kind === 'chore')) cocinaChore(rt, 'cook');
   };
   document.getElementById('btnCloseCocina').addEventListener('click', hideOverlay);
+  clearInterval(cocinaTimer);
+  cocinaTimer = setInterval(() => {
+    if (!document.body.contains(list)){ clearInterval(cocinaTimer); return; }
+    if (cocinaSig() !== sig){ const top = list.scrollTop; draw(note.textContent); list.scrollTop = top; return; }
+    const now = Date.now();
+    list.querySelectorAll('[data-cook-end]').forEach(el => { el.textContent = fmtWait(Math.max(0, +el.dataset.cookEnd - now)); });
+    list.querySelectorAll('[data-cook-bar]').forEach(el => {
+      el.style.width = Math.max(0, Math.min(100, (now - +el.dataset.cookBar) / +el.dataset.cookMs * 100)).toFixed(1) + '%';
+    });
+  }, 1000);
 }
 
-/* Sacar lo que está listo: a la despensa o a la mochila, con pop-up. */
+/* Sacar todo lo listo: a la despensa o a la mochila, con pop-up. Lo que
+   sigue en la cola se sigue cocinando. */
 function cocinaTake(){
   const d = cocinaData();
-  if (!d.recipe || cocinaLeftMs(d) > 0) return;
-  const r = recipeById(d.recipe), o = recipeOut(r);
-  d.recipe = null;
-  if (r.out.pantry) state.pantry[r.out.pantry] = foodStock(r.out.pantry) + r.out.n;
-  else bagGain(r.out.bag, r.out.n);
+  if (!d.ready.length) return;
+  const groups = cocinaReadyGroups(d);
+  d.ready = [];
+  let pantry = false, bag = false;
+  const items = groups.map(({ r, times }) => {
+    const o = recipeOut(r), n = r.out.n * times;
+    if (r.out.pantry){ state.pantry[r.out.pantry] = foodStock(r.out.pantry) + n; pantry = true; }
+    else { bagGain(r.out.bag, n); bag = true; }
+    return { icon: o.emoji, text: o.name, amount: `+${n}` };
+  });
   saveState(); render();
   if (typeof rewardSound === 'function') rewardSound();
-  showPopup({ icon: o.emoji, title: '¡Salió del horno!', items: [{ icon: o.emoji, text: o.name, amount: `+${o.n}` }],
-    note: r.out.pantry ? 'Está en la bandeja de Comer.' : bagNote() });
+  const notes = [];
+  if (pantry) notes.push('Lo de la despensa está en la bandeja de Comer.');
+  if (bag) notes.push(bagNote());
+  if (d.queue.length) notes.push(`Sigue en el horno: ${d.queue.length}.`);
+  showPopup({ icon: items[0].icon, title: '¡Salió del horno!', items, note: notes.join(' ') });
 }
 
-/* La mascota va a la cocina: a revolver la olla o a sacar el plato. */
+/* La mascota va a la cocina: a revolver la olla o a sacar lo listo. */
 function cocinaChore(rt, kind){
   let done = false;
   const run = () => { if (!done){ done = true; if (kind === 'take') cocinaTake(); } };
@@ -828,23 +936,70 @@ function cocinaChore(rt, kind){
   if (!ok){ rt.pending = null; run(); }
 }
 
+/* El globito de lo listo, en pixel art como todo lo de la pantalla: ×N
+   blanco mientras queda algo en el horno, dorado y con corona cuando ya
+   salió todo. Una pieza por número (1 a COCINA_MAX) y por variante; se
+   dibuja en la parte de arriba del canvas de la cocina y `pose` lo sube por
+   encima, flotando de a un píxel. */
+const PX_DIGITS = {
+  1: ['.#.', '##.', '.#.', '.#.', '###'], 2: ['##.', '..#', '.#.', '#..', '###'],
+  3: ['##.', '..#', '.#.', '..#', '##.'], 4: ['#.#', '#.#', '###', '..#', '..#'],
+  5: ['###', '#..', '##.', '..#', '##.'], 6: ['.##', '#..', '###', '#.#', '###'],
+};
+/* Un dibujo de letras (`.` vacío) con contorno alrededor de lo pintado. */
+function pxMap(p, x0, y0, rows, pal, outline = FP.O){
+  const at = (x, y) => y >= 0 && y < rows.length && x >= 0 && x < rows[y].length && rows[y][x] !== '.';
+  const W = Math.max(...rows.map(r => r.length));
+  if (outline) for (let y = -1; y <= rows.length; y++) for (let x = -1; x <= W; x++)
+    if (!at(x, y) && (at(x - 1, y) || at(x + 1, y) || at(x, y - 1) || at(x, y + 1))) p.r(x0 + x, y0 + y, 1, 1, outline);
+  for (let y = 0; y < rows.length; y++) for (let x = 0; x < rows[y].length; x++)
+    if (at(x, y)) p.r(x0 + x, y0 + y, 1, 1, pal[rows[y][x]]);
+}
+const BUBBLE_ROWS = ['.WWWWWWWWW.', 'WWWWWWWWWWW', 'WWWWWWWWWWW', 'WWWWWWWWWWW', 'WWWWWWWWWWW', 'WWWWWWWWWWW', '.WWWWWWWWW.', '....WWW....', '.....W.....'];
+function cocinaBubble(n, all){
+  return { id: (all ? 'bubAll' : 'bub') + n,
+    show: rt => rt.bub === n && rt.bubAll === all,
+    pose: (rt, now, k) => ({ y: (15 + (Math.sin(now / 320) > 0 ? 1 : 0)) * k }),
+    draw: p => {
+      const ink = all ? '#5c3a00' : FP.O;
+      if (all) pxMap(p, 6, 1, ['Y..Y..Y', 'YYYYYYY', 'DDDDDDD'], { Y: '#ffd25a', D: '#e0a31a' });
+      pxMap(p, 4, 5, BUBBLE_ROWS, { W: all ? '#ffd25a' : '#ffffff' });
+      p.r(5, 5, 9, 1, all ? '#ffe79a' : '#ffffff');
+      pxMap(p, 6, 7, ['#.#', '.#.', '#.#'], { '#': ink }, null);
+      pxMap(p, 10, 6, PX_DIGITS[n], { '#': ink }, null);
+    } };
+}
+const COCINA_BUBBLES = [];
+for (let n = 1; n <= COCINA_MAX; n++) COCINA_BUBBLES.push(cocinaBubble(n, false), cocinaBubble(n, true));
+
 const COCINA_ART = { w: 20, h: 22,
-  init: rt => { rt.cook = 'idle'; rt.steamAt = 0; rt.pending = null; },
+  init: rt => { rt.cook = 'idle'; rt.ready = 0; rt.bub = 0; rt.bubAll = false; rt.steamAt = 0; rt.sparkAt = 0; rt.pending = null; rt.hitPart = null; },
   tick: (rt, now) => {
     const d = cocinaData();
-    rt.cook = !d.recipe ? 'idle' : cocinaLeftMs(d) > 0 ? 'cooking' : 'ready';
-    if (rt.cook !== 'idle' && now - rt.steamAt > (rt.cook === 'cooking' ? 300 : 650)){
+    rt.cook = d.queue.length ? 'cooking' : 'idle';
+    rt.ready = d.ready.length;
+    rt.bub = Math.min(COCINA_MAX, rt.ready);
+    rt.bubAll = rt.ready > 0 && !d.queue.length;
+    const k = furniK();
+    if (rt.cook === 'cooking' && now - rt.steamAt > 300){
       rt.steamAt = now;
-      const k = furniK();
-      if (rt.cook === 'cooking') fxSpawn({ x: rtPx(rt, -3.5 + rnd(-2, 2)), y: 22 * k, vx: rnd(-4, 4), vy: rnd(10, 18), wob: 4, wobF: 2,
+      fxSpawn({ x: rtPx(rt, -3.5 + rnd(-2, 2)), y: 22 * k, vx: rnd(-4, 4), vy: rnd(10, 18), wob: 4, wobF: 2,
         life: 1400, color: 'rgba(240,240,250,.6)', layer: 'back' });
-      else fxSpawn({ x: rtPx(rt, 5 + rnd(-3, 3)), y: rnd(17, 22) * k, vy: 8, life: 700, shape: 'spark', color: '#fff6a8', layer: 'front' });
+    }
+    if (rt.ready && now - rt.sparkAt > 650){
+      rt.sparkAt = now;
+      fxSpawn({ x: rtPx(rt, 5 + rnd(-3, 3)), y: rnd(17, 22) * k, vy: 8, life: 700, shape: 'spark', color: '#fff6a8', layer: 'front' });
     }
   },
   cleanup: rt => { if (rt.pending){ const f = rt.pending; rt.pending = null; f(); } },
+  /* Tocar el globito saca lo listo; tocar la cocina abre su hoja. */
   tap: rt => {
-    const d = cocinaData();
-    if (d.recipe && cocinaLeftMs(d) <= 0 && !(walker.activity && walker.activity.kind === 'chore')){ cocinaChore(rt, 'take'); return true; }
+    const hit = rt.hitPart || ''; rt.hitPart = null;
+    if (hit.startsWith('bub') && cocinaData().ready.length){
+      if (walker.activity && walker.activity.kind === 'chore') cocinaTake();
+      else cocinaChore(rt, 'take');
+      return true;
+    }
     openCocina(rt);
     return true;
   },
@@ -864,10 +1019,11 @@ const COCINA_ART = { w: 20, h: 22,
     { id: 'pot', show: rt => rt.cook === 'cooking', draw: p => {
       p.box(2, 1, 8, 5, FP.metal, '#d9dee8'); p.r(1, 2, 1, 1, FP.O); p.r(10, 2, 1, 1, FP.O); p.r(5, 0, 2, 1, FP.O);
     } },
-    { id: 'dish', show: rt => rt.cook === 'ready', draw: p => {
+    { id: 'dish', show: rt => rt.ready > 0, draw: p => {
       p.r(10, 5, 9, 1, FP.O); p.r(11, 4, 7, 1, '#ffffff');
       p.box(12, 0, 5, 5, '#ffb3cf', '#ffffff'); p.r(14, 0, 1, 1, FP.red);
     } },
+    ...COCINA_BUBBLES,
   ],
   visits: [
     /* Juega a ser chef: revuelve, prueba y le gusta. */
@@ -899,7 +1055,8 @@ function huertaDebugHtml(){
       <button class="debug-btn" data-hdbg="grow1">🌱 Plantas +1 h</button>
       <button class="debug-btn" data-hdbg="ripe">🌱 Plantas listas</button>
       <button class="debug-btn" data-hdbg="water">💧 Regar ya</button>
-      <button class="debug-btn" data-hdbg="cook">🍳 Horno listo</button>
+      <button class="debug-btn" data-hdbg="cook1">🍳 Listo el que va</button>
+      <button class="debug-btn" data-hdbg="cook">🍳 Horno: todo listo</button>
       <button class="debug-btn" data-hdbg="compost">♻️ Compost listo</button>
       <button class="debug-btn" data-hdbg="bag">🎒 +3 de todo</button>
       <button class="debug-btn" data-hdbg="dig">⛏️ Cavar sin esperar</button>
@@ -912,7 +1069,8 @@ function wireHuertaDebug(){
       for (const p of d.plots) if (p.crop) p.grown = what === 'ripe' ? plotNeedMs(p) : Math.min(plotNeedMs(p), p.grown + 3600000);
     }
     if (what === 'water') huertoWater();
-    if (what === 'cook'){ const c = cocinaData(); if (c.recipe) c.at = Date.now() - 24 * 3600000; }
+    if (what === 'cook1'){ const c = cocinaData(); if (c.queue.length) c.at = Date.now() - recipeMs(c.queue[0]); cocinaData(); }
+    if (what === 'cook'){ const c = cocinaData(); c.at = Date.now() - c.queue.reduce((t, id) => t + recipeMs(id), 0); cocinaData(); }
     if (what === 'compost' && typeof compostData === 'function'){ const c = compostData(); c.items = c.items.map(() => 0); compostData(); }
     if (what === 'bag') for (const it of BAG_ITEMS) if (it.id !== 'fosil') bagAdd(it.id, 3);
     if (what === 'dig') objData('palita').lastDig = 0;
