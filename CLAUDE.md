@@ -1524,8 +1524,19 @@ siguiente y parecía que el logro hecho era otro.
 
 La hoja de Medallas tiene dos vistas (`medalView`): **Lista** (las
 tarjetas) y **Vitrina** (`showcaseHtml()`): una rejilla de 4 con solo el
-ícono de cada logro, en gris si no tiene ninguna medalla o sobre el disco
-del nivel más alto alcanzado; tocar una dice cuál es y qué medalla tiene. Al alcanzar un nivel baja un cartelito arriba (`#medalToast`,
+ícono de cada logro, en gris si no tiene ninguna medalla o del metal del
+nivel más alto alcanzado; tocar una dice cuál es y qué medalla tiene.
+
+**La medalla es la silueta del emoji, hecha de metal** (por pedido, en vez
+del emoji encima de un disco de color): `medalIcon(emoji, nivel, px)` dibuja
+el emoji en un canvas, toma su forma y la pinta con la rampa del nivel
+(`MEDAL_METAL`: bronce, plata, oro y gris para la que falta), con un borde
+del tono más oscuro. El brillo mezcla una luz de arriba a la izquierda con
+la luz del emoji original, así se siguen leyendo los detalles; plana del
+todo, el plato o el pollito quedaban como manchas. Se usa en la Lista y en
+la Vitrina (`.medal-sil`, `<img>` con data URL, en caché por emoji, nivel,
+tamaño y DPR). Va fuera de la LCD: no es pixel art y no necesita escala
+entera. El cartelito de medalla nueva sigue con su disco (`.mt-medal`). Al alcanzar un nivel baja un cartelito arriba (`#medalToast`,
 z-index 25, encima de todo; tocarlo abre la pestaña) y la copa lleva un
 globito con cuántas hay por reclamar. Si llegan varias juntas van en un solo
 cartelito ("¡N medallas nuevas!"). Lo que mide cada una es un contador de
