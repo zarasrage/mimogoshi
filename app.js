@@ -650,7 +650,8 @@ const DECAY_PER_HOUR = {
    (pedido así). Antes no bajaba nada sin caca y con caca ~28 por hora. */
 const HYGIENE_POOP_DECAY = 18 / 60;
 /* Limpiar (el botón) baña: +25 y después hay que esperar CLEAN_COOLDOWN_MS
-   (5 min reales). La caca NO la saca el botón: se recoge tocándola, +10. */
+   (5 min reales). Si hay caca, también la recoge (+10 aparte); tocarla
+   también la recoge, sin esperar al botón. */
 const CLEAN_HYGIENE = 25;
 const CLEAN_COOLDOWN_MS = 5 * 60 * 1000;
 const POOP_CLEAN_HYGIENE = 10;
@@ -698,14 +699,17 @@ const SICK_CHANCE_PER_HOUR = 0.000566;
 const SICK_CHANCE_PER_HOUR_LOW = 0.00283;
 const SICK_LOW_HEALTH_AT = 60;
 
-/* Modo nocturno: de 00:00 a 06:00 hora REAL del dispositivo (no de juego —
+/* Modo nocturno: de 23:00 a 07:00 hora REAL del dispositivo (no de juego —
    es "de noche" para quien está jugando, no para la mascota), todo decae
    50% más lento y la mascota tiende a estar dormida ~75% del tiempo.
    catchUp() simula la ausencia de a un tick y con la hora de cada paso
    (simNowMs), así un tramo de noche con la app cerrada también cuenta como
    noche. */
-const NIGHT_START_HOUR = 0;
-const NIGHT_END_HOUR = 6;
+/* De 23:00 a 07:00 (pedido así: antes era de 00:00 a 06:00 y mucha gente
+   duerme hasta las 7 u 8). Cruza la medianoche: ver isNightMode(). */
+const NIGHT_START_HOUR = 23;
+const NIGHT_END_HOUR = 7;
+const NIGHT_LABEL = `${String(NIGHT_START_HOUR).padStart(2, '0')}:00 a ${String(NIGHT_END_HOUR).padStart(2, '0')}:00`;
 const NIGHT_DECAY_FACTOR = 0.5;
 /* Por tick (TICK_MS), no por hora: maybeAutoSleep() ya se llama una vez por
    tick sin escalar por horas, igual que su rama diurna de abajo. La
@@ -726,7 +730,9 @@ let simNowMs = null;
 function isNightMode(){
   if (debugForcedNight !== null) return debugForcedNight;
   const h = new Date(simNowMs ?? (Date.now() + debugClockOffsetMs)).getHours();
-  return h >= NIGHT_START_HOUR && h < NIGHT_END_HOUR;
+  return NIGHT_START_HOUR > NIGHT_END_HOUR
+    ? h >= NIGHT_START_HOUR || h < NIGHT_END_HOUR
+    : h >= NIGHT_START_HOUR && h < NIGHT_END_HOUR;
 }
 
 let state = null;
@@ -778,6 +784,7 @@ function freshState(name, species){
     stage: 'egg',
     selectedFood: 'simple',
     lastClean: 0,        // último baño con el botón Limpiar (Date.now), ver CLEAN_COOLDOWN_MS
+    lastPet: 0,          // último mimo que sumó felicidad (Date.now), ver PET_COOLDOWN_MS
     coins: 0,
     pantry: { simple: FOOD_START_STOCK, [MEDICINE.id]: MED_START_STOCK },  // porciones en la mochila
     objData: {},         // lo que guardan los objetos mágicos (objetos.js): fruta, fotos, el frijol...
@@ -2329,14 +2336,36 @@ function giveMedicine(){
   return null;
 }
 
+/* Mimos: +PET_HAPPINESS una vez cada PET_COOLDOWN_MS (pedido así). Antes
+   cada toque sumaba +6 sin espera y 15 toques seguidos llenaban la barra:
+   la felicidad dejaba de ser algo que cuidar. Mientras espera, tocarla
+   igual le hace cariño (la animación y el corazón salen siempre, así
+   nunca se siente roto), pero no suma ni cuenta para la medalla. */
+const PET_HAPPINESS = 10;
+const PET_COOLDOWN_MS = 5 * 60 * 1000;
+
+/* Cuánto falta para que un mimo vuelva a sumar (0 = ya). Un reloj que
+   vuelve atrás deja mimar, igual que el baño. */
+function petWaitMs(){
+  const t = state.lastPet || 0, now = Date.now();
+  return now < t ? 0 : Math.max(0, t + PET_COOLDOWN_MS - now);
+}
+
 const btnPet = () => {
   if (state.stage === 'egg') { say('Todavía es un huevo…'); return; }
   if (!tryWake()) return;
   catchUp();
-  state.happiness = clamp(state.happiness + 6);
-  medalAdd('mimos');   // logros.js
-  floatFx('💗');
-  say('¡Le encanta que lo mimen!');
+  const espera = petWaitMs();
+  if (espera > 0){
+    floatFx('💗');
+    say(`¡Le gusta! Para que suba su felicidad: otra vez en ${fmtWait(espera)}`, 2200);
+  } else {
+    state.happiness = clamp(state.happiness + PET_HAPPINESS);
+    state.lastPet = Date.now();
+    medalAdd('mimos');   // logros.js
+    floatFx('💗');
+    say(`¡Le encanta que la mimen! +${PET_HAPPINESS} 😊`);
+  }
   triggerPetAction('pet');
   saveState(); render();
 };
@@ -2494,7 +2523,7 @@ function siRow({ e, t, d = '', v = '', up = false, down = false, on = false }, t
    extra } */
 function statInfoData(stat){
   const night = isNightMode(), sleeping = !!state.sleeping;
-  const nightRow = { e: '🌙', t: 'Es de noche', d: 'De 00:00 a 06:00 todo baja a la mitad', v: `×${nf(NIGHT_DECAY_FACTOR)}`, up: true, fx: true, on: night };
+  const nightRow = { e: '🌙', t: 'Es de noche', d: `De ${NIGHT_LABEL} todo baja a la mitad`, v: `×${nf(NIGHT_DECAY_FACTOR)}`, up: true, fx: true, on: night };
   const distressRow = (lim) => ({ e: '📉', t: `En apuro (bajo ${lim}%)`, d: 'Cuando ya va mal, baja más rápido', v: `×${nf(DISTRESS_MULT)}`, down: true, fx: true, on: state[stat] < lim });
   const sleepRow = { e: '💤', t: 'Está dormida', d: 'Baja a un cuarto del ritmo', v: '×0,25', up: true, fx: true, on: sleeping };
   const riskMark = { v: HEALTH_RISK_AT, t: 'Empieza a dañar la salud' };
@@ -2539,7 +2568,7 @@ function statInfoData(stat){
       ],
       up: [
         { e: '🎮', t: 'Jugar un minijuego', d: `Según qué tan bien: un tercio del mérito (~${Math.round(GOOD_GAME_MERIT * HAPPINESS_PER_MERIT)} en una partida muy buena)`, v: `hasta +${HAPPINESS_MAX_GAIN}`, up: true },
-        { e: '💗', t: 'Hacerle cariño', d: 'Tocar a la mascota', v: '+6', up: true },
+        { e: '💗', t: 'Hacerle cariño', d: petWaitMs() ? `Tocar a la mascota · suma otra vez en ${fmtWait(petWaitMs())}` : `Tocar a la mascota · suma una vez cada ${PET_COOLDOWN_MS / 60000} min`, v: `+${PET_HAPPINESS}`, up: true, on: !petWaitMs() && state.happiness < 100 - PET_HAPPINESS / 2 },
         { e: '🎁', t: 'Abrir un regalo', d: 'Aparecen solos, ~1 cada 12 h', v: `+${GIFT_HAPPINESS}`, up: true, on: !!state.gift },
         { e: '🎡', t: 'Trozo de felicidad en la ruleta', d: 'Un premio posible del giro', v: '+15', up: true },
         { e: '🛋️', t: 'Muebles, objetos y jugar de a dos', d: `Cada visita o juego juntos · máximo ${FURNI_JOY_PER_HOUR} por hora (esta hora: ${j})`, v: `+${FURNI_JOY}`, up: true, fx: true, on: j > 0 },
@@ -3694,8 +3723,8 @@ function wireButtons(){
   document.getElementById('dayNight').addEventListener('click', (e) => {
     e.stopPropagation();   // que no siga al piso (muebles, mimo)
     say(isNightMode()
-      ? 'Es de noche (00:00 a 06:00): todo baja a la mitad y duerme más seguido'
-      : `Es de día. De ${String(NIGHT_START_HOUR).padStart(2, '0')}:00 a ${String(NIGHT_END_HOUR).padStart(2, '0')}:00 es de noche`, 2800);
+      ? `Es de noche (${NIGHT_LABEL}): todo baja a la mitad y duerme más seguido`
+      : `Es de día. De ${NIGHT_LABEL} es de noche`, 2800);
   });
   /* Cada reloj abre su ficha (ver openStatInfo). */
   document.querySelectorAll('#stats .stat').forEach(el => el.addEventListener('click', (e) => {

@@ -8,7 +8,7 @@
      vende);
    - los tesoros que salen al cavar con la pala: piedras preciosas, un
      hueso, un amuleto... y, muy de vez en cuando, un fósil de Mimogoshi
-     (algún día una máquina lo va a revivir; por ahora se guarda).
+     (la Máquina reviviente, más abajo, lo vuelve un huevo fósil).
    Todo se guarda aunque no se tenga la Mochila; comprarla (la cosa más
    barata de la tienda, en Esenciales) da la pestañita para verla, comer y
    vender.
@@ -28,6 +28,9 @@ STYLE_ITEMS.push(
   { id:'cocina', kind:'furni', wow: true, group:'huerta', name:'Cocina', use:'pasteles y más', price: 90 },
   { id:'regadera', kind:'furni', wow: true, group:'huerta', name:'Regadera', use:'riega el huerto', price: 25 },
   { id:'palita', kind:'furni', wow: true, group:'huerta', name:'Pala de jardín', use:'cava tesoros', price: 45 },
+  /* Sin `group`: sale en Objetos mágicos (ver "la máquina reviviente"). */
+  { id:'revividor', kind:'furni', wow: true, name:'Máquina reviviente', use:'revive fósiles', price: 150,
+    boughtNote: 'Ponle un fósil misterioso (sale muy de vez en cuando al cavar con la pala de jardín).' },
 );
 
 /* ---------- catálogo ---------- */
@@ -85,7 +88,9 @@ const BAG_ITEMS = [
   { id: 'rubi',     group: 'tesoro', rar: 'epico', name: 'Rubí',            emoji: '♦️', sell: 50,  desc: 'Una piedra preciosa roja, de las difíciles.' },
   { id: 'diamante', group: 'tesoro', rar: 'epico', name: 'Diamante',        emoji: '💎', sell: 120, desc: 'Brilla aunque no haya luz.' },
   { id: 'fosil',    group: 'tesoro', rar: 'unico', name: 'Fósil misterioso', emoji: '🦕', sell: 0,
-    desc: 'Un Mimogoshi de hace millones de años, de una especie que ya no existe. Guárdalo: algún día una máquina va a poder revivirlo.' },
+    desc: 'Un Mimogoshi de hace millones de años, de una especie que ya no existe. La Máquina reviviente (Tienda → Objetos) lo puede revivir.' },
+  { id: 'huevo_fosil', group: 'tesoro', rar: 'unico', name: 'Huevo fósil', emoji: '🥚', sell: 0,
+    desc: 'Lo que salió de la Máquina reviviente: un huevo de una especie antigua. Está vivo, pero todavía no se abre. Guárdalo.' },
 ];
 for (const it of BAG_ITEMS) if (it.food && !it.desc) it.desc = `Hecho en la cocina. ${foodText(it.food)}`;
 function foodText(f){ return `Llena ${f.restore} de panza${f.happy ? ` y da +${f.happy} de felicidad` : ''}.`; }
@@ -124,6 +129,8 @@ function openBag(sel, aviso){
     if (it.food) acts.push(`<button class="overlay-btn" data-bag-act="eat">Dárselo de comer</button>`);
     if (it.gift) acts.push(`<button class="overlay-btn" data-bag-act="gift">Regalárselo</button>`);
     if (it.seed) acts.push(`<button class="overlay-btn" data-bag-act="plant">Plantar en el huerto</button>`);
+    if (it.id === 'fosil') acts.push(`<button class="overlay-btn" data-bag-act="revive">Revivirlo en la máquina</button>`);
+    if (it.id === 'huevo_fosil' && FOSSIL_SPECIES.length) acts.push(`<button class="overlay-btn" data-bag-act="hatch">Abrir el huevo</button>`);
     if (it.sell){
       acts.push(`<button class="overlay-btn secondary" data-bag-act="sell1">Vender 1 · ${coinsLabel(it.sell)}</button>`);
       if (n > 1) acts.push(`<button class="overlay-btn secondary" data-bag-act="sellall">Vender ${n} · ${coinsLabel(it.sell * n)}</button>`);
@@ -177,6 +184,18 @@ function bagAction(it, act){
     say('¡Para mí! 🥰');
     triggerPetAction('celebrate');
     saveState(); render();
+    return;
+  }
+  if (act === 'revive'){
+    const rt = magicRt('revividor');
+    if (rt){ openRevividor(rt); return; }
+    openBag(it.id, state.style.owned.revividor ? 'Trae la Máquina reviviente a esta habitación (Personalizar)'
+      : 'Hace falta la Máquina reviviente: Tienda → Objetos → Objetos mágicos');
+    return;
+  }
+  if (act === 'hatch'){
+    hideOverlay();
+    if (!fossilHatch()) openBag(it.id, 'Todavía no se abre');
     return;
   }
   if (act === 'plant'){
@@ -1046,6 +1065,240 @@ const COCINA_ART = { w: 20, h: 22,
   ] };
 FURNI_ART.cocina = COCINA_ART;
 
+/* ---------- la máquina reviviente ----------
+   Revive el fósil misterioso que sale al cavar (0,5% de las veces). Se le
+   pone un fósil (la mascota va y lo mete en el tubo), trabaja
+   REVIVE_MS de tiempo real (también con la app cerrada) y saca un huevo.
+   Uno a la vez.
+
+   Todavía no hay especies antiguas dibujadas: con FOSSIL_SPECIES vacío, lo
+   que sale es un Huevo fósil que queda en la mochila, vivo pero cerrado.
+   Cuando haya especies, basta con sumarlas a FOSSIL_SPECIES (ids de
+   SPECIES): la máquina saca el huevo y nace al tiro (como acompañante), y
+   los huevos fósiles guardados se pueden abrir desde la mochila. */
+const REVIVE_MS = 24 * 60 * 60 * 1000;
+const FOSSIL_SPECIES = [];
+
+/* { at, ready }: `at` = cuándo se puso el fósil (null si está vacía),
+   `ready` = huevos que esperan adentro. Pasa a listo con la hora real. */
+function reviveData(){
+  const d = objData('revividor');
+  if (d.at === undefined) d.at = null;
+  if (!d.ready) d.ready = 0;
+  if (d.at !== null && Date.now() - d.at >= REVIVE_MS){ d.at = null; d.ready++; }
+  return d;
+}
+function reviveLeftMs(d = reviveData()){ return d.at === null ? 0 : Math.max(0, d.at + REVIVE_MS - Date.now()); }
+function reviveFrac(d = reviveData()){ return d.at === null ? (d.ready ? 1 : 0) : Math.min(1, (Date.now() - d.at) / REVIVE_MS); }
+
+/* Una especie antigua al azar, o null si todavía no hay ninguna. */
+function fossilSpecies(){
+  const ok = FOSSIL_SPECIES.filter(id => SPECIES[id]);
+  return ok.length ? pickOne(ok) : null;
+}
+
+/* Abrir un huevo fósil de la mochila: nace como acompañante. Devuelve
+   false si todavía no hay especies antiguas. */
+function fossilHatch(){
+  const sp = fossilSpecies();
+  if (!sp || bagCount('huevo_fosil') <= 0) return false;
+  bagAdd('huevo_fosil', -1);
+  hatchFossil(sp);
+  return true;
+}
+function hatchFossil(sp){
+  const name = SPECIES_RAW[sp].name;
+  if (typeof setCompanion === 'function') setCompanion({ species: sp, stage: 'child', name, kind: 'fosil' });
+  if (typeof rewardSound === 'function') rewardSound();
+  showPopup({ icon: '🦕', title: '¡Nació una especie antigua!',
+    items: [{ icon: '🐣', text: name, amount: 'Nuevo' }],
+    note: `Hace millones de años que no se veía un ${name}. Ya está en el Mimodex.` });
+}
+
+/* Sacar lo que revivió: nace si hay especies antiguas; si no, el huevo va
+   a la mochila. */
+function reviveTake(){
+  const d = reviveData();
+  if (!d.ready) return;
+  d.ready--;
+  const sp = fossilSpecies();
+  saveState();
+  if (sp){ hatchFossil(sp); return; }
+  bagGain('huevo_fosil', 1);
+  saveState(); render();
+  if (typeof rewardSound === 'function') rewardSound();
+  showPopup({ icon: '🥚', title: '¡Revivió!',
+    items: [{ icon: '🥚', text: 'Huevo fósil', amount: '+1' }],
+    note: `Está vivo, pero todavía no se abre: hay que esperar a saber qué especie es. ${bagNote()}` });
+}
+
+function reviveInsert(){
+  const d = reviveData();
+  if (d.at !== null || bagCount('fosil') <= 0) return;
+  bagAdd('fosil', -1);
+  d.at = Date.now();
+  saveState(); render();
+  say(`🧬 ¡A revivir! Listo en ${magicDur(REVIVE_MS)}`, 2600);
+}
+
+/* La mascota va a la máquina: a meter el fósil o a sacar el huevo. Si la
+   tarea se corta (o está dormida), igual se hace. */
+function reviveChore(rt, kind){
+  let done = false;
+  const run = () => { if (!done){ done = true; if (kind === 'take') reviveTake(); else reviveInsert(); } };
+  if (state.sleeping || displayStage() === 'egg' || (walker.activity && (walker.activity.kind === 'eat' || walker.activity.kind === 'vaccine'))){ run(); return; }
+  const at = () => rt.x;
+  rt.pending = run;
+  const ok = startChore(rt, [
+    { go: besideX(at, 6 * furniK()) }, faceX(at),
+    kind === 'take'
+      ? { anim: 'pet', ms: 1100, fx: ['✨'], end: () => { rt.pending = null; run(); } }
+      : { anim: 'pet', ms: 1100, fx: ['🦕'], end: () => { rt.pending = null; run(); } },
+    kind === 'take' ? { anim: 'celebrate', ms: 900 } : { anim: 'happy', ms: 900, fx: ['🧬'] },
+  ]);
+  if (!ok){ rt.pending = null; run(); }
+}
+
+let revividorTimer = 0;
+function openRevividor(rt, aviso){
+  const d = reviveData(), fosiles = bagCount('fosil'), huevos = bagCount('huevo_fosil');
+  let estado, accion = '';
+  if (d.ready){
+    estado = `<b>¡Listo!</b> Adentro hay ${d.ready === 1 ? 'un huevo' : `${d.ready} huevos`} esperando.`;
+    accion = `<button class="overlay-btn" id="revTake">Sacar el huevo</button>`;
+  } else if (d.at !== null){
+    estado = `<b>Reviviendo…</b> Falta <span data-rev-left>${magicDur(reviveLeftMs(d))}</span>.`;
+  } else {
+    estado = fosiles ? `Tienes ${fosiles === 1 ? 'un fósil' : `${fosiles} fósiles`} misterioso${fosiles === 1 ? '' : 's'}.`
+      : 'Vacía. Le hace falta un fósil misterioso: sale muy de vez en cuando al cavar con la pala de jardín.';
+    if (fosiles) accion = `<button class="overlay-btn" id="revPut">Ponerle un fósil 🦕</button>`;
+  }
+  const pct = Math.round(reviveFrac(d) * 100);
+  showOverlay(`
+    <h3>🧬 Máquina reviviente</h3>
+    <p class="${aviso ? 'sheet-note warn' : ''}">${aviso ? escapeHtml(aviso) : `Revive un fósil en ${magicDur(REVIVE_MS)}, también con la app cerrada.`}</p>
+    <div class="menu-list">
+      <div class="menu-item revive-row">
+        <span class="emoji">${d.ready ? '🥚' : d.at !== null ? '🦕' : '🧪'}</span>
+        <div class="info"><small>${estado}</small>
+          <div class="xp-bar"><div class="xp-fill" data-rev-bar style="width:${pct}%"></div></div></div>
+      </div>
+      ${huevos ? `<div class="menu-item"><span class="emoji">🥚</span><div class="info"><b>Huevos fósiles: ${huevos}</b><small>${FOSSIL_SPECIES.length ? 'Ábrelos desde la mochila.' : 'Vivos, pero todavía no se abren.'}</small></div></div>` : ''}
+    </div>
+    <div class="overlay-actions">
+      ${accion}
+      <button class="overlay-btn secondary" id="revClose">Cerrar</button>
+    </div>
+  `, closeRevividor);
+  document.getElementById('revClose').addEventListener('click', closeRevividor);
+  const put = document.getElementById('revPut');
+  if (put) put.addEventListener('click', () => { hideOverlay(); reviveChore(rt, 'put'); });
+  const take = document.getElementById('revTake');
+  if (take) take.addEventListener('click', () => { hideOverlay(); reviveChore(rt, 'take'); });
+  /* La cuenta regresiva y la barra se mueven solas; al terminar se rehace. */
+  clearInterval(revividorTimer);
+  const firma = `${d.at}|${d.ready}`;
+  revividorTimer = setInterval(() => {
+    if (document.getElementById('overlay').classList.contains('hidden') || !document.getElementById('revClose')){ clearInterval(revividorTimer); return; }
+    const e = reviveData();
+    if (`${e.at}|${e.ready}` !== firma){ openRevividor(rt); return; }
+    const left = document.querySelector('[data-rev-left]');
+    if (left) left.textContent = magicDur(reviveLeftMs(e));
+    const bar = document.querySelector('[data-rev-bar]');
+    if (bar) bar.style.width = Math.round(reviveFrac(e) * 100) + '%';
+  }, 1000);
+}
+function closeRevividor(){ clearInterval(revividorTimer); hideOverlay(); }
+
+/* Un tubo de vidrio sobre una base con panel. Trabajando: el líquido verde
+   burbujea, el fósil flota adentro, la luz de arriba pestañea y se llenan
+   las cinco lucecitas del panel. Listo: un huevo adentro y la luz dorada. */
+const REVIVE_LIQ = '#5fe39b', REVIVE_LIQ_L = '#b6ffd6';
+function revivePip(i){
+  return { id: 'pip' + i, show: rt => rt.pips > i, draw: p => { p.r(4 + i * 2, 24, 1, 1, REVIVE_LIQ_L); } };
+}
+const REVIDOR_PIPS = [0, 1, 2, 3, 4].map(revivePip);
+const REVIVIDOR_ART = { w: 18, h: 28,
+  init: rt => { rt.mode = 'idle'; rt.pips = 0; rt.bubAt = 0; rt.pending = null; },
+  tick: (rt, now) => {
+    const d = reviveData();
+    rt.mode = d.ready ? 'ready' : d.at !== null ? 'working' : 'idle';
+    rt.pips = rt.mode === 'ready' ? 5 : rt.mode === 'working' ? Math.floor(reviveFrac(d) * 5) : 0;
+    const k = furniK();
+    if (rt.mode !== 'idle' && now - rt.bubAt > (rt.mode === 'working' ? 260 : 700)){
+      rt.bubAt = now;
+      fxSpawn({ x: rtPx(rt, rnd(-3, 3)), y: rnd(8, 12) * k, vy: rnd(10, 18), wob: 2, wobF: 3, life: 900,
+        shape: rt.mode === 'ready' ? 'spark' : 'sq', color: rt.mode === 'ready' ? '#fff6a8' : REVIVE_LIQ_L, layer: 'front' });
+    }
+  },
+  cleanup: rt => { if (rt.pending){ const f = rt.pending; rt.pending = null; f(); } },
+  tap: rt => {
+    const d = reviveData();
+    if (d.ready && !(walker.activity && walker.activity.kind === 'chore')){ reviveChore(rt, 'take'); return true; }
+    openRevividor(rt);
+    return true;
+  },
+  parts: [
+    { id: 'body', draw: p => {
+      p.box(1, 21, 16, 7, FP.metalD, FP.metal);                 // base
+      p.r(3, 23, 12, 3, FP.dark);                                // panel
+      for (let i = 0; i < 5; i++) p.r(4 + i * 2, 24, 1, 1, '#3b4a40');
+      p.box(3, 3, 12, 19, FP.glass, '#e6f6ff');                 // tubo
+      p.r(4, 5, 1, 14, '#ffffff');                               // reflejo
+      p.box(2, 1, 14, 3, FP.metalD, FP.metal);                  // tapa
+      p.r(8, 0, 2, 1, FP.O);                                     // la luz va encima
+    } },
+    { id: 'liquid', show: rt => rt.mode !== 'idle', draw: p => {
+      p.r(4, 8, 10, 13, REVIVE_LIQ); p.r(4, 8, 10, 1, REVIVE_LIQ_L); p.r(5, 9, 1, 11, REVIVE_LIQ_L);
+    } },
+    { id: 'fossil', show: rt => rt.mode === 'working', draw: p => {
+      /* Un esqueletito: cráneo, columna y patas. */
+      p.r(10, 11, 3, 2, '#f4efe9'); p.r(11, 13, 1, 1, '#f4efe9');
+      p.r(6, 13, 6, 1, '#f4efe9'); p.r(5, 14, 1, 1, '#f4efe9');
+      p.r(7, 14, 1, 2, '#f4efe9'); p.r(10, 14, 1, 2, '#f4efe9');
+      p.r(11, 11, 1, 1, FP.O);
+    } },
+    { id: 'egg', show: rt => rt.mode === 'ready', draw: p => {
+      p.r(7, 12, 4, 1, FP.O); p.r(6, 13, 6, 1, FP.O); p.r(5, 14, 1, 5, FP.O); p.r(12, 14, 1, 5, FP.O);
+      p.r(6, 19, 6, 1, FP.O);
+      p.r(7, 13, 4, 1, '#fff4d6'); p.r(6, 14, 6, 5, '#fff4d6'); p.r(7, 15, 1, 2, '#ffffff');
+      p.r(8, 16, 2, 1, '#c9a24a'); p.r(9, 17, 2, 1, '#c9a24a');
+    } },
+    { id: 'lampIdle', show: rt => rt.mode === 'idle', draw: p => { p.r(8, 0, 2, 1, FP.grayD); } },
+    { id: 'lampWork', show: rt => rt.mode === 'working', flicker: true, draw: p => { p.r(8, 0, 2, 1, REVIVE_LIQ); } },
+    { id: 'lampReady', show: rt => rt.mode === 'ready', flicker: true, draw: p => { p.r(8, 0, 2, 1, FP.yel); } },
+    ...REVIDOR_PIPS,
+  ],
+  visits: [
+    /* Mira el tubo de cerca, golpecito al vidrio y se asusta un poco. */
+    f => [
+      { go: besideX(() => f.rt.x, 6 * f.k) }, faceX(() => f.rt.x),
+      { anim: 'idle', ms: 1400, fx: ['🔍'] },
+      { anim: 'pet', ms: 700, fx: ['❓'] },
+      { anim: 'sad', ms: 600, fx: ['😮'] },
+      S.happy(900, { fx: ['🧬'] }),
+    ],
+    /* Le toca botones al panel y celebra las lucecitas. */
+    f => [
+      { go: besideX(() => f.rt.x, 6 * f.k) }, faceX(() => f.rt.x),
+      { anim: 'clean', ms: 1800, fx: ['🔘', '✨'], fxEvery: 600 },
+      { anim: 'celebrate', ms: 900, fx: ['💡'] },
+      S.happy(800),
+    ],
+  ],
+  duos: [
+    /* Uno mira el tubo y el otro se esconde detrás del primero. */
+    f => {
+      const at = () => f.rt.x;
+      return {
+        a: [{ go: besideX(at, 6 * f.k) }, faceX(at), S.sync('in'), S.wait(1800, 'idle', { fx: ['🔍'], fxEvery: 900 }), S.sync('boo'), S.happy(900, { dir: 'partner', fx: ['😂'] }), S.sync('end')],
+        b: [{ go: f.x(-30) }, S.sync('in', { dir: 'partner' }), S.wait(1800, 'sad', { dir: 'partner', fx: ['😨'], fxEvery: 900 }), S.sync('boo'),
+          { anim: 'celebrate', ms: 900, fx: ['🧬'] }, S.sync('end')],
+      };
+    },
+  ] };
+FURNI_ART.revividor = REVIVIDOR_ART;
+
 /* ---------- modo prueba ----------
    Botones del panel de prueba para no esperar horas: crecer el huerto,
    terminar lo que está en el horno o en la compostera, y llenar la mochila. */
@@ -1060,6 +1313,8 @@ function huertaDebugHtml(){
       <button class="debug-btn" data-hdbg="compost">♻️ Compost listo</button>
       <button class="debug-btn" data-hdbg="bag">🎒 +3 de todo</button>
       <button class="debug-btn" data-hdbg="dig">⛏️ Cavar sin esperar</button>
+      <button class="debug-btn" data-hdbg="fosil">🦕 +1 fósil</button>
+      <button class="debug-btn" data-hdbg="revive">🧬 Máquina: lista</button>
     </div></div>`;
 }
 function wireHuertaDebug(){
@@ -1072,7 +1327,9 @@ function wireHuertaDebug(){
     if (what === 'cook1'){ const c = cocinaData(); if (c.queue.length) c.at = Date.now() - recipeMs(c.queue[0]); cocinaData(); }
     if (what === 'cook'){ const c = cocinaData(); c.at = Date.now() - c.queue.reduce((t, id) => t + recipeMs(id), 0); cocinaData(); }
     if (what === 'compost' && typeof compostData === 'function'){ const c = compostData(); c.items = c.items.map(() => 0); compostData(); }
-    if (what === 'bag') for (const it of BAG_ITEMS) if (it.id !== 'fosil') bagAdd(it.id, 3);
+    if (what === 'bag') for (const it of BAG_ITEMS) if (it.id !== 'fosil' && it.id !== 'huevo_fosil') bagAdd(it.id, 3);
+    if (what === 'fosil') bagGain('fosil', 1);
+    if (what === 'revive'){ const r = reviveData(); if (r.at !== null) r.at = Date.now() - REVIVE_MS; reviveData(); }
     if (what === 'dig') objData('palita').lastDig = 0;
     saveState(); render();
     say('🧪 Listo', 1200);
