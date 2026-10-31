@@ -1709,7 +1709,7 @@ juego" (`gameActor()`) que no toca `petAction` ni el paseo de la pieza.
 
 ## Minijuegos
 
-Seis de uno (en `juegos.js`), todos sobre `#gameCanvas`, que se redimensiona
+Siete de uno (en `juegos.js`), todos sobre `#gameCanvas`, que se redimensiona
 con `fitGameCanvas()` a su tamaño real en pantalla para que nada salga
 estirado. Snake y Tap rítmico (y su variante de prueba) se **sacaron**:
 `loadState()` le pasa a Torre y a Salto al cielo lo que se había pagado por
@@ -1797,13 +1797,38 @@ ellos (`REMOVED_GAMES`) y borra sus récords y su xp.
   que se pisan se amontona, y con diez círculos en un canvas chico hay tiradas
   donde no entra ninguna. La secuencia **crece**, no se sortea de nuevo cada
   ronda: rehacerla entera es más difícil pero se siente arbitrario.
+- **Hora punta** (`bj`, id `'bus'`): del género "bus jam", hecho propio. Un
+  estacionamiento de micros de colores apretadas, cada una con una flecha en
+  el techo; tocarla la hace salir derecho por ahí si tiene el camino libre
+  (si no, choca con la de adelante y vuelve). La que sale se para en un
+  **andén** (5, o 4 en los niveles 4 y 5: `bjBays()`) y sube la gente de la
+  fila de su color, siempre el primero; llena (4 o 6 asientos según su
+  largo), se va y libera el andén. Si todos los andenes tienen micros que no
+  le sirven al primero de la fila es un **atasco**: el botón de abajo llama a
+  la **grúa**, que devuelve a su lugar la micro del andén con menos gente (la
+  gente vuelve a la fila) y cuesta `BJ_TOW_COST` (5) segundos. Al principio
+  el atasco terminaba la partida y los bots se atascaban casi siempre, hasta
+  el experto: se cambió para que equivocarse cueste tiempo y no la partida.
+  Despejado un lote (+10) llega otro más lleno, hasta los 90 s; un punto
+  por pasajero. **Todo lote tiene solución** por cómo se arma
+  (`bjMakeLot()`): las micros se ponen de a una, cada una con el camino
+  libre entre las que ya estaban, así que el orden inverso siempre sale; la
+  fila se arma jugando esa solución con menos andenes de los que hay
+  (`bjSlack()`), para que quede holgura. Verificado: un bot que sigue la
+  solución nunca necesitó la grúa en 200 partidas. La mascota mira la fila
+  desde arriba a la izquierda (contenta cuando sale una llena, triste con
+  atasco). La gente y las micros son pixel art dibujado con `fillRect`; las
+  micros se dibujan en un marco local y se pasan a pantalla según hacia dónde
+  miran, sin rotar el canvas. Lógica (`bjNew/bjStep/bjTap/bjSend/bjTow`)
+  sin DOM, mérito calibrado con bots (medianas en el comentario de
+  `bjMerit()`).
 
-Los seis suman felicidad y disparan `triggerPetAction('celebrate')` si el
+Los siete suman felicidad y disparan `triggerPetAction('celebrate')` si el
 puntaje fue positivo.
 
 ### Desbloqueo y desafío diario
 
-Los seis juegos del menú viven en `GAMES` (id, nombre, precio y `start`): el
+Los siete juegos del menú viven en `GAMES` (id, nombre, precio y `start`): el
 menú de Jugar se arma solo desde ahí. Se desbloquean con monedas tocándolos en
 el mismo menú, una vez y para siempre (`state.unlockedGames`). Atrapa
 estrellas es gratis (`price: 0`) a propósito: desde el primer minuto hay algo
@@ -1865,8 +1890,10 @@ de la pelota (+50%: el azar de rebotes ya es bastante); Reflejos blancos 30%
 más cortos y seguidos, +12 puntos de bombas; Torre: la primera caja más
 angosta y todo 45% más rápido; Salto al cielo: nubes más separadas, más
 chicas y más raras; Memorice arranca con 5 luces y las muestra 30% más
-rápido. Números sin calibrar (salvo el nivel 1 de Torre y Cielo), un primer
-intento.
+rápido; Hora punta: más micros y colores por lote, un andén menos desde el
+nivel 4 y menos holgura en la fila desde el 3. Números sin calibrar (salvo el
+nivel 1 de Torre y Cielo, y los niveles de Hora punta, medidos con bots),
+un primer intento.
 
 ### Cómo se arma un minijuego
 
@@ -1897,7 +1924,7 @@ Lo compartido está justo debajo de `fitGameCanvas()` y conviene reusarlo:
   frame.
 
 Cada juego guarda su estado en una variable global (`sg`, `bb`, `rx`, `tw`, `sk`,
-`mm`; los de a dos comparten `dg`, ver "Juegos de a dos") y expone un `xxDispose()` que saca listeners y cancela el
+`mm`, `bj`; los de a dos comparten `dg`, ver "Juegos de a dos") y expone un `xxDispose()` que saca listeners y cancela el
 `requestAnimationFrame`.
 **Al agregar uno nuevo hay que registrar su limpieza en `minigameDisposers`**
 (`minigameDisposers.push(() => { xxDispose(); xx = null; })`, justo debajo de

@@ -3582,6 +3582,7 @@ function renderDebugPanel(){
           <button class="debug-btn" id="dbgTower">📦 Torre</button>
           <button class="debug-btn" id="dbgSky">☁️ Salto al cielo</button>
           <button class="debug-btn" id="dbgMemory">💡 Memorice</button>
+          <button class="debug-btn" id="dbgBus">🚌 Hora punta</button>
           <button class="debug-btn" id="dbgCombat">⚔️ Combate (prueba)</button>
         </div>
       </div>
@@ -3630,6 +3631,7 @@ function renderDebugPanel(){
   document.getElementById('dbgTower').addEventListener('click', () => { closeDebugPanel(); startTowerGame(); });
   document.getElementById('dbgSky').addEventListener('click', () => { closeDebugPanel(); startSkyGame(); });
   document.getElementById('dbgMemory').addEventListener('click', () => { closeDebugPanel(); startMemoryGame(); });
+  document.getElementById('dbgBus').addEventListener('click', () => { closeDebugPanel(); startBusGame(); });
   document.getElementById('dbgCombat').addEventListener('click', () => { closeDebugPanel(); startCombatGame(); });
   /* Para probar la tienda (muebles, estilo, juegos) sin tener que jugar
      partidas. Son monedas reales del save: no se devuelven al apagar nada. */
