@@ -1817,11 +1817,31 @@ ellos (`REMOVED_GAMES`) y borra sus récords y su xp.
   (`bjSlack()`), para que quede holgura. Verificado: un bot que sigue la
   solución nunca necesitó la grúa en 200 partidas. La mascota mira la fila
   desde arriba a la izquierda (contenta cuando sale una llena, triste con
-  atasco). La gente y las micros son pixel art dibujado con `fillRect`; las
-  micros se dibujan en un marco local y se pasan a pantalla según hacia dónde
-  miran, sin rotar el canvas. Lógica (`bjNew/bjStep/bjTap/bjSend/bjTow`)
-  sin DOM, mérito calibrado con bots (medianas en el comentario de
-  `bjMerit()`).
+  atasco). Lógica (`bjNew/bjStep/bjTap/bjSend/bjTow`) sin DOM, mérito
+  calibrado con bots (medianas en el comentario de `bjMerit()`). El
+  estacionamiento es **siempre de 6x6** (antes las filas eran las que
+  cupieran y la dificultad cambiaba con el teléfono).
+
+  **Arte** (rehecho por pedido, "más profesional"): todo pixel art hecho con
+  código a escala entera `P` (2 en el teléfono, la misma que la mascota; 1
+  en una pantalla baja), sin emojis. Las micros vistas desde arriba
+  (`bjPaintBus()`: faldón, ventanas a los costados, parabrisas con brillo,
+  focos y luces traseras, ruedas, aire acondicionado y la flecha del techo)
+  se pintan una vez por color, largo, tamaño, asientos ocupados y
+  orientación (`bjBusSprite()`, girando la grilla píxel a píxel, no con
+  `ctx.rotate()`) y se copian con sombra. **Las ventanas son los asientos**:
+  en el andén se ven los pasajeros sentados, así se lee cuánto le falta sin
+  contador. Los pasajeros son "mimitos" (`BJ_MIMITO`, bichitos redondos del
+  color de su micro que caminan, pestañean y saltan a la puerta). El fondo
+  (`bjBackground()`: marcador, vereda con baldosas, andenes con pintura
+  amarilla y número, asfalto con grano y líneas de estacionamiento) se
+  pinta una sola vez por partida. El marcador va en "Press Start 2P", que
+  **no trae mayúsculas con tilde**: los carteles (`bjBannerAdd()`) van sin
+  ellas ("¡TIEMPO!", no "¡SE ACABÓ!"). Partículas de polvo al salir, humo al
+  irse, confeti al despejar; la que bloquea parpadea en rojo y la que no
+  pudo salir muestra un "!". En una pantalla apaisada (escritorio) la parada
+  va a la izquierda y el estacionamiento a la derecha (`bjGeometry()`):
+  apilados, las celdas quedaban de 20 px.
 
 Los siete suman felicidad y disparan `triggerPetAction('celebrate')` si el
 puntaje fue positivo.
