@@ -1797,51 +1797,68 @@ ellos (`REMOVED_GAMES`) y borra sus récords y su xp.
   que se pisan se amontona, y con diez círculos en un canvas chico hay tiradas
   donde no entra ninguna. La secuencia **crece**, no se sortea de nuevo cada
   ronda: rehacerla entera es más difícil pero se siente arbitrario.
-- **Hora punta** (`bj`, id `'bus'`): del género "bus jam", hecho propio. Un
+- **Hora punta** (`bj`, id `'bus'`): del género "bus jam", hecho propio
+  (inspirado en cómo se ven esos juegos, sin copiar ninguno). Un
   estacionamiento de micros de colores apretadas, cada una con una flecha en
-  el techo; tocarla la hace salir derecho por ahí si tiene el camino libre
-  (si no, choca con la de adelante y vuelve). La que sale se para en un
-  **andén** (5, o 4 en los niveles 4 y 5: `bjBays()`) y sube la gente de la
+  el techo; tocarla la hace salir derecho por ahí si tiene el camino libre.
+  La que sale se para en un **andén** (5, `bjBays()`) y sube la gente de la
   fila de su color, siempre el primero; llena (4 o 6 asientos según su
   largo), se va y libera el andén. Si todos los andenes tienen micros que no
   le sirven al primero de la fila es un **atasco**: el botón de abajo llama a
-  la **grúa**, que devuelve a su lugar la micro del andén con menos gente (la
-  gente vuelve a la fila) y cuesta `BJ_TOW_COST` (5) segundos. Al principio
-  el atasco terminaba la partida y los bots se atascaban casi siempre, hasta
-  el experto: se cambió para que equivocarse cueste tiempo y no la partida.
-  Despejado un lote (+10) llega otro más lleno, hasta los 90 s; un punto
-  por pasajero. **Todo lote tiene solución** por cómo se arma
-  (`bjMakeLot()`): las micros se ponen de a una, cada una con el camino
-  libre entre las que ya estaban, así que el orden inverso siempre sale; la
-  fila se arma jugando esa solución con menos andenes de los que hay
-  (`bjSlack()`), para que quede holgura. Verificado: un bot que sigue la
-  solución nunca necesitó la grúa en 200 partidas. La mascota mira la fila
-  desde arriba a la izquierda (contenta cuando sale una llena, triste con
-  atasco). Lógica (`bjNew/bjStep/bjTap/bjSend/bjTow`) sin DOM, mérito
-  calibrado con bots (medianas en el comentario de `bjMerit()`). El
-  estacionamiento es **siempre de 6x6** (antes las filas eran las que
-  cupieran y la dificultad cambiaba con el teléfono).
+  la **grúa**, que devuelve a su lugar la micro del andén que más tarde va a
+  hacer falta (antes, la con menos gente, que a veces era justo la que se
+  necesitaba) y suma `BJ_TOW_SECS` (5) al reloj.
 
-  **Arte** (rehecho por pedido, "más profesional"): todo pixel art hecho con
-  código a escala entera `P` (2 en el teléfono, la misma que la mascota; 1
-  en una pantalla baja), sin emojis. Las micros vistas desde arriba
-  (`bjPaintBus()`: faldón, ventanas a los costados, parabrisas con brillo,
-  focos y luces traseras, ruedas, aire acondicionado y la flecha del techo)
-  se pintan una vez por color, largo, tamaño, asientos ocupados y
-  orientación (`bjBusSprite()`, girando la grilla píxel a píxel, no con
-  `ctx.rotate()`) y se copian con sombra. **Las ventanas son los asientos**:
-  en el andén se ven los pasajeros sentados, así se lee cuánto le falta sin
-  contador. Los pasajeros son "mimitos" (`BJ_MIMITO`, bichitos redondos del
-  color de su micro que caminan, pestañean y saltan a la puerta). El fondo
-  (`bjBackground()`: marcador, vereda con baldosas, andenes con pintura
-  amarilla y número, asfalto con grano y líneas de estacionamiento) se
-  pinta una sola vez por partida. El marcador va en "Press Start 2P", que
-  **no trae mayúsculas con tilde**: los carteles (`bjBannerAdd()`) van sin
-  ellas ("¡TIEMPO!", no "¡SE ACABÓ!"). Partículas de polvo al salir, humo al
-  irse, confeti al despejar; la que bloquea parpadea en rojo y la que no
-  pudo salir muestra un "!". En una pantalla apaisada (escritorio) la parada
-  va a la izquierda y el estacionamiento a la derecha (`bjGeometry()`):
-  apilados, las celdas quedaban de 20 px.
+  **Una partida es un escenario** (por pedido; antes eran 90 s de lotes que
+  se reponían): se vacía el estacionamiento una vez y se acabó. Puntaje
+  (`bjScoreParts()`): +1 por pasajero, +50 por completarlo, +5 por segundo
+  bajo el **tiempo meta** (`bjParTime()`, lo que se demora un bot bueno en
+  ese escenario), −5 por **falla** (tocar una micro que no puede salir:
+  bloqueada o sin andén libre) y −15 por grúa. Pasados `BJ_TIME_LIMIT`
+  (180 s) se corta sin el premio de completar. **Estrellas** (`bjStars()`):
+  una por completar, dos bajo el tiempo meta, tres además sin fallas ni
+  grúa; en el marcador se apagan a medida que se pierden. Al terminar, un
+  cartel con las estrellas apareciendo de a una y el desglose renglón por
+  renglón; en la hoja de resultado van las estrellas, el tiempo y las
+  fallas. El mérito es `(puntaje − 60) / 2` (sin el descuento, los
+  pasajeros, que suben igual juegue como juegue, aplastaban la diferencia
+  que hacen el tiempo y las fallas). Al pasar a escenario único,
+  `loadState()` borra una vez los récords viejos de `bus` (`busScoreV2`):
+  eran de otra escala y no se podrían batir.
+
+  **Todo escenario tiene solución** por cómo se arma (`bjMakeLot()`): las
+  micros se ponen de a una, cada una con el camino libre entre las que ya
+  estaban, así que el orden inverso siempre sale; la fila se arma jugando
+  esa solución con dos andenes menos (`bjSlack()`), para que quede holgura.
+  Estacionamiento **siempre de 7x6** (7x7 obligaba a achicar todo en un
+  teléfono de 390). Niveles (`bjLevel()`): de 11 a 16 micros y de 4 a 6
+  colores. Con 4 andenes en los niveles altos hasta un bot experto se metía
+  en ciclos de atasco y grúa: se dejó en 5. Lógica
+  (`bjNew/bjStep/bjTap/bjSend/bjTow`) sin DOM; tiempo meta y mérito
+  calibrados con bots (medianas en el comentario de `bjMerit()`).
+
+  **Arte** (rehecho dos veces por pedido: "más profesional" y después
+  "atractivo, como los juegos que ya existen", con los pasajeros más
+  grandes): pixel art hecho con código a escala entera `P` (2 en el
+  teléfono, la misma que la mascota; 1 en una pantalla baja), sin emojis.
+  Colores alegres: pasto con matas, flores y arbustos, estacionamiento en
+  baldosas claras con líneas blancas, camino de los andenes con pintura
+  amarilla y número, vereda con la cuerda y los postes del zigzag. Las
+  micros (`bjPaintBus()`) tienen **volumen**: el techo y, abajo, su costado
+  apilado en el tono de sombra (`bjDepth()`, `bjDrawBus()`), con sombra en
+  el piso; se pintan una vez por variante y orientación (`bjBusSprite()`,
+  girando la grilla píxel a píxel). Las del estacionamiento llevan la
+  flecha grande con contorno; las del andén, del **mismo tamaño**, el aire
+  acondicionado y **los pasajeros sentados en las ventanas** (las ventanas
+  son los asientos). Los pasajeros son "mimitos" de 12x11 (`BJ_MIMITO`:
+  ojos, cachetes, patitas) que hacen fila en **zigzag** de dos hileras
+  (`bjSlot()`/`bjQueuePos()`), caminan cuando avanza y saltan a la puerta.
+  Marcador de pastillas blancas (`bjDrawHud()`): reloj, barra de pasajeros y
+  las tres estrellas. "Press Start 2P" **no trae mayúsculas con tilde**: los
+  títulos de los carteles van sin ellas ("¡SIN ANDEN!", "¡GRUA!"). En una
+  pantalla apaisada (escritorio) andenes y fila van a la izquierda y el
+  estacionamiento a la derecha (`bjGeometry()`, que busca la celda más
+  grande con que todo quepa).
 
 Los siete suman felicidad y disparan `triggerPetAction('celebrate')` si el
 puntaje fue positivo.
@@ -1910,10 +1927,9 @@ de la pelota (+50%: el azar de rebotes ya es bastante); Reflejos blancos 30%
 más cortos y seguidos, +12 puntos de bombas; Torre: la primera caja más
 angosta y todo 45% más rápido; Salto al cielo: nubes más separadas, más
 chicas y más raras; Memorice arranca con 5 luces y las muestra 30% más
-rápido; Hora punta: más micros y colores por lote, un andén menos desde el
-nivel 4 y menos holgura en la fila desde el 3. Números sin calibrar (salvo el
-nivel 1 de Torre y Cielo, y los niveles de Hora punta, medidos con bots),
-un primer intento.
+rápido; Hora punta: de 11 a 16 micros y de 4 a 6 colores. Números sin
+calibrar (salvo el nivel 1 de Torre y Cielo, y los niveles de Hora punta,
+medidos con bots), un primer intento.
 
 ### Cómo se arma un minijuego
 

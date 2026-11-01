@@ -2340,21 +2340,25 @@ function endMemoryGame(){
 }
 
 /* ===================== Minijuego 7: Hora punta =====================
-   Un estacionamiento de micros de colores, todas apretadas. Cada una mira
-   hacia un lado (el parabrisas y la flecha del techo) y, al tocarla, sale derecho por ahí si
-   tiene el camino libre; si hay otra adelante, choca y vuelve. La que sale se
-   estaciona en un andén, arriba, y la gente de la fila sube a la micro de su
-   color, siempre el primero de la fila. Una micro llena se va y deja el andén
-   libre. Los andenes son pocos (bjBays()): si se llenan todos con micros que
-   no le sirven a quien va adelante en la fila, es un atasco. La grúa (el
-   botón de abajo) se lleva de vuelta a su lugar la micro del andén con menos
-   gente, y esa gente vuelve a la fila; cuesta BJ_TOW_COST segundos del reloj.
-   Al principio el atasco terminaba la partida (con una sola grúa), pero los
-   bots se atascaban casi siempre, hasta el experto: con 90 s de partida era
-   demasiado castigo. Así equivocarse cuesta tiempo y no la partida.
+   Del género "bus jam", hecho propio. Un estacionamiento lleno de micros de
+   colores; cada una mira hacia un lado (la flecha del techo) y, al tocarla,
+   sale derecho por ahí si tiene el camino libre. La que sale se estaciona en
+   un andén, arriba, y la gente de la fila sube a la micro de su color,
+   siempre el primero de la fila. Una micro llena se va y deja el andén libre.
+   Los andenes son pocos (bjBays()): si se llenan con micros que no le sirven
+   al primero de la fila, es un atasco, y la grúa (el botón de abajo) se
+   lleva de vuelta a su lugar la micro del andén con menos gente.
 
-   Despejado un estacionamiento (+BJ_LOT_PTS), llega otro más lleno, hasta los
-   BJ_DURATION segundos. Un punto por pasajero que sube.
+   **Una partida es un escenario** (por pedido): un estacionamiento, que se
+   vacía una vez y se acabó. Antes eran 90 s de lotes que se reponían; se
+   cambió para que cada partida tenga un final y un premio por cerrarla. El
+   puntaje (bjScore) suma un punto por pasajero, BJ_PTS.completo por vaciar
+   el estacionamiento y BJ_PTS.porSegundo por cada segundo bajo el tiempo
+   meta (s.par, bjParTime), y resta las fallas (tocar una micro que no puede
+   salir: bloqueada o sin andén libre) y las grúas, que además suman
+   BJ_TOW_SECS al reloj. Si pasan BJ_TIME_LIMIT segundos se corta sin el
+   premio de completar. Encima, estrellas (bjStars): una por completar, dos
+   si fue bajo el tiempo meta y tres si además fue sin fallas ni grúa.
 
    Cada estacionamiento tiene solución, por cómo se arma (bjMakeLot): las
    micros se ponen de a una y cada una con el camino libre entre las que ya
@@ -2363,111 +2367,66 @@ function endMemoryGame(){
    así queda holgura para equivocarse.
 
    La lógica (bjNew/bjStep/bjTap/bjTow) no toca el DOM ni el canvas, como la
-   Torre: un bot juega cientos de partidas para calibrar el mérito (bjMerit).
-   El estacionamiento es siempre de 6x6, en cualquier pantalla: la dificultad
-   no depende del teléfono (antes las filas eran las que cupieran, de 5 a 8).
+   Torre: un bot juega cientos de partidas para calibrar el tiempo meta y el
+   mérito (bjParTime, bjMerit). El estacionamiento es siempre de 7x6, en
+   cualquier pantalla: la dificultad no depende del teléfono. (7x7 obligaba
+   a achicar todo en un teléfono de 390: celdas de 30 px en vez de 34.)
 
-   El dibujo es todo pixel art hecho con código, sin emojis: las micros se
-   pintan una vez por color, largo, tamaño y orientación en un canvas chico
-   (bjBusSprite) y se copian a escala entera `P` (2 en un teléfono, 1 en una
-   pantalla baja), la misma escala con que va la mascota; los pasajeros son
-   "mimitos", bichitos redondos del color de su micro. Las ventanas de cada
-   micro son sus asientos (la mitad por lado): en el andén se ven los
-   pasajeros sentados, así se lee cuánto le falta sin un contador aparte. */
+   El dibujo es todo pixel art hecho con código, sin emojis (ver "Arte" más
+   abajo). */
 
-const BJ_DURATION = 90;
-const BJ_COLS = 6;
+const BJ_COLS = 7;
 const BJ_ROWS = 6;
-const BJ_BOARD_S = 0.09;      // lo que tarda en subir cada pasajero
+const BJ_BOARD_S = 0.1;       // lo que tarda en subir cada pasajero
 const BJ_DRIVE_CELLS = 16;    // celdas por segundo al salir del estacionamiento
 const BJ_DRIVE_RAMP_S = 0.12; // lo que tarda en llegar a esa velocidad
 const BJ_TO_BAY_S = 0.36;
 const BJ_DEPART_S = 0.6;
-const BJ_LOT_PTS = 10;
-const BJ_TOW_COST = 5;         // segundos que se lleva la grúa
+const BJ_TIME_LIMIT = 180;    // segundos; pasado eso se corta sin completar
+const BJ_TOW_SECS = 5;        // lo que la grúa le suma al reloj
+const BJ_PTS = { completo: 50, porSegundo: 5, falla: 5, grua: 15 };
 const BJ_PET_SCALE = 2;       // entero, igual que pixelScale()
 const BJ_COLORS = [           // [carrocería, brillo, sombra]
-  ['#e8505b', '#ff9aa0', '#a3303c'],
-  ['#3f86f5', '#9cc2ff', '#2a4fa0'],
-  ['#3fbf68', '#9be8aa', '#21803b'],
-  ['#f5c133', '#ffe598', '#a8790f'],
-  ['#a061ef', '#d0b0ff', '#5f34a0'],
-  ['#ff8a33', '#ffc08f', '#ad5216'],
+  ['#ef4f5f', '#ff9aa4', '#a62c3c'],
+  ['#3d8bff', '#9fc6ff', '#2453b0'],
+  ['#35c46a', '#9cefb3', '#1f8443'],
+  ['#ffc531', '#ffe89a', '#c2850c'],
+  ['#a35cf5', '#d6b5ff', '#6233a8'],
+  ['#ff8a2e', '#ffc69a', '#b8551a'],
 ];
-const BJ_PAL = {
-  ink: '#1c1526', tire: '#120e18',
-  glass: '#22304d', glassHi: '#4f74b3', glint: '#d8ecff',
-  head: '#fff1a6', tail: '#ff4d5a', ac: '#d9dde6', acLo: '#8f97aa',
-  asphalt: '#3b3e4a', asphaltA: '#353844', asphaltB: '#42465a',
-  bayAsphalt: '#2e303b', paint: '#f2c94c', stall: 'rgba(255,255,255,.2)',
-  curb: '#9a9db0', curbHi: '#c4c7d4', curbLo: '#6c6f80',
-  walk: '#cbc3b3', walkLo: '#b2a998', walkHi: '#dfd8ca', tactile: '#e3b23c',
-  hud: '#1a1630', hudHi: '#2f2856', hudText: '#ffffff', hudDim: '#a9a3c9',
-};
 
 let bj = null;
 
-/* Andenes: 5 hasta el nivel 3, 4 en el 4 y el 5. */
-function bjBays(lt){ return lt <= 0.5 ? 5 : 4; }
+/* Andenes: 5 en todos los niveles. Con 4 en los niveles 4 y 5 hasta un bot
+   experto se metía en ciclos de atasco y grúa y no terminaba una de cada
+   cuatro partidas: el nivel sube con más micros y más colores. */
+function bjBays(lt){ return 5; }
 
 /* Andenes de holgura: la fila se arma como si hubiera esos menos. Con más
-   holgura la fila trae menos colores mezclados a la vez. */
-function bjSlack(lt){ return lt < 0.5 ? 2 : 1; }
+   holgura la fila trae menos colores mezclados a la vez. Con 1 de holgura en
+   los niveles 3 a 5 los bots se atascaban una y otra vez (8 a 10 grúas por
+   partida en el 5). */
+function bjSlack(lt){ return 2; }
+
+/* El escenario según el nivel: cuántas micros, cuántos colores y qué parte
+   son buses largos (6 asientos en vez de 4). */
+function bjLevel(lt){
+  return { n: 11 + Math.round(5 * lt), colors: 4 + Math.round(2 * lt), pLong: 0.35 + 0.15 * lt };
+}
 
 function bjNew(w, h, lt){
-  const s = { w, h, lt, time: BJ_DURATION, score: 0, boarded: 0, lots: 0, buses: 0,
-    towsUsed: 0, over: false, why: null, jam: false,
-    queue: [], vehicles: [], boardT: 0, pause: 0, arrSeq: 0, events: [] };
+  const s = { w, h, lt, time: 0, boarded: 0, buses: 0, fails: 0, towsUsed: 0,
+    over: false, done: false, why: null, jam: false,
+    queue: [], vehicles: [], boardT: 0, arrSeq: 0, events: [] };
   s.nBays = bjBays(lt);
   s.bays = new Array(s.nBays).fill(null);
   s.cols = BJ_COLS;
   s.rows = BJ_ROWS;
-  bjGeometry(s);
+  if (typeof bjGeometry === 'function' && w) bjGeometry(s);
   bjMakeLot(s);
+  s.total = s.queue.length;
+  s.par = bjParTime(s);
   return s;
-}
-
-/* Dónde va cada cosa, en px del canvas. Arriba el marcador, la vereda con la
-   fila y los andenes (con la mascota a la izquierda, en el andén de la
-   parada); abajo el estacionamiento. Todo en múltiplos de `P`, la escala del
-   arte: 2 en un teléfono, 1 en una pantalla baja (escritorio). */
-/* En una pantalla apaisada (escritorio: la LCD es ancha y baja) la parada
-   va a la izquierda y el estacionamiento a la derecha; apilados, el
-   estacionamiento quedaba con celdas de 20 px. */
-function bjGeometry(s){
-  const { w, h } = s;
-  const P = w >= 300 && h >= 380 ? 2 : 1;
-  const g = { P, wide: w > h * 1.25 };
-  g.hudH = P === 2 ? 26 : 16;
-  g.walkY = g.hudH + P;
-  g.walkH = 11 * P;
-  g.bayY = g.walkY + g.walkH;
-  /* La micro del andén: celda de 15 px de arte (13 de ancho, la de tres
-     cupos 43 de largo), parada con 3 px de aire arriba y abajo. */
-  g.cbBay = 15;
-  g.bayH = (3 * g.cbBay - 2 + 6) * P;
-  g.top = g.bayY + g.bayH + 3 * P;
-  let cellArt;
-  if (!g.wide){
-    g.leftW = P === 2 ? 62 : 44;
-    const lotH = h - g.top - 3 * P;
-    cellArt = Math.max(8, Math.floor(Math.min((w - 8 * P) / s.cols, lotH / s.rows) / P));
-    s.cell = cellArt * P;
-    s.lx = Math.floor((w - s.cols * s.cell) / 2 / P) * P;
-    s.ly = g.top + Math.max(0, Math.floor((lotH - s.rows * s.cell) / 2 / P) * P);
-    g.panelW = w;
-  } else {
-    g.leftW = 0;
-    const lotH = h - g.hudH - 6 * P;
-    cellArt = Math.max(8, Math.floor(Math.min(lotH / s.rows, w * 0.56 / s.cols) / P));
-    s.cell = cellArt * P;
-    s.lx = Math.floor((w - s.cols * s.cell - 4 * P) / P) * P;
-    s.ly = g.hudH + 3 * P + Math.floor((lotH - s.rows * s.cell) / 2 / P) * P;
-    g.panelW = s.lx - 4 * P;
-  }
-  g.bx0 = g.leftW;
-  g.bw = Math.floor((g.panelW - g.bx0 - 2 * P) / s.nBays);
-  s.g = g;
 }
 
 function bjCells(v){
@@ -2516,19 +2475,16 @@ function bjBlockDist(s, v, occ){
   return -1;
 }
 
-/* Arma un estacionamiento nuevo y la fila que le corresponde. Cada lote trae
-   más micros, más buses largos y, desde el tercero, un color más. */
+/* Arma el estacionamiento y la fila que le corresponde. Se prueban varios
+   armados y se queda el que más micros alcanzó a meter. */
 function bjMakeLot(s){
-  const lot = s.lots;
-  const n = Math.min(16, 9 + 2 * lot + Math.round(3 * s.lt));
-  const nColors = Math.min(BJ_COLORS.length, 3 + Math.round(2 * s.lt) + (lot >= 2 ? 1 : 0));
-  const pLong = Math.min(0.6, 0.25 + 0.1 * lot);
+  const L = bjLevel(s.lt);
   let placed = [];
-  for (let intento = 0; intento < 6 && placed.length < Math.min(n, 4); intento++){
-    placed = [];
+  for (let intento = 0; intento < 8 && placed.length < L.n; intento++){
+    const cand = [];
     const occ = new Array(s.cols * s.rows).fill(null);
-    for (let tries = 0; placed.length < n && tries < 700; tries++){
-      const len = Math.random() < pLong ? 3 : 2;
+    for (let tries = 0; cand.length < L.n && tries < 900; tries++){
+      const len = Math.random() < L.pLong ? 3 : 2;
       const horiz = Math.random() < 0.5;
       const v = { len, horiz, dir: Math.random() < 0.5 ? 1 : -1,
         c: Math.floor(Math.random() * (s.cols - (horiz ? len - 1 : 0))),
@@ -2536,11 +2492,12 @@ function bjMakeLot(s){
       if (bjCells(v).some(([c, r]) => occ[r * s.cols + c])) continue;
       if (bjPath(s, v).some(([c, r]) => occ[r * s.cols + c])) continue;
       for (const [c, r] of bjCells(v)) occ[r * s.cols + c] = v;
-      placed.push(v);
+      cand.push(v);
     }
+    if (cand.length > placed.length) placed = cand;
   }
-  /* Que estén todos los colores antes de repetir: si no, con pocas micros
-     a veces un lote salía casi de un solo color. */
+  /* Que estén todos los colores antes de repetir. */
+  const nColors = Math.min(BJ_COLORS.length, L.colors);
   const colores = [];
   for (let i = 0; i < placed.length; i++) colores.push(i % nColors);
   for (let i = colores.length - 1; i > 0; i--){
@@ -2552,9 +2509,9 @@ function bjMakeLot(s){
   }));
   s.vehicles = placed;
 
-  /* La fila: se juega la solución (el orden inverso al de armado) con un
-     andén menos de los que hay, y cada tanto sube un grupito de 1 a 3 a una
-     de las micros estacionadas. */
+  /* La fila: se juega la solución (el orden inverso al de armado) con menos
+     andenes de los que hay, y cada tanto sube un grupito de 1 a 3 a una de
+     las micros estacionadas. */
   const order = placed.slice().reverse();
   const andenes = [];
   let next = 0;
@@ -2571,19 +2528,26 @@ function bjMakeLot(s){
   }
 }
 
+/* El tiempo meta: lo que se demora un bot "bueno" en ese mismo escenario
+   (ver el comentario de bjMerit), según cuántas micros y pasajeros trae. */
+function bjParTime(s){
+  return Math.round(4 + 1.15 * s.vehicles.length + 0.07 * s.queue.length);
+}
+
 function bjVehicleAt(s, c, r){
   return s.vehicles.find(v => v.status === 'lot' && bjCells(v).some(([cc, rr]) => cc === c && rr === r)) || null;
 }
 
 /* Toque en (x, y) del canvas. Devuelve 'go', 'blocked', 'nobay' o null. */
 function bjTap(s, x, y){
-  if (s.over || s.pause > 0) return null;
+  if (s.over) return null;
   const c = Math.floor((x - s.lx) / s.cell), r = Math.floor((y - s.ly) / s.cell);
   if (c < 0 || r < 0 || c >= s.cols || r >= s.rows) return null;
   const v = bjVehicleAt(s, c, r);
   return v ? bjSend(s, v) : null;
 }
 
+/* Una micro que no puede salir (algo adelante o sin andén) es una falla. */
 function bjSend(s, v){
   const libre = s.bays.indexOf(null);
   const block = bjBlockDist(s, v);
@@ -2597,6 +2561,8 @@ function bjSend(s, v){
     v.status = 'bump'; v.t = 0;
     v.bumpTo = block >= 0 ? block + 0.12 : 0.18;
     v.bumpDur = 0.22 + 0.06 * Math.max(0, block);
+    s.fails += 1;
+    s.events.push({ kind: 'fail', v });
     return libre < 0 ? 'nobay' : 'blocked';
   }
   v.status = 'exiting'; v.t = 0; v.off = 0; v.bay = libre;
@@ -2604,25 +2570,27 @@ function bjSend(s, v){
   return 'go';
 }
 
-/* La grúa: devuelve a su lugar la micro del andén con menos gente (la más
-   nueva, si empatan) y esa gente vuelve adelante en la fila. Su lugar está
-   libre seguro: al estacionamiento nunca entra nadie. Se puede llamar cuando
-   sea, no solo con atasco: a veces conviene antes. */
+/* La grúa: devuelve a su lugar la micro del andén que más tarde va a hacer
+   falta (la de un color que en la fila aparece más atrás; si empatan, la con
+   menos gente), y esa gente vuelve adelante en la fila. Antes se llevaba la
+   con menos gente y a veces era justo la que necesitaba el primero de la
+   fila. Su lugar está libre seguro: al estacionamiento nunca entra nadie. Se
+   puede llamar cuando sea, no solo con atasco. */
 function bjTow(s){
-  if (s.over || s.pause > 0) return null;
+  if (s.over) return null;
+  const falta = b => { const i = s.queue.indexOf(b.v.color); return i < 0 ? Infinity : i; };
   let pick = null;
   for (const b of s.bays){
     if (!b || b.state !== 'open') continue;
-    if (!pick || b.filled < pick.filled || (b.filled === pick.filled && b.arr > pick.arr)) pick = b;
+    if (!pick || falta(b) > falta(pick) || (falta(b) === falta(pick) && b.filled < pick.filled)) pick = b;
   }
   if (!pick) return null;
   const i = s.bays.indexOf(pick);
   for (let k = 0; k < pick.filled; k++) s.queue.unshift(pick.v.color);
-  s.score -= pick.filled;
   s.boarded -= pick.filled;
   Object.assign(pick.v, { status: 'lot', off: 0, t: 0, bay: -1 });
   s.bays[i] = null;
-  s.time = Math.max(0, s.time - BJ_TOW_COST);
+  s.time += BJ_TOW_SECS;
   s.towsUsed += 1;
   s.jam = false;
   s.events.push({ kind: 'tow', v: pick.v, bay: i });
@@ -2643,13 +2611,8 @@ function bjJammed(s){
 
 function bjStep(s, dt){
   if (s.over) return;
-  s.time -= dt;
-  if (s.time <= 0){ s.time = 0; s.over = true; s.why = 'time'; return; }
-  if (s.pause > 0){
-    s.pause -= dt;
-    if (s.pause <= 0){ s.pause = 0; bjMakeLot(s); s.events.push({ kind: 'newlot' }); }
-    return;
-  }
+  s.time += dt;
+  if (s.time >= BJ_TIME_LIMIT){ s.over = true; s.why = 'time'; return; }
   for (const v of s.vehicles){
     if (v.status === 'bump'){
       v.t += dt;
@@ -2684,7 +2647,6 @@ function bjStep(s, dt){
     if (!best) break;
     s.queue.shift();
     best.filled += 1;
-    s.score += 1;
     s.boarded += 1;
     s.boardT += BJ_BOARD_S;
     const bay = s.bays.indexOf(best);
@@ -2697,10 +2659,8 @@ function bjStep(s, dt){
   }
 
   if (!s.queue.length && s.bays.every(b => !b) && s.vehicles.every(v => v.status === 'gone')){
-    s.lots += 1;
-    s.score += BJ_LOT_PTS;
-    s.pause = 0.9;
-    s.events.push({ kind: 'lot' });
+    s.over = true; s.done = true; s.why = 'done';
+    s.events.push({ kind: 'done' });
     return;
   }
   const jam = bjJammed(s);
@@ -2708,34 +2668,155 @@ function bjStep(s, dt){
   s.jam = jam;
 }
 
-/* Calibrado con dos bots que juegan contra estas mismas funciones, 300
-   partidas por nivel en un canvas de 334x443 (teléfono de 390). El "bueno"
-   piensa ~1 s por jugada, se equivoca una de cada cinco y solo mira al
-   primero de la fila; el "experto" piensa ~0.55 s y, de las micros del color
-   que hace falta, saca la que menos micros tiene encima (en cadena). Medianas
-   (grúas por partida entre paréntesis):
-     nivel 1: bueno 386 (0.8), experto 586 (0.3)
-     nivel 3: bueno 342 (2.2), experto 539 (1.7)
-     nivel 5: bueno 236 (4.8), experto 349 (5.3)
-   Con score * 0.1 quedan en ~39 y ~59 en el nivel 1 (~45 = partida muy
-   buena). Un bot que sigue la solución nunca necesitó la grúa. */
-function bjMerit(score){ return score * 0.1; }
+/* El puntaje: un punto por pasajero; completando, el premio y lo que se
+   ganó bajo el tiempo meta; menos las fallas y las grúas. */
+function bjScoreParts(s){
+  const partes = [['pasajeros', s.boarded]];
+  if (s.done){
+    partes.push(['completo', BJ_PTS.completo]);
+    partes.push(['tiempo', Math.max(0, Math.round((s.par - s.time) * BJ_PTS.porSegundo))]);
+  }
+  if (s.fails) partes.push([s.fails === 1 ? '1 falla' : `${s.fails} fallas`, -BJ_PTS.falla * s.fails]);
+  if (s.towsUsed) partes.push([s.towsUsed === 1 ? '1 grúa' : `${s.towsUsed} grúas`, -BJ_PTS.grua * s.towsUsed]);
+  return partes;
+}
 
-/* ---------- Arte ---------- */
+function bjScore(s){
+  return Math.max(0, bjScoreParts(s).reduce((a, p) => a + p[1], 0));
+}
+
+/* Estrellas: una por completar, dos bajo el tiempo meta, tres además sin
+   fallas ni grúa. Las que se van perdiendo se apagan en el marcador. */
+function bjStars(s){
+  if (!s.done) return 0;
+  const enTiempo = s.time <= s.par;
+  return 1 + (enTiempo ? 1 : 0) + (enTiempo && s.fails === 0 && s.towsUsed === 0 ? 1 : 0);
+}
+
+/* Calibrado con dos bots que juegan contra estas mismas funciones (400
+   partidas por nivel). El "bueno" piensa ~1 s por jugada, una de cada ocho
+   veces toca una micro cualquiera (a veces bloqueada: falla) y solo mira al
+   primero de la fila; el "experto" piensa ~0.55 s y, de las micros del color
+   que hace falta, saca la que menos micros tiene encima (en cadena).
+   Medianas (tiempo, puntaje):
+     nivel 1 (11 micros, 50 pasajeros, meta 20 s): bueno 14 s y 131, experto 9 s y 155
+     nivel 3 (14 micros, 64 pasajeros, meta 25 s): bueno 18 s y 145, experto 12 s y 180
+     nivel 5 (16 micros, 72 pasajeros, meta 27 s): bueno 20 s y 151, experto 13 s y 192
+   El bueno completa el 90-98% de las partidas, el experto el 94-99% (lo que
+   falta son ciclos de atasco y grúa que se cortan a los BJ_TIME_LIMIT).
+   Estrellas del bueno en el nivel 1: 2% una, 28% dos, 68% tres.
+   Con (puntaje - 60) / 2 el bueno queda en ~36-46 de mérito y el experto en
+   ~48-66 (~45 = partida muy buena). El descuento de 60 es a propósito: sin
+   él, los pasajeros (que suben igual juegue como juegue) aplastaban la
+   diferencia que hacen el tiempo y las fallas. */
+function bjMerit(score){ return Math.max(0, (score - 60) / 2); }
+
+/* ---------- Arte ----------
+   Pensado como los juegos del género: colores alegres (pasto, asfalto claro,
+   vereda), micros gorditas con volumen (el techo y, abajo, su costado en
+   sombra: bjDepth), pasajeros grandes con carita y patitas que hacen fila en
+   zigzag, y un marcador de pastillas blancas con reloj, barra de progreso y
+   las tres estrellas en juego. Todo pixel art hecho con código a escala
+   entera `P` (2 en un teléfono, la misma que la mascota; 1 en una pantalla
+   baja). Las micros del andén son del mismo tamaño que las del
+   estacionamiento. */
+
+const BJ_PAL = {
+  ink: '#1d1630', tire: '#151020',
+  glass: '#2a3a5e', glassHi: '#6d95d6', glint: '#e6f3ff',
+  head: '#fff3a8', tail: '#ff4d5a', ac: '#e4e8f0', acLo: '#9aa2b5',
+  grass: '#69c35b', grassA: '#5ab04e', grassB: '#82d671',
+  bush: '#3f9a45', bushHi: '#67c25e', bushLo: '#2c7334',
+  lot: '#7d869c', lotB: '#858ea4', lotLine: 'rgba(255,255,255,.6)',
+  curb: '#eef0f5', curbLo: '#aab0c0',
+  road: '#4f566b', roadA: '#495064', roadB: '#565d72', slot: '#ffd23f', stop: '#f2f4f8',
+  walk: '#f3e6c8', walkLo: '#dfcfa6', walkHi: '#fff7e0', kerb: '#c9b88e',
+  post: '#8d93a6', postHi: '#c6cad6', rope: '#ef4f5f',
+  pill: '#ffffff', pillLo: '#d9ddea', text: '#1d1630', dim: '#7a7f96',
+  bar: '#e6e9f2', fill: '#43d168', fillHi: '#a6f2b5',
+  star: '#ffd23f', starHi: '#fff4b0', starLo: '#d99a0b', off: '#a3a8bb', offHi: '#d0d3de', offLo: '#7d8296',
+  bad: '#ef4f5f',
+};
+
+/* Lo alto del costado de una micro, en px de arte: le da el volumen. */
+function bjDepth(cb){ return Math.max(2, Math.round(cb * 0.16)); }
+
+/* Dónde va cada cosa, en px del canvas. Apilado (teléfono): marcador arriba
+   sobre el camino de los andenes, la vereda con la fila en zigzag y abajo el
+   estacionamiento, con pasto a los lados. Apaisado (escritorio): andenes y
+   fila a la izquierda, estacionamiento a la derecha. Se busca la celda más
+   grande con que todo quepa. */
+function bjGeometry(s){
+  const { w, h } = s;
+  const P = w >= 300 && h >= 380 ? 2 : 1;
+  const g = { P, wide: w > h * 1.25 };
+  g.hudH = P === 2 ? 32 : 20;
+  g.qRowH = 13 * P;
+  g.qH = 2 * g.qRowH + 4 * P;
+  const dims = cb => {
+    const m = cb >= 16 ? 2 : 1, k = bjDepth(cb);
+    const busH = (3 * cb - 2 * m + 2 + k + 1) * P;
+    return { m, k, busH, bayH: busH + 6 * P, busW: (cb - 2 * m + 2) * P };
+  };
+  if (!g.wide){
+    let cb = 30, d = dims(cb);
+    for (; cb > 8; cb--){
+      d = dims(cb);
+      const lotW = s.cols * cb * P, lotH = s.rows * cb * P;
+      const total = g.hudH + d.bayH + g.qH + 4 * P + (d.k + 2) * P + lotH + 4 * P;
+      if (total <= h && lotW <= w - 8 * P && s.nBays * (d.busW + 6 * P) <= w - 4 * P) break;
+    }
+    g.cb = g.cbBay = cb;
+    Object.assign(g, d);
+    g.panelW = w;
+    g.bayY = g.hudH - 2 * P;
+    g.qY = g.bayY + g.bayH;
+    g.top = g.qY + g.qH;
+    s.cell = cb * P;
+    const lotW = s.cols * s.cell, lotH = s.rows * s.cell;
+    s.lx = Math.round((w - lotW) / 2 / P) * P;
+    const libre = h - g.top - lotH;
+    s.ly = g.top + Math.max((d.k + 3) * P, Math.floor(libre / 2 / P) * P);
+  } else {
+    const cb = Math.max(8, Math.floor(Math.min((h - g.hudH - 6 * P) / s.rows, w * 0.56 / s.cols) / P));
+    g.cb = cb;
+    s.cell = cb * P;
+    const lotW = s.cols * s.cell, lotH = s.rows * s.cell;
+    s.lx = Math.floor((w - lotW - 4 * P) / P) * P;
+    s.ly = g.hudH + Math.floor((h - g.hudH - lotH) / 2 / P) * P;
+    g.panelW = s.lx - 6 * P;
+    let cbb = cb, d = dims(cbb);
+    while (cbb > 8 && (s.nBays * (d.busW + 4 * P) > g.panelW - 4 * P || g.hudH + d.bayH + g.qH > h - 30)){ cbb--; d = dims(cbb); }
+    g.cbBay = cbb;
+    Object.assign(g, d, { m: cb >= 16 ? 2 : 1, k: bjDepth(cb) });
+    g.kBay = d.k;
+    g.bayY = g.hudH;
+    g.qY = g.bayY + d.bayH;
+    g.top = g.qY + g.qH;
+  }
+  if (g.kBay === undefined) g.kBay = g.k;
+  g.bw = Math.floor((g.panelW - 4 * P) / s.nBays);
+  g.bx0 = Math.floor((g.panelW - g.bw * s.nBays) / 2 / P) * P;
+  g.qStep = 13 * P;
+  g.qPer = Math.max(3, Math.floor((g.panelW - 10 * P) / g.qStep));
+  g.qX0 = Math.floor((g.panelW - g.qPer * g.qStep) / 2 / P) * P + P;
+  s.g = g;
+}
 
 const bjSpriteCache = new Map();
 
 /* Pinta una micro vista desde arriba, mirando a la derecha, en una grilla de
    colores (null = transparente) con 1 px de margen para ruedas y espejos.
    `cb` es el lado de una celda en px de arte; `filled`, los asientos
-   ocupados que se ven por las ventanas; `arrow`, la flecha del techo (solo
-   las del estacionamiento: en el andén ya no hace falta). */
+   ocupados que se ven por las ventanas; `arrow`, la flecha del techo (las del
+   estacionamiento; en el andén van el aire acondicionado y los pasajeros).
+   Devuelve también el costado: la misma silueta con el contorno en tinta y
+   todo lo demás en el tono de sombra, que se apila abajo para dar volumen. */
 function bjPaintBus(color, len, cb, arrow, filled){
   const col = BJ_COLORS[color], K = BJ_PAL;
   const m = cb >= 16 ? 2 : 1;
   const W = cb - 2 * m, L = len * cb - 2 * m, cap = len * 2;
-  const big = W >= 14;
-  const mid = W >= 12;   // la del andén: ventanas de dos filas, sin flecha
+  const big = W >= 12;
   const PW = L + 2, PH = W + 2;
   const g = new Array(PW * PH).fill(null);
   const set = (x, y, c) => { x += 1; y += 1; if (x >= 0 && y >= 0 && x < PW && y < PH) g[y * PW + x] = c; };
@@ -2761,27 +2842,25 @@ function bjPaintBus(color, len, cb, arrow, filled){
   }
   const inner = (x, y, c) => { if (isInner(x, y)) set(x, y, c); };
 
-  /* Faldón: los costados, en sombra. */
+  /* Faldón: los costados, en sombra; brillo a lo largo del techo. */
   for (let x = 0; x < L; x++){ inner(x, 1, col[2]); inner(x, W - 2, col[2]); }
 
   /* Parabrisas adelante (con su brillo) y ventana de atrás. */
-  const ws = big ? 4 : 2, rw = big ? 2 : 1;
+  const ws = big ? 3 : 2, rw = big ? 2 : 1;
   for (let y = 2; y <= W - 3; y++){
     for (let i = 0; i < ws; i++) inner(L - 2 - i, y, K.glass);
     for (let i = 0; i < rw; i++) inner(1 + i, y, K.glass);
-    inner(L - 2 - ws, y, col[2]);
-    inner(1 + rw, y, col[2]);
   }
   inner(L - 1 - ws, 2, K.glint);
-  if (big){ inner(L - ws, 2, K.glassHi); inner(L - 1 - ws, 3, K.glassHi); inner(L - 1 - ws, W - 3, K.glassHi); }
-  /* Focos adelante, luces atrás: sobre el contorno, para que se lean. */
+  if (big){ inner(L - ws, 2, K.glassHi); inner(L - 1 - ws, 3, K.glassHi); }
+  /* Focos adelante, luces atrás, sobre el contorno para que se lean. */
   set(L - 1, 2, K.head); set(L - 1, W - 3, K.head);
   set(0, 2, K.tail); set(0, W - 3, K.tail);
-  if (big){ set(L - 1, 3, K.head); set(L - 1, W - 4, K.head); }
 
   /* Ventanas a los dos costados: son los asientos, la mitad por lado. Se
-     llenan de adelante hacia atrás, alternando lado. */
-  const wb = mid ? 2 : 1;
+     llenan de adelante hacia atrás, alternando lado: un pasajero sentado es
+     una carita del color de la micro. */
+  const wb = arrow ? 1 : (W >= 12 ? 2 : 1);
   const xa = 2 + rw, xb = L - 3 - ws;
   const n = cap / 2;
   const span = xb - xa + 1;
@@ -2798,49 +2877,53 @@ function bjPaintBus(color, len, cb, arrow, filled){
       }
       const yOut = side === 0 ? 2 : W - 3;
       if (!lleno) inner(px, yOut, K.glassHi);
-      else if (mid && pw >= 4){
-        const yIn = side === 0 ? 2 + wb - 1 : W - 3 - (wb - 1);
+      else if (wb === 2 && pw >= 4){
+        const yIn = side === 0 ? 3 : W - 4;
         inner(px + 1, yIn, K.ink); inner(px + pw - 2, yIn, K.ink);
+        inner(px, yOut, '#ffffff');
       }
     }
   }
 
-  /* El techo: un filo claro a cada lado y, en las grandes, el equipo de aire
-     (las de tres) o dos rejillas (las de dos), y la flecha. */
+  /* Techo: un filo claro a cada lado, y brillo arriba a la izquierda. */
   const ya = 2 + wb, yb = W - 3 - wb, R = yb - ya + 1;
-  for (let x = xa; x <= xb; x++){ inner(x, ya, col[1]); inner(x, yb, col[1]); }
-  if (big && len === 3){
-    const acL = Math.round(cb * 0.62), acW = Math.max(4, Math.round(R * 0.5));
-    const ax = xa + Math.round(cb * 0.2), ay = ya + Math.floor((R - acW) / 2);
+  for (let x = xa; x <= xb; x++){ inner(x, ya, col[1]); inner(x, yb, col[2]); }
+  for (let x = xa + 1; x < xa + Math.max(3, Math.floor(span * 0.3)); x++) inner(x, ya + 1, col[1]);
+
+  if (arrow){
+    /* La flecha: grande, blanca y con contorno, como en los juegos del
+       género. Es lo que se mira para decidir. */
+    const a = Math.max(3, Math.floor((W - 3) / 2));
+    const cy = Math.floor((W - 1) / 2), even = W % 2 === 0;
+    const hx0 = Math.floor(L / 2) + Math.floor(a / 2);
+    const t = Math.max(1, Math.floor(a / 3));
+    const pts = [];
+    for (let i = 0; i < a; i++) for (let y = cy - (a - 1 - i); y <= cy + (a - 1 - i) + (even ? 1 : 0); y++) pts.push([hx0 + i, y]);
+    for (let x = hx0 - a; x < hx0; x++) for (let y = cy - t + 1; y <= cy + t - 1 + (even ? 1 : 0); y++) pts.push([x, y]);
+    const key = new Set(pts.map(([x, y]) => x + ',' + y));
+    for (const [x, y] of pts) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]){
+      if (!key.has((x + dx) + ',' + (y + dy)) && isInner(x + dx, y + dy)) set(x + dx, y + dy, K.ink);
+    }
+    for (const [x, y] of pts) set(x, y, '#ffffff');
+    for (const [x, y] of pts) if (!key.has(x + ',' + (y + 1))) set(x, y, '#d9e2f2');
+  } else if (len === 3 && R >= 4){
+    const acL = Math.round(cb * 0.6), acW = Math.max(3, R - 2);
+    const ax = xa + Math.round(cb * 0.35), ay = ya + Math.floor((R - acW) / 2);
     rect(ax, ay, acL, acW, K.acLo);
     rect(ax + 1, ay + 1, acL - 2, acW - 2, K.ac);
-    for (let i = 2; i < acL - 2; i += 2) rect(ax + i, ay + 2, 1, acW - 4, K.acLo);
-  } else if (big){
-    const acL = Math.round(cb * 0.36), acW = Math.max(4, Math.round(R * 0.45));
-    const ax = xa + 1, ay = ya + Math.floor((R - acW) / 2);
-    rect(ax, ay, acL, acW, K.acLo);
-    rect(ax + 1, ay + 1, acL - 2, acW - 2, K.ac);
-    for (let i = 2; i < acL - 2; i += 2) rect(ax + i, ay + 2, 1, acW - 4, K.acLo);
+    for (let i = 2; i < acL - 2; i += 2) rect(ax + i, ay + 1, 1, acW - 2, K.acLo);
   }
-  if (arrow && big){
-    const a = Math.max(3, Math.round(R * 0.4));
-    const cy0 = ya + Math.floor((R - 1) / 2), cy1 = ya + Math.ceil((R - 1) / 2);
-    const t = R >= 12 ? 1 : 0;
-    const hx0 = Math.floor((xa + xb) / 2) + (len === 3 ? Math.round(cb * 0.45) : Math.floor(a / 2));
-    const paint = (dx, dy, c) => {
-      for (let i = 0; i < a; i++) for (let y = cy0 - (a - 1 - i); y <= cy1 + (a - 1 - i); y++) set(hx0 + i + dx, y + dy, c);
-      for (let x = hx0 - a; x < hx0; x++) for (let y = cy0 - t; y <= cy1 + t; y++) set(x + dx, y + dy, c);
-    };
-    paint(0, 1, col[2]);
-    paint(0, 0, '#ffffff');
-  }
-  return { g, PW, PH, m };
+
+  /* El costado. */
+  const side = g.map(c => c === null ? null : (c === K.ink || c === K.tire) ? c : col[2]);
+  return { g, side, PW, PH, m };
 }
 
 /* La grilla, a un canvas, en la orientación que toca: R tal cual, L en
    espejo, D girada 90° a la derecha (el frente abajo) y U a la izquierda.
-   Se gira copiando píxeles, no con ctx.rotate(): así queda exacta. */
-function bjGridCanvas(g, PW, PH, dir, shadow){
+   Se gira copiando píxeles, no con ctx.rotate(): así queda exacta. `fill`
+   pinta toda la silueta de un color (la tinta de abajo, la sombra). */
+function bjGridCanvas(g, PW, PH, dir, fill){
   let w = PW, h = PH, at;
   if (dir === 'R') at = (x, y) => g[y * PW + x];
   else if (dir === 'L') at = (x, y) => g[y * PW + (PW - 1 - x)];
@@ -2855,7 +2938,7 @@ function bjGridCanvas(g, PW, PH, dir, shadow){
       const col = at(x, y);
       let e = x + 1;
       while (e < w && at(e, y) === col) e++;
-      if (col){ cx.fillStyle = shadow ? '#000' : col; cx.fillRect(x, y, e - x, 1); }
+      if (col){ cx.fillStyle = fill || col; cx.fillRect(x, y, e - x, 1); }
       x = e;
     }
   }
@@ -2866,8 +2949,9 @@ function bjBusSprite(color, len, cb, arrow, filled, dir){
   const key = `${color}|${len}|${cb}|${arrow ? 1 : 0}|${filled}|${dir}`;
   let sp = bjSpriteCache.get(key);
   if (!sp){
-    const { g, PW, PH, m } = bjPaintBus(color, len, cb, arrow, filled);
-    sp = { img: bjGridCanvas(g, PW, PH, dir, false), shadow: bjGridCanvas(g, PW, PH, dir, true), m };
+    const { g, side, PW, PH, m } = bjPaintBus(color, len, cb, arrow, filled);
+    sp = { img: bjGridCanvas(g, PW, PH, dir), side: bjGridCanvas(side, PW, PH, dir),
+      ink: bjGridCanvas(g, PW, PH, dir, BJ_PAL.ink), shadow: bjGridCanvas(g, PW, PH, dir, '#000'), m, k: bjDepth(cb) };
     bjSpriteCache.set(key, sp);
   }
   return sp;
@@ -2875,24 +2959,29 @@ function bjBusSprite(color, len, cb, arrow, filled, dir){
 
 function bjDirKey(v){ return v.horiz ? (v.dir > 0 ? 'R' : 'L') : (v.dir > 0 ? 'D' : 'U'); }
 
-/* Pinta un sprite a escala entera P, con su sombra corrida abajo a la
-   derecha. (x, y) es la esquina del sprite, en px del canvas. */
-function bjBlit(ctx, sp, x, y, P, alpha = 1, lift = 1){
-  const w = sp.img.width * P, h = sp.img.height * P;
+/* Una micro con volumen: sombra en el piso, el costado apilado hacia abajo
+   con su contorno, y el techo encima. (x, y) es la esquina del techo. */
+function bjDrawBus(ctx, sp, x, y, P, alpha = 1, lift = 0){
+  const w = sp.img.width * P, h = sp.img.height * P, k = sp.k;
   x = Math.round(x / P) * P; y = Math.round(y / P) * P;
-  ctx.globalAlpha = 0.32 * alpha;
-  ctx.drawImage(sp.shadow, x + P * lift, y + 2 * P * lift, w, h);
+  ctx.globalAlpha = 0.25 * alpha;
+  ctx.drawImage(sp.shadow, x + 2 * P, y + (k + 2 + lift) * P, w, h);
   ctx.globalAlpha = alpha;
+  ctx.drawImage(sp.ink, x, y + (k + 1) * P, w, h);
+  for (let j = k; j >= 1; j--) ctx.drawImage(sp.side, x, y + j * P, w, h);
   ctx.drawImage(sp.img, x, y, w, h);
   ctx.globalAlpha = 1;
 }
 
-/* Los pasajeros: "mimitos", bichitos redondos del color de su micro.
-   Cuadros: 0 parado, 1 aplastado (al caminar y al saltar), 2 pestañeando. */
+/* Los pasajeros: "mimitos" de 12x11, del color de su micro, con ojos,
+   cachetes y patitas. Cuadros: 0 parado, 1 paso, 2 pestañeo. */
 const BJ_MIMITO = [
-  ['..kkkk..', '.kllbbk.', 'klbbbbbk', 'kbebbebk', 'kbbbbbbk', 'kdbbbbdk', '.kkkkkk.'],
-  ['........', '.kkkkkk.', 'kllbbbbk', 'kbebbebk', 'kbbbbbbk', 'kddddddk', '.kkkkkk.'],
-  ['..kkkk..', '.kllbbk.', 'klbbbbbk', 'kbddbddk', 'kbbbbbbk', 'kdbbbbdk', '.kkkkkk.'],
+  ['....kkkk....', '..kkllbbkk..', '.kllbbbbbbk.', '.klbbbbbbbk.', 'kbbbwbbwbbbk', 'kbbbebbebbbk',
+   'kbpbbbbbbpbk', 'kbbbbkkbbbbk', '.kdbbbbbbdk.', '..kkddddkk..', '..kk....kk..'],
+  ['....kkkk....', '..kkllbbkk..', '.kllbbbbbbk.', '.klbbbbbbbk.', 'kbbbwbbwbbbk', 'kbbbebbebbbk',
+   'kbpbbbbbbpbk', 'kbbbbkkbbbbk', '.kdbbbbbbdk.', '..kkddddkk..', '...kk..kk...'],
+  ['....kkkk....', '..kkllbbkk..', '.kllbbbbbbk.', '.klbbbbbbbk.', 'kbbbbbbbbbbk', 'kbbeebeebbbk',
+   'kbpbbbbbbpbk', 'kbbbbkkbbbbk', '.kdbbbbbbdk.', '..kkddddkk..', '..kk....kk..'],
 ];
 const bjMimitoCache = new Map();
 
@@ -2901,10 +2990,10 @@ function bjMimito(color, frame){
   let c = bjMimitoCache.get(key);
   if (c) return c;
   const col = BJ_COLORS[color];
-  const pal = { k: BJ_PAL.ink, l: col[1], b: col[0], d: col[2], e: BJ_PAL.ink };
+  const pal = { k: BJ_PAL.ink, l: col[1], b: col[0], d: col[2], w: '#ffffff', e: BJ_PAL.ink, p: '#ff9db3' };
   const rows = BJ_MIMITO[frame];
   c = document.createElement('canvas');
-  c.width = 8; c.height = rows.length;
+  c.width = rows[0].length; c.height = rows.length;
   const cx = c.getContext('2d');
   rows.forEach((row, y) => [...row].forEach((ch, x) => {
     if (ch === '.') return;
@@ -2919,99 +3008,130 @@ function bjDrawMimito(ctx, x, y, color, frame, P){
   ctx.drawImage(c, Math.round(x / P) * P, Math.round(y / P) * P, c.width * P, c.height * P);
 }
 
-/* Un generador de números al azar con semilla: la textura del asfalto sale
-   igual en cada cuadro sin tener que guardarla píxel a píxel. */
+/* Estrella de 9x9: prendida (dorada) o apagada (gris). */
+const BJ_STAR = ['....k....', '...kyk...', 'kkkkyykkk', 'kwyyyyyyk', '.kyyyyyk.', '..kyyyk..', '.kyydyyk.', '.kyk.kyk.', '.kk...kk.'];
+const bjStarCache = new Map();
+
+function bjStarSprite(on){
+  let c = bjStarCache.get(on);
+  if (c) return c;
+  const K = BJ_PAL;
+  const pal = on ? { k: K.ink, y: K.star, w: K.starHi, d: K.starLo } : { k: K.offLo, y: K.off, w: K.offHi, d: K.offLo };
+  c = document.createElement('canvas');
+  c.width = 9; c.height = 9;
+  const cx = c.getContext('2d');
+  BJ_STAR.forEach((row, y) => [...row].forEach((ch, x) => {
+    if (ch === '.') return;
+    cx.fillStyle = pal[ch]; cx.fillRect(x, y, 1, 1);
+  }));
+  bjStarCache.set(on, c);
+  return c;
+}
+
+function bjDrawStar(ctx, x, y, on, scale){
+  ctx.drawImage(bjStarSprite(on), Math.round(x), Math.round(y), 9 * scale, 9 * scale);
+}
+
+/* Un generador al azar con semilla: el fondo sale igual sin guardarlo. */
 function bjRand(seed){
   let t = seed >>> 0;
   return () => { t = (t + 0x6D2B79F5) >>> 0; let r = Math.imul(t ^ (t >>> 15), 1 | t);
     r ^= r + Math.imul(r ^ (r >>> 7), 61 | r); return ((r ^ (r >>> 14)) >>> 0) / 4294967296; };
 }
 
-/* Todo lo que no se mueve, pintado una sola vez por partida: el marcador,
-   la vereda, los andenes y el estacionamiento. */
+/* Un arbusto redondo de pixel art, centrado en (cx, cy) con radio r (arte). */
+function bjBush(R, cx, cy, r, P){
+  const K = BJ_PAL;
+  for (let y = -r - 1; y <= r + 1; y++) for (let x = -r - 1; x <= r + 1; x++){
+    const d = x * x + y * y;
+    if (d > (r + 1) * (r + 1)) continue;
+    const borde = d > r * r;
+    const luz = (x + r * 0.35) * (x + r * 0.35) + (y + r * 0.35) * (y + r * 0.35) < r * r * 0.3;
+    const sombra = y > r * 0.35;
+    R(cx + x * P, cy + y * P, P, P, borde ? K.ink : luz ? K.bushHi : sombra ? K.bushLo : K.bush);
+  }
+}
+
+/* Todo lo que no se mueve, pintado una sola vez por partida. */
 function bjBackground(s){
   const g = s.g, P = g.P, K = BJ_PAL, { w, h } = s;
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   const ctx = c.getContext('2d');
   const R = (x, y, ww, hh, col) => { ctx.fillStyle = col; ctx.fillRect(x, y, ww, hh); };
-  const rnd = bjRand(1234);
+  const rnd = bjRand(4321);
 
-  /* Asfalto de fondo, con grano a la escala del arte. */
-  R(0, 0, w, h, K.asphalt);
-  for (let y = 0; y < h; y += P) for (let x = 0; x < w; x += P){
+  /* Pasto, con matas y florcitas. */
+  R(0, 0, w, h, K.grass);
+  for (let y = 0; y < h; y += 2 * P) for (let x = 0; x < w; x += 2 * P){
     const v = rnd();
-    if (v < 0.06) R(x, y, P, P, K.asphaltA);
-    else if (v < 0.1) R(x, y, P, P, K.asphaltB);
+    if (v < 0.05) R(x, y, P, P * 2, K.grassA);
+    else if (v < 0.08) R(x, y, P, P, K.grassB);
+    else if (v < 0.083) { R(x, y, P, P, ['#ffffff', '#ffd84d', '#ff9db3'][Math.floor(rnd() * 3)]); }
   }
 
-  /* Marcador. */
-  R(0, 0, w, g.hudH, K.hud);
-  R(0, g.hudH - P, w, P, K.hudHi);
-
-  /* Vereda: baldosas, con la solera abajo. */
-  const pw = g.panelW;
-  R(0, g.walkY, pw, g.walkH, K.walk);
-  R(0, g.walkY, pw, P, K.walkHi);
-  for (let x = 6 * P; x < pw; x += 12 * P) R(x, g.walkY + P, P, g.walkH - 3 * P, K.walkLo);
-  R(0, g.walkY + g.walkH - 2 * P, pw, P, K.curbHi);
-  R(0, g.walkY + g.walkH - P, pw, P, K.curbLo);
-
-  /* Andenes: asfalto más oscuro, separadores amarillos y el número de cada
-     uno pintado en el piso. */
-  R(g.bx0, g.bayY, pw - g.bx0, g.bayH, K.bayAsphalt);
+  /* Camino de los andenes: asfalto con grano, cada andén con sus líneas
+     amarillas a los lados y la línea blanca donde para. */
+  const roadH = g.bayY + g.bayH;
+  R(0, 0, g.panelW, roadH, K.road);
+  for (let y = 0; y < roadH; y += P) for (let x = 0; x < g.panelW; x += P){
+    const v = rnd();
+    if (v < 0.06) R(x, y, P, P, K.roadA); else if (v < 0.09) R(x, y, P, P, K.roadB);
+  }
   for (let i = 0; i <= s.nBays; i++){
     const x = g.bx0 + i * g.bw;
-    if (x > pw - P) break;
-    R(x, g.bayY + P, P, g.bayH - 3 * P, K.paint);
+    R(Math.min(x, g.panelW - P), g.bayY + 3 * P, P, g.bayH - 6 * P, K.slot);
   }
-  ctx.font = `${8}px "Press Start 2P", monospace`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = 'rgba(242,201,76,.45)';
-  for (let i = 0; i < s.nBays; i++) ctx.fillText(String(i + 1), g.bx0 + i * g.bw + Math.floor(g.bw / 2), g.bayY + g.bayH - 3 * P);
+  for (let i = 0; i < s.nBays; i++) R(g.bx0 + i * g.bw + 2 * P, roadH - 3 * P, g.bw - 3 * P, P, K.stop);
+  ctx.font = '8px "Press Start 2P", monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = 'rgba(255,210,63,.55)';
+  for (let i = 0; i < s.nBays; i++) ctx.fillText(String(i + 1), g.bx0 + i * g.bw + Math.floor(g.bw / 2), roadH - 6 * P);
 
-  /* La parada, donde espera la mascota: un andén de cemento con su franja de
-     botones amarillos al borde. A la izquierda de los andenes o, en la
-     pantalla apaisada, debajo. */
-  const plat = g.wide ? { x: 0, y: g.top, w: pw, h: h - g.top } : { x: 0, y: g.bayY, w: g.leftW, h: g.bayH };
-  R(plat.x, plat.y, plat.w, plat.h, K.walk);
-  for (let y = plat.y + 2 * P; y < plat.y + plat.h - 2 * P; y += 4 * P){
-    for (let x = plat.x + 2 * P; x < plat.x + plat.w - 2 * P; x += 10 * P) R(x, y, P, P, K.walkLo);
+  /* La vereda de la fila: baldosas, solera arriba y abajo, y la cuerda con
+     sus postes que arma el zigzag. */
+  R(0, g.qY, g.panelW, g.qH, K.walk);
+  R(0, g.qY, g.panelW, P, K.kerb);
+  R(0, g.qY + P, g.panelW, P, K.walkHi);
+  for (let x = 6 * P; x < g.panelW; x += 14 * P) R(x, g.qY + 2 * P, P, g.qH - 4 * P, K.walkLo);
+  R(0, g.qY + g.qH - 2 * P, g.panelW, P, K.walkLo);
+  R(0, g.qY + g.qH - P, g.panelW, P, K.kerb);
+  const ropeY = g.qY + 2 * P + g.qRowH;
+  const rx0 = g.qX0 - 2 * P, rx1 = g.qX0 + (g.qPer - 1) * g.qStep + P;
+  R(rx0, ropeY, rx1 - rx0, P, K.rope);
+  for (const px of [rx0 - P, Math.round((rx0 + rx1) / 2 / P) * P, rx1]){
+    R(px - P, ropeY - 3 * P, 3 * P, 6 * P, K.ink);
+    R(px, ropeY - 2 * P, P, 4 * P, K.post);
+    R(px, ropeY - 2 * P, P, P, K.postHi);
   }
-  if (g.wide){
-    R(0, h - 3 * P, pw, 2 * P, K.tactile);
-    R(pw, g.hudH, P, h - g.hudH, K.curbLo);
-  } else {
-    R(g.leftW - 3 * P, g.bayY, 2 * P, g.bayH, K.tactile);
-    for (let y = g.bayY + P; y < g.bayY + g.bayH; y += 3 * P) R(g.leftW - 3 * P, y, P, P, '#c4922a');
-    R(g.leftW - P, g.bayY, P, g.bayH, K.curbLo);
-  }
 
-  /* Solera bajo los andenes. */
-  const cy = g.bayY + g.bayH;
-  R(0, cy, pw, P, K.curbHi);
-  R(0, cy + P, pw, P, K.curb);
-  R(0, cy + 2 * P, pw, P, K.curbLo);
-
-  /* El estacionamiento: borde de solera y las líneas pintadas de cada
-     estacionamiento (cortas, sin tocar las esquinas). */
+  /* El estacionamiento: solera clara, piso en baldosas y las líneas
+     pintadas de cada estacionamiento. */
   const k = s.cell, lw = s.cols * k, lh = s.rows * k;
-  R(s.lx - 2 * P, s.ly - 2 * P, lw + 4 * P, lh + 4 * P, K.curbLo);
-  R(s.lx - P, s.ly - P, lw + 2 * P, lh + 2 * P, K.curb);
-  R(s.lx, s.ly, lw, lh, K.asphalt);
-  const rnd2 = bjRand(99);
-  for (let y = s.ly; y < s.ly + lh; y += P) for (let x = s.lx; x < s.lx + lw; x += P){
-    const v = rnd2();
-    if (v < 0.07) R(x, y, P, P, K.asphaltA);
-    else if (v < 0.11) R(x, y, P, P, K.asphaltB);
-  }
-  ctx.fillStyle = K.stall;
-  const ins = Math.round(k * 0.22 / P) * P;
+  R(s.lx - 3 * P, s.ly - 3 * P, lw + 6 * P, lh + 6 * P, K.ink);
+  R(s.lx - 2 * P, s.ly - 2 * P, lw + 4 * P, lh + 4 * P, K.curb);
+  R(s.lx - 2 * P, s.ly + lh + P, lw + 4 * P, P, K.curbLo);
+  R(s.lx, s.ly, lw, lh, K.lot);
+  for (let r2 = 0; r2 < s.rows; r2++) for (let c2 = 0; c2 < s.cols; c2++)
+    if ((r2 + c2) % 2) R(s.lx + c2 * k, s.ly + r2 * k, k, k, K.lotB);
+  ctx.fillStyle = K.lotLine;
+  const ins = Math.round(k * 0.25 / P) * P;
   for (let c2 = 1; c2 < s.cols; c2++) for (let r2 = 0; r2 < s.rows; r2++)
     ctx.fillRect(s.lx + c2 * k - Math.floor(P / 2), s.ly + r2 * k + ins, P, k - 2 * ins);
   for (let r2 = 1; r2 < s.rows; r2++) for (let c2 = 0; c2 < s.cols; c2++)
     ctx.fillRect(s.lx + c2 * k + ins, s.ly + r2 * k - Math.floor(P / 2), k - 2 * ins, P);
+
+  /* Arbustos en el pasto, a los lados del estacionamiento (dejando el
+     rincón de la mascota). */
+  const margen = s.lx - 3 * P;
+  if (!g.wide && margen >= 14 * P){
+    const r = Math.min(7, Math.floor(margen / P / 2) - 2);
+    const cxL = Math.round(margen / 2 / P) * P, cxR = w - cxL;
+    for (let y = s.ly + (r + 2) * P, i = 0; y < s.ly + lh - (r + 1) * P; y += (2 * r + 5) * P, i++){
+      bjBush(R, cxR + ((i % 2) ? -P * 2 : P * 2), y, r - (i % 2), P);
+      if (y < s.ly + lh - 40 * P) bjBush(R, cxL + ((i % 2) ? P * 2 : -P * 2), y, r - ((i + 1) % 2), P);
+    }
+  }
   return c;
 }
 
@@ -3025,20 +3145,17 @@ function bjRect(s, v){
   return { x: Math.round(x), y: Math.round(y), w: v.horiz ? v.len * k : k, h: v.horiz ? k : v.len * k };
 }
 
-function bjLotSprite(s, v){
-  return bjBusSprite(v.color, v.len, s.cell / s.g.P, true, -1, bjDirKey(v));
-}
+function bjLotSprite(s, v){ return bjBusSprite(v.color, v.len, s.g.cb, true, -1, bjDirKey(v)); }
 
-/* La micro de un andén va parada, mirando hacia la vereda: el frente queda
-   donde sube la gente. */
-function bjBaySprite(s, v, filled){
-  return bjBusSprite(v.color, v.len, s.g.cbBay, false, filled, 'U');
-}
+/* La micro de un andén va parada, mirando hacia arriba (por donde se va); la
+   gente sube por atrás, desde la vereda. */
+function bjBaySprite(s, v, filled){ return bjBusSprite(v.color, v.len, s.g.cbBay, false, filled, 'U'); }
 
+/* Esquina del techo de la micro del andén i. */
 function bjBayPos(s, i, sp){
   const g = s.g, P = g.P;
   const w = sp.img.width * P;
-  return { x: Math.round((g.bx0 + i * g.bw + (g.bw - w) / 2) / P) * P, y: g.bayY + 2 * P };
+  return { x: Math.round((g.bx0 + i * g.bw + (g.bw - w) / 2) / P) * P, y: g.bayY + 3 * P };
 }
 
 /* El punto por donde una micro sale del estacionamiento. */
@@ -3048,7 +3165,20 @@ function bjExitPoint(s, v){
   return { x: cx, y: v.dir > 0 ? s.ly + s.rows * k : s.ly };
 }
 
-function bjQueueX(s, i){ return 4 * s.g.P + i * 9 * s.g.P; }
+/* La fila en zigzag: la primera hilera de izquierda a derecha (el primero de
+   la fila a la izquierda) y la segunda de vuelta. `k` puede ser fraccionario:
+   así caminan de un lugar al siguiente. */
+function bjSlot(s, i){
+  const g = s.g, row = Math.floor(i / g.qPer), col = i % g.qPer;
+  const x = g.qX0 + (row % 2 ? g.qPer - 1 - col : col) * g.qStep;
+  return { x, y: g.qY + 2 * g.P + row * g.qRowH };
+}
+function bjQueuePos(s, k){
+  k = Math.max(0, k);
+  const i = Math.floor(k), f = k - i;
+  const a = bjSlot(s, i), b = bjSlot(s, i + 1);
+  return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f };
+}
 
 function bjFx(x, y, n, opts){
   for (let i = 0; i < n; i++){
@@ -3061,48 +3191,136 @@ function bjFx(x, y, n, opts){
   }
 }
 
-function bjText(ctx, text, x, y, size, color, align = 'left', shadow = true){
+function bjText(ctx, text, x, y, size, color, align = 'left', shadow = null){
   ctx.font = `${size}px "Press Start 2P", monospace`;
   ctx.textAlign = align;
   ctx.textBaseline = 'top';
-  if (shadow){ ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillText(text, Math.round(x), Math.round(y) + Math.max(1, size / 8)); }
+  if (shadow){ ctx.fillStyle = shadow; ctx.fillText(text, Math.round(x), Math.round(y) + Math.max(1, size / 8)); }
   ctx.fillStyle = color;
   ctx.fillText(text, Math.round(x), Math.round(y));
 }
 
-/* Un cartel en el medio del estacionamiento (lote nuevo, despejado, fin).
-   Ojo: "Press Start 2P" no trae mayúsculas con tilde (ÓÉÚ salen de otra
-   fuente); los títulos van sin ellas y lo que lleva tilde, en minúscula. */
-function bjDrawBanner(ctx, s, b, now){
-  const P = s.g.P, big = P === 2 ? 16 : 8, small = 8;
-  const t = (now - b.at) / b.ms;
-  if (t >= 1) return;
-  const ap = Math.min(1, t * 6, (1 - t) * 5);
+/* Una pastilla blanca con contorno y esquinas cortadas (pixel art). */
+function bjPill(ctx, x, y, w, h, P, fill = BJ_PAL.pill){
+  const K = BJ_PAL;
+  ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(x + P, y + 2 * P, w, h);
+  ctx.fillStyle = K.ink;
+  ctx.fillRect(x + P, y, w - 2 * P, h); ctx.fillRect(x, y + P, w, h - 2 * P);
+  ctx.fillStyle = fill;
+  ctx.fillRect(x + 2 * P, y + P, w - 4 * P, h - 2 * P); ctx.fillRect(x + P, y + 2 * P, w - 2 * P, h - 4 * P);
+  ctx.fillStyle = K.pillLo; ctx.fillRect(x + 2 * P, y + h - 2 * P, w - 4 * P, P);
+}
+
+function bjClock(t){
+  const secs = Math.max(0, Math.floor(t));
+  return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+}
+
+/* El marcador: el reloj (rojo pasado el tiempo meta), la barra de pasajeros
+   que ya subieron y las tres estrellas en juego: la segunda se apaga al
+   pasar el tiempo meta y la tercera con la primera falla o grúa. */
+function bjDrawHud(ctx, s, now){
+  const g = s.g, P = g.P, K = BJ_PAL;
+  const big = P === 2 ? 16 : 8, ph = P === 2 ? 24 : 15, y = Math.floor((g.hudH - ph) / 2 / P) * P;
+  const reloj = bjClock(s.time);
   ctx.font = `${big}px "Press Start 2P", monospace`;
-  const tw = Math.max(ctx.measureText(b.text).width, b.sub ? (ctx.measureText(b.sub).width * small / big) : 0);
-  const bw = Math.ceil((tw + 14 * P) / P) * P, bh = (b.sub ? big + small + 14 * P / 2 + 6 * P : big + 10 * P);
+  const cw = Math.ceil((ctx.measureText('0:00').width + 8 * P) / P) * P;
+  bjPill(ctx, 2 * P, y, cw, ph, P);
+  const tarde = s.time > s.par;
+  bjText(ctx, reloj, 2 * P + cw / 2, y + Math.floor((ph - big) / 2), big, tarde ? K.bad : K.text, 'center');
+
+  const sw = (3 * 10 + 6) * P;
+  const sx = s.w - 2 * P - sw;
+  bjPill(ctx, sx, y, sw, ph, P);
+  const stars = [true, s.time <= s.par, s.time <= s.par && s.fails === 0 && s.towsUsed === 0];
+  const sy = y + Math.floor((ph - 9 * P) / 2 / P) * P;
+  const blink = bj.starFlash > 0 && Math.floor(bj.starFlash * 12) % 2 === 0;
+  stars.forEach((on, i) => {
+    if (i === 2 && blink) return;
+    bjDrawStar(ctx, sx + (3 + i * 10) * P, sy, on, P);
+  });
+
+  const bx = 2 * P + cw + 3 * P, bw = sx - 3 * P - bx;
+  bjPill(ctx, bx, y, bw, ph, P);
+  const ix = bx + 3 * P, iw = bw - 6 * P, iy = y + 3 * P, ih = ph - 7 * P;
+  ctx.fillStyle = K.bar; ctx.fillRect(ix, iy, iw, ih);
+  const frac = s.total ? s.boarded / s.total : 0;
+  const fw = Math.round(iw * frac / P) * P;
+  ctx.fillStyle = K.fill; ctx.fillRect(ix, iy, fw, ih);
+  ctx.fillStyle = K.fillHi; ctx.fillRect(ix, iy, fw, P);
+  bjText(ctx, `${s.boarded}/${s.total}`, ix + iw / 2, iy + Math.floor((ih - 8) / 2), 8, K.text, 'center');
+}
+
+/* Un cartel al medio del estacionamiento: el de inicio y el final, con las
+   estrellas que van apareciendo de a una. Ojo: "Press Start 2P" no trae
+   mayúsculas con tilde (ÓÉÚ salen de otra fuente): los títulos van sin
+   ellas y lo que lleva tilde, en minúscula. */
+function bjDrawBanner(ctx, s, b, now){
+  const g = s.g, P = g.P, K = BJ_PAL;
+  const big = P === 2 ? 16 : 8;
+  const t = (now - b.at) / 1000;
+  if (b.ms && t * 1000 >= b.ms) return;
+  const ap = Math.min(1, t * 6, b.ms ? (b.ms / 1000 - t) * 5 : 1);
+  const starS = b.stars !== undefined ? 2 * P : 0;
+  ctx.font = `${big}px "Press Start 2P", monospace`;
+  let tw = ctx.measureText(b.text).width;
+  ctx.font = '8px "Press Start 2P", monospace';
+  for (const l of b.lines || []) tw = Math.max(tw, ctx.measureText(l).width);
+  for (const [nom] of b.parts || []) tw = Math.max(tw, ctx.measureText(nom).width + ctx.measureText('+000').width + 8 * P);
+  if (starS) tw = Math.max(tw, 3 * 9 * starS + 2 * 4 * P);
+  const bw = Math.ceil((tw + 16 * P) / P) * P;
+  const bh = 8 * P + big + (starS ? 9 * starS + 6 * P : 0) + (b.lines || []).length * 12 + 6 * P
+    + (b.parts ? (b.parts.length + 1) * 12 + 6 * P : 0);
   const cx = s.lx + s.cols * s.cell / 2, cy = s.ly + s.rows * s.cell / 2;
-  const x = Math.round((cx - bw / 2) / P) * P, y = Math.round((cy - bh / 2 - (1 - ap) * 6 * P) / P) * P;
-  ctx.globalAlpha = ap;
-  ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(x + P, y + 2 * P, bw, bh);
-  ctx.fillStyle = BJ_PAL.ink; ctx.fillRect(x, y, bw, bh);
-  ctx.fillStyle = b.bg || BJ_PAL.hudHi; ctx.fillRect(x + P, y + P, bw - 2 * P, bh - 2 * P);
-  ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(x + P, y + P, bw - 2 * P, P);
-  bjText(ctx, b.text, cx, y + 5 * P, big, b.color || '#fff', 'center');
-  if (b.sub) bjText(ctx, b.sub, cx, y + 5 * P + big + 4 * P, small, '#fff', 'center');
+  const x = Math.round((cx - bw / 2) / P) * P, y = Math.round((cy - bh / 2 - (1 - ap) * 8 * P) / P) * P;
+  ctx.globalAlpha = Math.max(0, ap);
+  bjPill(ctx, x, y, bw, bh, P);
+  ctx.fillStyle = b.color || K.fill;
+  ctx.fillRect(x + 2 * P, y + P, bw - 4 * P, big + 6 * P);
+  bjText(ctx, b.text, cx, y + 4 * P, big, '#ffffff', 'center', 'rgba(0,0,0,.35)');
+  let yy = y + 8 * P + big;
+  if (starS){
+    const sx = cx - (3 * 9 * starS + 8 * P) / 2;
+    for (let i = 0; i < 3; i++){
+      const shown = t >= 0.45 + i * 0.35;
+      const pop = shown ? Math.min(1, (t - 0.45 - i * 0.35) * 8) : 0;
+      const dy = Math.round((1 - pop) * 4) * P;
+      bjDrawStar(ctx, sx + i * (9 * starS + 4 * P), yy + dy, shown && i < b.stars, starS);
+    }
+    yy += 9 * starS + 6 * P;
+  }
+  for (const l of b.lines || []){ bjText(ctx, l, cx, yy, 8, K.dim, 'center'); yy += 12; }
+  if (b.parts){
+    /* El desglose va apareciendo renglón por renglón, después de las
+       estrellas, y al final el total. */
+    const t0 = (b.stars !== undefined ? 0.45 + 3 * 0.35 : 0.3);
+    yy += 2 * P;
+    b.parts.forEach(([nom, pts], i) => {
+      if (t < t0 + i * 0.22) return;
+      bjText(ctx, nom, x + 6 * P, yy + i * 12, 8, K.text);
+      bjText(ctx, (pts >= 0 ? '+' : '') + pts, x + bw - 6 * P, yy + i * 12, 8, pts < 0 ? K.bad : '#1f8443', 'right');
+    });
+    const ty = yy + b.parts.length * 12 + 2 * P;
+    if (t >= t0 + b.parts.length * 0.22){
+      ctx.fillStyle = K.pillLo; ctx.fillRect(x + 6 * P, ty - 2 * P, bw - 12 * P, P);
+      bjText(ctx, 'total', x + 6 * P, ty + P, 8, K.text);
+      bjText(ctx, String(b.total), x + bw - 6 * P, ty + P, 8, K.text, 'right');
+    }
+  }
   ctx.globalAlpha = 1;
 }
 
 function bjDraw(now){
   const s = bj, { ctx } = bj, g = s.g, P = g.P, K = BJ_PAL;
   const sec = now / 1000;
+  ctx.save();
+  if (bj.shake > 0) ctx.translate(Math.round(Math.sin(sec * 70) * 2) * P, 0);
   ctx.drawImage(bj.bg, 0, 0);
 
   /* Atasco: los andenes se ponen rojos, latiendo. */
   if (s.jam){
-    const a = 0.12 + 0.1 * Math.sin(sec * 9);
-    ctx.fillStyle = `rgba(255,60,70,${a})`;
-    ctx.fillRect(g.bx0, g.bayY, s.g.bw * s.nBays, g.bayH);
+    ctx.fillStyle = `rgba(255,60,80,${0.14 + 0.1 * Math.sin(sec * 9)})`;
+    ctx.fillRect(0, 0, g.panelW, g.bayY + g.bayH);
   }
 
   /* Las micros estacionadas en los andenes. */
@@ -3110,92 +3328,92 @@ function bjDraw(now){
     if (!b || b.state !== 'open') return;
     const sp = bjBaySprite(s, b.v, b.filled);
     const p = bjBayPos(s, i, sp);
-    bjBlit(ctx, sp, p.x, p.y, P);
+    bjDrawBus(ctx, sp, p.x, p.y, P);
   });
 
-  /* La mascota, en la parada: contenta cuando sale una llena, triste con el
-     atasco. */
-  const mood = s.over || s.jam ? 'sad' : bj.happyT > 0 ? 'happy' : 'normal';
-  if (g.wide) drawPetAt(ctx, Math.floor(g.panelW / 2), s.h - 4 * P, mood, BJ_PET_SCALE);
-  else drawPetAt(ctx, Math.floor(g.leftW / 2) - P, g.bayY + g.bayH - P, mood, BJ_PET_SCALE);
-
-  /* La fila, en la vereda: el primero a la izquierda. Caminan cuando la fila
-     avanza; parados, cada tanto se aplastan o pestañean. */
-  const caben = Math.max(1, Math.floor((g.panelW - 4 * P - 22 * P) / (9 * P)));
-  const shown = Math.min(caben, s.queue.length);
-  for (let i = shown - 1; i >= 0; i--){
-    const c = s.queue[i];
-    let frame = 0, dy = 0;
-    if (bj.qOff > 0.5) frame = (Math.floor(sec * 10) + i) % 2;
-    else if ((sec * 0.9 + i * 0.37) % 3.2 < 0.12) frame = 1;
-    else if ((sec * 0.6 + i * 0.53) % 4.1 < 0.12) frame = 2;
-    if (i === 0 && s.jam) dy = -Math.round(Math.abs(Math.sin(sec * 9)) * 3) * P;
-    bjDrawMimito(ctx, bjQueueX(s, i) + bj.qOff, g.walkY + P + dy, c, frame, P);
-  }
-  if (s.queue.length > caben){
-    const txt = '+' + (s.queue.length - caben);
-    const x = g.panelW - 3 * P;
-    ctx.font = '8px "Press Start 2P", monospace';
-    const tw = Math.ceil(ctx.measureText(txt).width / P) * P;
-    ctx.fillStyle = BJ_PAL.ink; ctx.fillRect(x - tw - 4 * P, g.walkY + 2 * P, tw + 4 * P, 7 * P);
-    bjText(ctx, txt, x - 2 * P, g.walkY + 2 * P + Math.floor((7 * P - 8) / 2), 8, '#fff', 'right', false);
-  }
-
-  /* Las que se van: suben por la vereda, echando humo, y se esfuman. */
-  ctx.save();
-  ctx.beginPath(); ctx.rect(0, g.hudH, s.w, s.h - g.hudH); ctx.clip();
+  /* Las que se van: arrancan hacia arriba, echando humo. */
   s.bays.forEach((b, i) => {
     if (!b || b.state !== 'leaving') return;
     const t = Math.min(1, b.t / BJ_DEPART_S);
     const sp = bjBaySprite(s, b.v, b.filled);
     const p = bjBayPos(s, i, sp);
-    const dy = -Math.round(t * t * (g.bayH + g.walkH)) ;
-    bjBlit(ctx, sp, p.x, p.y + dy, P, 1 - Math.max(0, (t - 0.55) / 0.45));
-    if (Math.random() < 0.5) bjFx(p.x + sp.img.width * P / 2, p.y + dy + sp.img.height * P, 1,
-      { angle: Math.PI / 2, spread: 1, speed: 25, life: 0.5, color: ['#9aa0ae', '#c4c8d2'], size: 1, grow: 2 });
+    const dy = -Math.round(t * t * (g.bayY + g.bayH + 20 * P));
+    bjDrawBus(ctx, sp, p.x, p.y + dy, P);
+    if (Math.random() < 0.6) bjFx(p.x + sp.img.width * P / 2, p.y + dy + (sp.img.height + sp.k + 1) * P, 1,
+      { angle: Math.PI / 2, spread: 1, speed: 30, life: 0.5, color: ['#c9ced9', '#ffffff'], size: 2, grow: 2 });
   });
-  ctx.restore();
 
-  /* El estacionamiento: lo que sale va recortado por la solera. Un lote nuevo
-     llega bajando, micro por micro. */
+  /* La fila: caminan cuando avanza; parados, cada tanto pestañean o dan un
+     saltito. El primero, con atasco, salta de impaciencia. */
+  const visibles = 2 * g.qPer - 1;
+  const n = Math.min(visibles, s.queue.length);
+  for (let i = n - 1; i >= 0; i--){
+    if (i + bj.qShift > visibles - 1) continue;
+    const c = s.queue[i];
+    const p = bjQueuePos(s, i + bj.qShift);
+    let frame = 0, dy = 0;
+    if (bj.qShift > 0.02){ frame = (Math.floor(sec * 12) + i) % 2; dy = frame ? -P : 0; }
+    else if ((sec * 0.6 + i * 0.53) % 4.1 < 0.12) frame = 2;
+    else if ((sec * 0.9 + i * 0.37) % 5.3 < 0.2) dy = -P;
+    if (i === 0 && s.jam) dy = -Math.round(Math.abs(Math.sin(sec * 9)) * 4) * P;
+    bjDrawMimito(ctx, p.x, p.y + dy, c, frame, P);
+  }
+  if (s.queue.length > visibles){
+    const p = bjSlot(s, visibles);
+    const txt = '+' + (s.queue.length - visibles);
+    ctx.font = '8px "Press Start 2P", monospace';
+    const tw = Math.ceil((ctx.measureText(txt).width + 6 * P) / P) * P;
+    bjPill(ctx, p.x + 6 * P - tw / 2, p.y + P, tw, 9 * P, P);
+    bjText(ctx, txt, p.x + 6 * P, p.y + P + Math.floor((9 * P - 8) / 2) - P / 2, 8, K.text, 'center');
+  }
+
+  /* El estacionamiento, de atrás hacia adelante (las de más abajo tapan a
+     las de arriba: el costado de cada una queda a la vista). Lo que sale va
+     recortado por la solera. */
   ctx.save();
-  ctx.beginPath(); ctx.rect(s.lx, s.ly, s.cols * s.cell, s.rows * s.cell); ctx.clip();
-  s.vehicles.forEach((v, i) => {
-    if (v.status !== 'lot' && v.status !== 'bump' && v.status !== 'exiting') return;
+  ctx.beginPath();
+  ctx.rect(s.lx - P, s.ly - (g.k + 2) * P, s.cols * s.cell + 2 * P, s.rows * s.cell + (g.k + 3) * P);
+  ctx.clip();
+  const vis = s.vehicles.map((v, i) => ({ v, i })).filter(o => o.v.status === 'lot' || o.v.status === 'bump' || o.v.status === 'exiting');
+  vis.sort((a, b) => { const ra = bjRect(s, a.v), rb = bjRect(s, b.v); return (ra.y + ra.h) - (rb.y + rb.h); });
+  for (const { v, i } of vis){
     const r = bjRect(s, v);
     const sp = bjLotSprite(s, v);
     let dy = 0, alpha = 1;
-    const te = (now - bj.lotAt) / 1000 - i * 0.035;
-    if (te < 0.3){ const e = Math.max(0, te) / 0.3; dy = -Math.round((1 - e) * (1 - e) * 10) * P; alpha = Math.max(0, e * 1.5); }
-    const lift = v.status === 'exiting' ? 2 : 1;
-    bjBlit(ctx, sp, r.x + (sp.m - 1) * P, r.y + (sp.m - 1) * P + dy, P, Math.min(1, alpha), lift);
-  });
+    const te = (now - bj.lotAt) / 1000 - i * 0.04;
+    if (te < 0.35){ const e = Math.max(0, te) / 0.35; dy = -Math.round((1 - e) * (1 - e) * 14) * P; alpha = Math.min(1, Math.max(0, e * 1.6)); }
+    bjDrawBus(ctx, sp, r.x + (sp.m - 1) * P, r.y + (sp.m - 1 - sp.k) * P + dy, P, alpha);
+  }
   ctx.restore();
 
-  /* La que bloqueó: un marco rojo que parpadea; y un "!" sobre la que no pudo
-     salir. */
+  /* Fallas: la que estorba parpadea en rojo y sobre la que no pudo salir
+     salta una X con el descuento. */
   for (const f of bj.flashes){
-    const t = (now - f.at) / 380;
+    const t = (now - f.at) / 600;
     if (t >= 1) continue;
-    if (f.v && (f.v.status === 'lot' || f.v.status === 'bump')){
-      const r = bjRect(s, f.v), m = (s.cell / P >= 16 ? 2 : 1) * P;
-      if (Math.floor(t * 6) % 2 === 0){
-        ctx.fillStyle = '#ff4d5a';
-        ctx.fillRect(r.x + m - P, r.y + m - P, r.w - 2 * m + 2 * P, P);
-        ctx.fillRect(r.x + m - P, r.y + r.h - m, r.w - 2 * m + 2 * P, P);
-        ctx.fillRect(r.x + m - P, r.y + m - P, P, r.h - 2 * m + 2 * P);
-        ctx.fillRect(r.x + r.w - m, r.y + m - P, P, r.h - 2 * m + 2 * P);
-      }
+    if (f.by && (f.by.status === 'lot' || f.by.status === 'bump') && Math.floor(t * 8) % 2 === 0){
+      const r = bjRect(s, f.by), m = (g.cb >= 16 ? 2 : 1) * P, kk = g.k * P;
+      ctx.fillStyle = K.bad;
+      ctx.fillRect(r.x + m - 2 * P, r.y + m - kk - 2 * P, r.w - 2 * m + 4 * P, P);
+      ctx.fillRect(r.x + m - 2 * P, r.y + r.h - m + 2 * P, r.w - 2 * m + 4 * P, P);
+      ctx.fillRect(r.x + m - 2 * P, r.y + m - kk - 2 * P, P, r.h - 2 * m + kk + 4 * P);
+      ctx.fillRect(r.x + r.w - m + P, r.y + m - kk - 2 * P, P, r.h - 2 * m + kk + 4 * P);
     }
     if (f.from){
       const r = bjRect(s, f.from);
-      const x = Math.round((r.x + r.w / 2) / P) * P - 3 * P, y = Math.max(s.ly, r.y - 2 * P);
-      ctx.fillStyle = BJ_PAL.ink; ctx.fillRect(x - P, y - P, 7 * P, 9 * P);
-      ctx.fillStyle = '#fff'; ctx.fillRect(x, y, 5 * P, 7 * P);
-      ctx.fillStyle = '#ff4d5a'; ctx.fillRect(x + 2 * P, y + P, P, 3 * P); ctx.fillRect(x + 2 * P, y + 5 * P, P, P);
+      const cx = Math.round((r.x + r.w / 2) / P) * P, cy = Math.round((r.y + r.h / 2) / P) * P - Math.round(t * 10) * P;
+      ctx.globalAlpha = 1 - Math.max(0, t - 0.6) / 0.4;
+      bjPill(ctx, cx - 6 * P, cy - 6 * P, 12 * P, 12 * P, P, K.bad);
+      ctx.fillStyle = '#ffffff';
+      for (let j = 0; j < 6; j++){
+        ctx.fillRect(cx - 3 * P + j * P, cy - 3 * P + j * P, P, P);
+        ctx.fillRect(cx + 2 * P - j * P, cy - 3 * P + j * P, P, P);
+      }
+      bjText(ctx, `-${BJ_PTS.falla}`, cx, cy + 7 * P, 8, '#ffffff', 'center', K.ink);
+      ctx.globalAlpha = 1;
     }
   }
-  bj.flashes = bj.flashes.filter(f => now - f.at < 380);
+  bj.flashes = bj.flashes.filter(f => now - f.at < 600);
 
   /* Las que van del estacionamiento al andén. */
   for (const v of s.vehicles){
@@ -3208,22 +3426,29 @@ function bjDraw(now){
     const w2 = sp.img.width * P / 2, h2 = sp.img.height * P / 2;
     const x = (fp.x - w2) + (to.x - (fp.x - w2)) * e;
     const y = (fp.y - h2) + (to.y - (fp.y - h2)) * e;
-    bjBlit(ctx, sp, x, y, P, Math.min(1, t * 4), 2);
+    bjDrawBus(ctx, sp, x, y, P, Math.min(1, t * 4), Math.round(Math.sin(Math.PI * t) * 3));
   }
 
-  /* Los que suben: un saltito de la fila a la puerta de su micro. */
+  /* Los que suben: un salto desde la fila a la puerta de atrás de su micro. */
   for (let i = bj.hops.length - 1; i >= 0; i--){
     const hp = bj.hops[i];
-    hp.t += bj.dt / 0.2;
+    hp.t += bj.dt / 0.22;
     if (hp.t >= 1){ bj.hops.splice(i, 1); continue; }
     const b = s.bays[hp.bay];
     const sp = b ? bjBaySprite(s, b.v, b.filled) : null;
     const to = sp ? bjBayPos(s, hp.bay, sp) : { x: hp.x0, y: g.bayY };
-    const tx = to.x + (sp ? sp.img.width * P / 2 : 0) - 4 * P, ty = to.y + 2 * P;
+    const tx = to.x + (sp ? sp.img.width * P / 2 : 0) - 6 * P;
+    const ty = to.y + (sp ? (sp.img.height - 6) * P : 0);
     const x = hp.x0 + (tx - hp.x0) * hp.t;
-    const y = g.walkY + P + (ty - g.walkY - P) * hp.t - Math.sin(Math.PI * hp.t) * 10 * P;
+    const y = hp.y0 + (ty - hp.y0) * hp.t - Math.sin(Math.PI * hp.t) * 14 * P;
     bjDrawMimito(ctx, x, y, hp.color, 1, P);
   }
+
+  /* La mascota, en el pasto junto al estacionamiento: celebra cuando sale una
+     llena, se pone triste con el atasco. */
+  const mood = s.jam ? 'sad' : (bj.happyT > 0 || (s.over && s.done)) ? 'happy' : 'normal';
+  if (g.wide) drawPetAt(ctx, Math.floor(g.panelW / 2), s.h - 3 * P, mood, BJ_PET_SCALE);
+  else drawPetAt(ctx, Math.max(28, Math.floor((s.lx - 3 * P) / 2)), s.ly + s.rows * s.cell + P, mood, BJ_PET_SCALE);
 
   /* Partículas: cuadraditos del tamaño de un píxel del arte. */
   for (let i = bj.parts.length - 1; i >= 0; i--){
@@ -3240,49 +3465,35 @@ function bjDraw(now){
   }
   ctx.globalAlpha = 1;
 
-  /* Marcador: pasajeros a la izquierda, el lote al medio y el reloj a la
-     derecha, con la barra de tiempo abajo. Se vuelve a pintar su fondo: el
-     humo de las micros que se van sube hasta acá. */
-  ctx.drawImage(bj.bg, 0, 0, s.w, g.hudH, 0, 0, s.w, g.hudH);
-  const big = P === 2 ? 16 : 8, ty = Math.floor((g.hudH - P - big) / 2);
-  bjDrawMimito(ctx, 3 * P, Math.floor((g.hudH - P - 7 * P) / 2), 3, 0, P);
-  bjText(ctx, String(Math.max(0, s.score)), 14 * P, ty, big, K.hudText);
-  bjText(ctx, `LOTE ${s.lots + 1}`, s.w / 2 + 2 * P, Math.floor((g.hudH - P - 8) / 2), 8, K.hudDim, 'center');
-  const secs = Math.ceil(s.time);
-  const reloj = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
-  const urgente = s.time < 10;
-  if (!urgente || Math.floor(sec * 4) % 2 === 0) bjText(ctx, reloj, s.w - 4 * P, ty, big, urgente ? '#ff6b6b' : K.hudText, 'right');
-  const frac = Math.max(0, s.time / BJ_DURATION);
-  ctx.fillStyle = s.time < 10 ? '#ff5a5a' : s.time < 30 ? '#ffd84d' : '#5be37d';
-  ctx.fillRect(0, g.hudH - P, Math.round(s.w * frac / P) * P, P);
-
-  /* Atasco: un "!" sobre el primero de la fila (asoma sobre el marcador). */
+  /* Atasco: un "!" sobre el primero de la fila. */
   if (s.jam && s.queue.length){
-    const x = bjQueueX(s, 0) + 2 * P, y = g.walkY - 5 * P;
-    ctx.fillStyle = BJ_PAL.ink; ctx.fillRect(x - P, y - P, 7 * P, 8 * P);
-    ctx.fillStyle = '#fff'; ctx.fillRect(x, y, 5 * P, 6 * P);
-    ctx.fillStyle = '#ff4d5a'; ctx.fillRect(x + 2 * P, y + P, P, 2 * P); ctx.fillRect(x + 2 * P, y + 4 * P, P, P);
+    const p = bjQueuePos(s, bj.qShift);
+    const x = p.x + 3 * P, y = p.y - 10 * P;
+    bjPill(ctx, x, y, 7 * P, 9 * P, P);
+    ctx.fillStyle = K.bad; ctx.fillRect(x + 3 * P, y + 2 * P, P, 3 * P); ctx.fillRect(x + 3 * P, y + 6 * P, P, P);
   }
+  ctx.restore();
 
+  bjDrawHud(ctx, s, now);
   for (const b of bj.banners) bjDrawBanner(ctx, s, b, now);
-  bj.banners = bj.banners.filter(b => now - b.at < b.ms);
+  bj.banners = bj.banners.filter(b => !b.ms || now - b.at < b.ms);
 }
 
-function bjBannerAdd(text, sub, opts = {}){
-  bj.banners = [{ text, sub, at: performance.now(), ms: opts.ms || 1300, color: opts.color, bg: opts.bg }];
+function bjBannerAdd(b){
+  bj.banners = [Object.assign({ at: performance.now() }, b)];
 }
 
 function startBusGame(){
   const { gc, ctx } = enterMinigame('bus');
   bj = Object.assign(bjNew(gc.width, gc.height, levelT()), {
-    ctx, gc, raf: null, lastT: 0, dt: 0, endAt: 0,
-    happyT: 0, qOff: 0, hops: [], parts: [], flashes: [], banners: [],
+    ctx, gc, raf: null, lastT: 0, dt: 0, endAt: 0, shake: 0, starFlash: 0,
+    happyT: 0, qShift: 0, hops: [], parts: [], flashes: [], banners: [],
     lotAt: performance.now(), pointer: makeCanvasPointer(gc),
   });
   bj.bg = bjBackground(bj);
   const cont = showGameControls(`
     <div class="game-hint" id="bjHint">Toca una micro: sale si tiene el camino libre</div>
-    <button class="gbtn gbtn-lg" id="bjTowBtn">🚨 Grúa (−${BJ_TOW_COST} s)</button>
+    <button class="gbtn gbtn-lg" id="bjTowBtn">🚨 Grúa (+${BJ_TOW_SECS} s)</button>
   `);
   bj.hintEl = cont.querySelector('#bjHint');
   bj.towBtn = cont.querySelector('#bjTowBtn');
@@ -3292,27 +3503,21 @@ function startBusGame(){
     if (!bj) return;
     const p = bj.pointer.at(e);
     const res = bjTap(bj, p.x, p.y);
-    if (!res) return;
-    const v = bj.vehicles.find(v => v.status === (res === 'go' ? 'exiting' : 'bump') && v.t === 0);
     if (res === 'go'){
+      const v = bj.vehicles.find(v => v.status === 'exiting' && v.t === 0);
       tone({ freq: 523, durationMs: 60, type: 'triangle', vol: 0.08 });
       tone({ freq: 784, durationMs: 70, type: 'triangle', vol: 0.06, at: 0.05 });
       if (v){
         const r = bjRect(bj, v);
         const back = v.horiz ? { x: v.dir > 0 ? r.x : r.x + r.w, y: r.y + r.h / 2 } : { x: r.x + r.w / 2, y: v.dir > 0 ? r.y : r.y + r.h };
         const ang = v.horiz ? (v.dir > 0 ? Math.PI : 0) : (v.dir > 0 ? -Math.PI / 2 : Math.PI / 2);
-        bjFx(back.x, back.y, 6, { angle: ang, spread: 1.4, speed: 40, life: 0.45, color: ['#8d91a0', '#b6bac6'], size: 1, grow: 2 });
+        bjFx(back.x, back.y, 7, { angle: ang, spread: 1.4, speed: 45, life: 0.45, color: ['#c9ced9', '#ffffff'], size: 2, grow: 1 });
       }
-    } else {
-      tone({ freq: 196, durationMs: 90, type: 'square', vol: 0.06 });
-      if (res === 'blocked' && v) bj.flashes.push({ at: performance.now(), v: v.blockBy, from: v });
-      else if (v) bj.flashes.push({ at: performance.now(), v: null, from: v });
-      if (res === 'nobay') bjBannerAdd('¡ANDENES LLENOS!', 'espera que salga una', { ms: 900, color: '#ff8f8f' });
     }
   };
   gc.addEventListener('pointerdown', bj.onDown);
   bjSyncControls();
-  bjBannerAdd('LOTE 1', 'llena las micros', { ms: 1400, color: '#ffe066' });
+  bjBannerAdd({ text: '¡HORA PUNTA!', lines: [`meta ${bjClock(bj.par)}`, 'sin fallas: 3 estrellas'], ms: 1800, color: '#3d8bff' });
   bj.raf = requestAnimationFrame(bjLoop);
 }
 
@@ -3322,14 +3527,15 @@ function bjPressTow(){
   if (!v) return;
   [440, 330, 247].forEach((f, i) => tone({ freq: f, durationMs: 90, type: 'square', vol: 0.06, at: i * 0.08 }));
   const r = bjRect(bj, v);
-  bjFx(r.x + r.w / 2, r.y + r.h / 2, 14, { speed: 70, life: 0.5, color: ['#ffffff', '#c4c8d2', '#ff4d5a'], size: 1, grow: 1 });
-  bjBannerAdd('¡AL RESCATE!', `grúa: −${BJ_TOW_COST} segundos`, { ms: 900, color: '#ff8f8f' });
+  bjFx(r.x + r.w / 2, r.y + r.h / 2, 14, { speed: 80, life: 0.5, color: ['#ffffff', '#c9ced9', BJ_PAL.bad], size: 2 });
+  bj.starFlash = 0.6;
+  bjBannerAdd({ text: '¡GRUA!', lines: [`+${BJ_TOW_SECS} segundos`, `-${BJ_PTS.grua} puntos`], ms: 1000, color: BJ_PAL.bad });
   bjSyncControls();
 }
 
 function bjSyncControls(){
   if (!bj || !bj.towBtn) return;
-  bj.towBtn.disabled = !bj.bays.some(b => b && b.state === 'open');
+  bj.towBtn.disabled = bj.over || !bj.bays.some(b => b && b.state === 'open');
   bj.towBtn.classList.toggle('alert', !!bj.jam);
   bj.hintEl.textContent = bj.jam ? '¡Atasco! Llama a la grúa'
     : 'Toca una micro: sale si tiene el camino libre';
@@ -3345,40 +3551,51 @@ function bjLoop(t){
   bjStep(bj, dt);
   for (const ev of bj.events){
     if (ev.kind === 'board'){
-      bj.hops.push({ color: ev.color, bay: ev.bay, t: 0, x0: bjQueueX(s, 0) + bj.qOff });
-      bj.qOff += 9 * P;
+      const p = bjQueuePos(s, bj.qShift);
+      bj.hops.push({ color: ev.color, bay: ev.bay, t: 0, x0: p.x, y0: p.y });
+      bj.qShift += 1;
       tone({ freq: SFX_SCALE[(ev.color * 2) % 9], durationMs: 45, type: 'triangle', vol: 0.05 });
     } else if (ev.kind === 'full'){
       bj.happyT = 0.7;
       const b = s.bays[ev.bay];
       if (b){
         const sp = bjBaySprite(s, b.v, b.filled), p = bjBayPos(s, ev.bay, sp);
-        bjFx(p.x + sp.img.width * P / 2, p.y + 4 * P, 10, { speed: 70, life: 0.5, color: ['#fff3a6', '#ffffff', BJ_COLORS[ev.color][1]], size: 1 });
+        bjFx(p.x + sp.img.width * P / 2, p.y + sp.img.height * P / 2, 12, { speed: 80, life: 0.5, color: ['#fff3a6', '#ffffff', BJ_COLORS[ev.color][1]], size: 2 });
       }
       tone({ freq: SFX_SCALE[4], durationMs: 90, type: 'triangle', vol: 0.09 });
       tone({ freq: SFX_SCALE[7], durationMs: 120, type: 'triangle', vol: 0.09, at: 0.09 });
-    } else if (ev.kind === 'lot'){
-      bj.happyT = 1.2;
-      bjBannerAdd('¡DESPEJADO!', `+${BJ_LOT_PTS} puntos`, { ms: 1100, color: '#7dffa0' });
-      const cx = s.lx + s.cols * s.cell / 2, cy = s.ly + s.rows * s.cell / 2;
-      bjFx(cx, cy, 70, { speed: 190, life: 1.2, gravity: 260, color: BJ_COLORS.map(c => c[0]).concat(['#ffffff']), size: 2 });
-      [4, 6, 8, 11].forEach((n, i) => tone({ freq: SFX_SCALE[n], durationMs: 110, type: 'triangle', vol: 0.09, at: i * 0.09 }));
-    } else if (ev.kind === 'newlot'){
-      bj.lotAt = performance.now();
-      bjBannerAdd(`LOTE ${s.lots + 1}`, `${s.vehicles.length} micros`, { ms: 1100, color: '#ffe066' });
+    } else if (ev.kind === 'fail'){
+      bj.flashes.push({ at: performance.now(), by: ev.v.blockBy && bj.bays.indexOf(null) >= 0 ? ev.v.blockBy : null, from: ev.v });
+      ev.v.blockBy = null;
+      bj.shake = 0.18;
+      bj.starFlash = 0.6;
+      tone({ freq: 196, durationMs: 110, type: 'square', vol: 0.07 });
+      if (bj.bays.indexOf(null) < 0) bjBannerAdd({ text: '¡SIN ANDEN!', lines: ['espera que salga una'], ms: 1000, color: BJ_PAL.bad });
     } else if (ev.kind === 'jam'){
       sfxFail();
+    } else if (ev.kind === 'done'){
+      const cx = s.lx + s.cols * s.cell / 2, cy = s.ly + s.rows * s.cell / 2;
+      bjFx(cx, cy, 80, { speed: 200, life: 1.3, gravity: 260, color: BJ_COLORS.map(c => c[0]).concat(['#ffffff']), size: 2 });
+      [4, 6, 8, 11].forEach((n, i) => tone({ freq: SFX_SCALE[n], durationMs: 120, type: 'triangle', vol: 0.09, at: i * 0.1 }));
     }
   }
   bj.events.length = 0;
-  bj.qOff = Math.max(0, bj.qOff - dt * 120 * P);
+  bj.qShift = Math.max(0, bj.qShift - dt * 9);
   if (bj.happyT > 0) bj.happyT -= dt;
-  const towAhora = !bj.bays.some(b => b && b.state === 'open');
+  if (bj.shake > 0) bj.shake -= dt;
+  if (bj.starFlash > 0) bj.starFlash -= dt;
+  const towAhora = bj.over || !bj.bays.some(b => b && b.state === 'open');
   if (bj.jam !== jamAntes || towAhora !== towAntes) bjSyncControls();
 
   if (bj.over && !bj.endAt){
-    bj.endAt = performance.now() + 1400;
-    bjBannerAdd('¡TIEMPO!', `${s.boarded} pasajeros`, { ms: 1500, color: '#ffe066' });
+    const est = bjStars(s);
+    const parts = bjScoreParts(s);
+    bj.endAt = performance.now() + (s.done ? 1650 : 300) + (parts.length + 1) * 220 + 1600;
+    bjBannerAdd(s.done
+      ? { text: '¡LISTO!', stars: est, lines: [`tiempo ${bjClock(s.time)} · meta ${bjClock(s.par)}`], parts, total: bjScore(s), color: BJ_PAL.fill }
+      : { text: '¡TIEMPO!', lines: [`${s.boarded} de ${s.total} pasajeros`], parts, total: bjScore(s), color: BJ_PAL.bad });
+    for (let i = 0; i < est; i++) tone({ freq: SFX_SCALE[6 + i * 2], durationMs: 140, type: 'triangle', vol: 0.1, at: 0.45 + i * 0.35 });
+    bjSyncControls();
   }
   bjDraw(t);
   if (bj.over && performance.now() >= bj.endAt){ endBusGame(); return; }
@@ -3397,11 +3614,15 @@ function endBusGame(){
   const s = bj;
   bjDispose();
   bj = null;
-  const score = s ? Math.max(0, s.score) : 0;
-  const lotes = s ? s.lots : 0;
-  const message = !s ? '' : `${lotes} ${lotes === 1 ? 'lote despejado' : 'lotes despejados'} · ${s.boarded} pasajeros`
-    + (s.towsUsed ? ` · ${s.towsUsed} ${s.towsUsed === 1 ? 'grúa' : 'grúas'}` : '');
-  finishMinigame('bus', { score, merit: bjMerit(score), energyCost: 16, message });
+  if (!s){ finishMinigame('bus', { score: 0, merit: 0, energyCost: 12, message: '' }); return; }
+  const score = bjScore(s);
+  const est = bjStars(s);
+  const partes = [];
+  if (s.done) partes.push('★'.repeat(est) + '☆'.repeat(3 - est), bjClock(s.time));
+  else partes.push(`Sin terminar: ${s.boarded} de ${s.total} pasajeros`);
+  partes.push(`${s.fails} ${s.fails === 1 ? 'falla' : 'fallas'}`);
+  if (s.towsUsed) partes.push(`${s.towsUsed} ${s.towsUsed === 1 ? 'grúa' : 'grúas'}`);
+  finishMinigame('bus', { score, merit: bjMerit(score), energyCost: 12, message: partes.join(' · ') });
 }
 
 /* ===================== Minijuego 8 (PRUEBA): combate =====================

@@ -783,6 +783,7 @@ function freshState(name, species){
     objData: {},         // lo que guardan los objetos mágicos (objetos.js): fruta, fotos, el frijol...
     vaccinated: {},      // { child, teen, adult }: qué vacunas tiene puestas
     records: {},   // mejor puntaje por minijuego
+    busScoreV2: true,   // ver loadState: récords de Hora punta en la escala nueva
     upgrades: freshUpgrades(),
     unlockedGames: [],   // los gratis (price 0) no hace falta anotarlos
     mega: freshMega(),
@@ -854,6 +855,13 @@ function loadState(){
         if (!tabla) continue;
         for (const k of Object.keys(tabla)) if (k === viejo || k.startsWith(viejo + ':')) delete tabla[k];
       }
+    }
+    /* Hora punta pasó de 90 s de lotes (~400 puntos) a un solo escenario
+       (~150): los récords de antes no se podrían batir nunca. Se borran una
+       vez; la xp y lo pagado quedan. */
+    if (!s.busScoreV2){
+      for (const k of Object.keys(s.records)) if (k === 'bus' || k.startsWith('bus:')) delete s.records[k];
+      s.busScoreV2 = true;
     }
     s.unlockedGames = [...new Set(s.unlockedGames)].filter(id => gameById(id));
     if (!s.mega || typeof s.mega !== 'object' || !s.mega.played) s.mega = freshMega();
