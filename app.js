@@ -3592,6 +3592,9 @@ function renderDebugPanel(){
           <button class="debug-btn" id="dbgMemory">💡 Memorice</button>
           <button class="debug-btn" id="dbgBus">🚌 Hora punta</button>
           <button class="debug-btn" id="dbgCombat">⚔️ Combate (prueba)</button>
+          ${allGamesUnlocked()
+            ? '<button class="debug-btn" id="dbgUnlockGames" disabled>✓ Todo desbloqueado</button>'
+            : '<button class="debug-btn" id="dbgUnlockGames">🔓 Desbloquear juegos y niveles</button>'}
         </div>
       </div>
       <div class="debug-section">
@@ -3641,6 +3644,16 @@ function renderDebugPanel(){
   document.getElementById('dbgMemory').addEventListener('click', () => { closeDebugPanel(); startMemoryGame(); });
   document.getElementById('dbgBus').addEventListener('click', () => { closeDebugPanel(); startBusGame(); });
   document.getElementById('dbgCombat').addEventListener('click', () => { closeDebugPanel(); startCombatGame(); });
+  /* Todos los juegos comprados y con todos sus niveles abiertos (la xp justa
+     para el último), para probarlos sin juntar monedas ni jugar partidas. No
+     elige el nivel: eso se sigue haciendo en la ficha de cada juego. */
+  document.getElementById('dbgUnlockGames').addEventListener('click', () => {
+    for (const g of GAMES){
+      if (g.price > 0 && !state.unlockedGames.includes(g.id)) state.unlockedGames.push(g.id);
+      state.gameXp[g.id] = Math.max(gameXp(g.id), LEVEL_XP[GAME_MAX_LEVEL - 1]);
+    }
+    saveState(); render(); renderDebugPanel();
+  });
   /* Para probar la tienda (muebles, estilo, juegos) sin tener que jugar
      partidas. Son monedas reales del save: no se devuelven al apagar nada. */
   document.getElementById('dbgWheelTicket').addEventListener('click', () => {

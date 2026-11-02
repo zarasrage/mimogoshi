@@ -2038,7 +2038,11 @@ pero en x). Números sin calibrar: `CB_ROUNDS`/`CB_PLAYER_HP`/`CB_RIVAL_HP`/
 
 El botón ✏️ (`#btnDebug`) abre `#debugPanel`: fuerza etapa, ánimo y **especie**
 (para previsualizar sin perder la mascota guardada), dispara las 5 acciones,
-lanza los minijuegos, ensucia y mata. La sección "Acompañante" (`duoDebugHtml()`
+lanza los minijuegos, ensucia y mata. "Desbloquear juegos y niveles"
+(`dbgUnlockGames`, en Minijuegos) compra todos los juegos y les da la xp justa
+para el último nivel (`LEVEL_XP`); no elige el nivel, eso sigue siendo en la
+ficha. Queda en el save, y de paso puede dar la medalla del nivel más alto.
+Cuando ya está todo abierto (`allGamesUnlocked()`) el botón sale apagado. La sección "Acompañante" (`duoDebugHtml()`
 /`wireDuoDebug()` en `duo.js`) agrega o saca al hijo o la visita, le cambia la
 etapa, dispara cualquiera de los juegos entre ellos ("Juntos ahora") o un
 mueble de a dos, y lanza los juegos de a dos. En pantallas anchas queda fijo al lado del

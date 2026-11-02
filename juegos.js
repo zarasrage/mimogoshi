@@ -35,6 +35,11 @@ function isGameUnlocked(id){
 
 function unlockedGames(){ return GAMES.filter(g => isGameUnlocked(g.id)); }
 
+/* Para el panel de prueba: ¿ya están todos comprados y con todos sus niveles? */
+function allGamesUnlocked(){
+  return GAMES.every(g => isGameUnlocked(g.id) && maxLevelFor(g.id) >= GAME_MAX_LEVEL);
+}
+
 /* Niveles por juego: cada partida suma su mérito como experiencia
    (state.gameXp[id]) y la experiencia desbloquea niveles, hasta GAME_MAX_LEVEL.
    El nivel no sube solo: se elige en el menú entre los ya desbloqueados, para
