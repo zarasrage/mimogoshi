@@ -1801,21 +1801,26 @@ ellos (`REMOVED_GAMES`) y borra sus récords y su xp.
   (inspirado en cómo se ven esos juegos, sin copiar ninguno). Un
   estacionamiento de micros de colores apretadas, cada una con una flecha en
   el techo; tocarla la hace salir derecho por ahí si tiene el camino libre.
-  La que sale se para en un **andén** (5, `bjBays()`) y sube la gente de la
-  fila de su color, siempre el primero; llena (4 o 6 asientos según su
+  La que sale se para en un **andén** (5, o 4 en el nivel 5: `bjBays()`) y
+  sube la gente de la fila de su color, siempre el primero; llena (4 o 6 asientos según su
   largo), se va y libera el andén. Si todos los andenes tienen micros que no
   le sirven al primero de la fila es un **atasco**: el botón de abajo llama a
-  la **grúa**, que devuelve a su lugar la micro del andén que más tarde va a
-  hacer falta (antes, la con menos gente, que a veces era justo la que se
-  necesitaba) y suma `BJ_TOW_SECS` (5) al reloj.
+  la **grúa**, que devuelve a su lugar la micro del andén con menos gente
+  arriba y, si empatan, la que más tarde va a hacer falta, y suma
+  `BJ_TOW_SECS` (5) al reloj. Se puede llamar en cualquier momento, no solo
+  con atasco: a veces conviene antes, cuando la micro que falta necesita más
+  andenes de los que quedan. (Elegir solo por "la que más tarde hace falta"
+  se llevaba micros con 4 pasajeros, que volvían al frente de la fila y
+  obligaban a sacar esa misma micro otra vez: un atasco en ciclo.)
 
   **Una partida es un escenario** (por pedido; antes eran 90 s de lotes que
   se reponían): se vacía el estacionamiento una vez y se acabó. Puntaje
   (`bjScoreParts()`): +1 por pasajero, +50 por completarlo, +5 por segundo
   bajo el **tiempo meta** (`bjParTime()`, lo que se demora un bot bueno en
   ese escenario), −5 por **falla** (tocar una micro que no puede salir:
-  bloqueada o sin andén libre) y −15 por grúa. Pasados `BJ_TIME_LIMIT`
-  (180 s) se corta sin el premio de completar. **Estrellas** (`bjStars()`):
+  bloqueada o sin andén libre) y −15 por grúa. Pasado el **tiempo límite**
+  del nivel (de 3:00 en el 1 a 1:20 en el 5) se corta sin el premio de
+  completar; los últimos 15 s el reloj muestra lo que queda, en rojo. **Estrellas** (`bjStars()`):
   una por completar, dos bajo el tiempo meta, tres además sin fallas ni
   grúa; en el marcador se apagan a medida que se pierden. Al terminar, un
   cartel con las estrellas apareciendo de a una y el desglose renglón por
@@ -1829,11 +1834,20 @@ ellos (`REMOVED_GAMES`) y borra sus récords y su xp.
   **Todo escenario tiene solución** por cómo se arma (`bjMakeLot()`): las
   micros se ponen de a una, cada una con el camino libre entre las que ya
   estaban, así que el orden inverso siempre sale; la fila se arma jugando
-  esa solución con dos andenes menos (`bjSlack()`), para que quede holgura.
+  esa solución con menos andenes (`bjSlack()`), para que quede holgura.
   Estacionamiento **siempre de 7x6** (7x7 obligaba a achicar todo en un
-  teléfono de 390). Niveles (`bjLevel()`): de 11 a 16 micros y de 4 a 6
-  colores. Con 4 andenes en los niveles altos hasta un bot experto se metía
-  en ciclos de atasco y grúa: se dejó en 5. Lógica
+  teléfono de 390). **Niveles** (`BJ_LEVELS`, por pedido: "en el nivel 5
+  está muy fácil"; la primera versión solo sumaba micros y colores): más
+  micros y colores, fila más revuelta desde el 3 (holgura 1), 4 andenes en
+  el 5, tiempo límite más corto, **micros misteriosas** desde el 2 (grises
+  con un "?", no muestran su color hasta tener el camino libre:
+  `bjReveal()`; se sortean solo entre las tapadas, si no casi todas se
+  revelaban al empezar) y un estacionamiento más **trabado** (`inward`: las
+  micros miran hacia el borde lejano; en el nivel 5 bajó de 10 a ~6 las que
+  tienen salida libre de entrada). Con 4 andenes en los niveles 4 y 5, aun
+  con un bot que destapa las grises y llama a la grúa antes del atasco, una
+  de cada cinco partidas del experto no terminaba: 4 andenes quedó solo en
+  el 5. Lógica
   (`bjNew/bjStep/bjTap/bjSend/bjTow`) sin DOM; tiempo meta y mérito
   calibrados con bots (medianas en el comentario de `bjMerit()`).
 
@@ -1927,7 +1941,8 @@ de la pelota (+50%: el azar de rebotes ya es bastante); Reflejos blancos 30%
 más cortos y seguidos, +12 puntos de bombas; Torre: la primera caja más
 angosta y todo 45% más rápido; Salto al cielo: nubes más separadas, más
 chicas y más raras; Memorice arranca con 5 luces y las muestra 30% más
-rápido; Hora punta: de 11 a 16 micros y de 4 a 6 colores. Números sin
+rápido; Hora punta: ver `BJ_LEVELS` (más micros, colores, grises, menos
+andenes y holgura, estacionamiento más trabado y menos tiempo). Números sin
 calibrar (salvo el nivel 1 de Torre y Cielo, y los niveles de Hora punta,
 medidos con bots), un primer intento.
 

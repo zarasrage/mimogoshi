@@ -2361,7 +2361,7 @@ function endMemoryGame(){
    el estacionamiento y BJ_PTS.porSegundo por cada segundo bajo el tiempo
    meta (s.par, bjParTime), y resta las fallas (tocar una micro que no puede
    salir: bloqueada o sin andén libre) y las grúas, que además suman
-   BJ_TOW_SECS al reloj. Si pasan BJ_TIME_LIMIT segundos se corta sin el
+   BJ_TOW_SECS al reloj. Si pasa el tiempo límite del nivel se corta sin el
    premio de completar. Encima, estrellas (bjStars): una por completar, dos
    si fue bajo el tiempo meta y tres si además fue sin fallas ni grúa.
 
@@ -2387,7 +2387,6 @@ const BJ_DRIVE_CELLS = 16;    // celdas por segundo al salir del estacionamiento
 const BJ_DRIVE_RAMP_S = 0.12; // lo que tarda en llegar a esa velocidad
 const BJ_TO_BAY_S = 0.36;
 const BJ_DEPART_S = 0.6;
-const BJ_TIME_LIMIT = 180;    // segundos; pasado eso se corta sin completar
 const BJ_TOW_SECS = 5;        // lo que la grúa le suma al reloj
 const BJ_PTS = { completo: 50, porSegundo: 5, falla: 5, grua: 15 };
 const BJ_PET_SCALE = 2;       // entero, igual que pixelScale()
@@ -2400,23 +2399,57 @@ const BJ_COLORS = [           // [carrocería, brillo, sombra]
   ['#ff8a2e', '#ffc69a', '#b8551a'],
 ];
 
+/* Las micros misteriosas, mientras no muestran su color. */
+const BJ_HIDDEN = ['#9ba2b7', '#d0d4df', '#646a80'];
+
 let bj = null;
 
-/* Andenes: 5 en todos los niveles. Con 4 en los niveles 4 y 5 hasta un bot
-   experto se metía en ciclos de atasco y grúa y no terminaba una de cada
-   cuatro partidas: el nivel sube con más micros y más colores. */
-function bjBays(lt){ return 5; }
+/* El escenario según el nivel (1 a 5):
+   - n: cuántas micros; colors: cuántos colores; pLong: qué parte son buses
+     largos (6 asientos en vez de 4).
+   - bays: andenes. 4 en los niveles 4 y 5.
+   - slack: andenes de holgura con que se arma la fila (como si hubiera esos
+     menos). Con menos holgura la fila trae más colores mezclados a la vez y
+     hay que pensar el orden.
+   - mystery: qué parte de las micros tapadas llega "misteriosa": gris, sin
+     mostrar su color hasta que tiene el camino libre (bjReveal). Se sortea
+     solo entre las tapadas: sorteada entre todas, casi todas tenían salida
+     de entrada y se revelaban al tiro (de 16 micros quedaba una gris).
+   - inward: qué parte de las micros mira hacia el borde lejano (camino
+     largo, que otra se le cruza fácil) en vez de al azar. Es lo que más
+     traba: en el nivel 5, de 16 micros tenían salida libre de entrada 10
+     al azar y ~7 con 0.85.
+   - interlock: qué parte de las micros que no tapan a ninguna se descarta
+     al armar el estacionamiento (ayuda poco: 10 → 9.8 libres solo).
+   - limit: el tiempo límite en segundos (pasado eso se corta sin el premio
+     de completar). Es lo que más aprieta a una persona, que piensa bastante
+     más lento que los bots.
+   Una primera versión subía solo micros y colores, y el nivel 5 resultó muy
+   fácil (pedido: "en el nivel 5 está muy fácil"). En esa versión los 4
+   andenes y la holgura de 1 se habían sacado porque los bots se metían en
+   ciclos de atasco y grúa. Con 4 andenes y holgura 1 en los niveles 4 y 5,
+   aun con la grúa corregida (bjTow) y un bot que destapa las grises y llama
+   a la grúa antes del atasco, una de cada cinco partidas del experto no
+   terminaba: 4 andenes quedaron solo en el 5, con holgura 2. */
+const BJ_LEVELS = [
+  { n: 11, colors: 4, pLong: 0.35, bays: 5, slack: 2, mystery: 0,    inward: 0,    interlock: 0,   limit: 180 },
+  { n: 13, colors: 4, pLong: 0.40, bays: 5, slack: 2, mystery: 0.25, inward: 0.4,  interlock: 0.2, limit: 150 },
+  { n: 14, colors: 5, pLong: 0.42, bays: 5, slack: 1, mystery: 0.4,  inward: 0.6,  interlock: 0.3, limit: 120 },
+  { n: 15, colors: 5, pLong: 0.45, bays: 5, slack: 1, mystery: 0.55, inward: 0.75, interlock: 0.4, limit: 100 },
+  { n: 16, colors: 6, pLong: 0.5,  bays: 4, slack: 2, mystery: 0.7,  inward: 0.85, interlock: 0.5, limit: 80 },
+];
+function bjLevel(lt){ return BJ_LEVELS[Math.max(0, Math.min(4, Math.round(lt * 4)))]; }
+function bjBays(lt){ return bjLevel(lt).bays; }
+function bjSlack(lt){ return bjLevel(lt).slack; }
 
-/* Andenes de holgura: la fila se arma como si hubiera esos menos. Con más
-   holgura la fila trae menos colores mezclados a la vez. Con 1 de holgura en
-   los niveles 3 a 5 los bots se atascaban una y otra vez (8 a 10 grúas por
-   partida en el 5). */
-function bjSlack(lt){ return 2; }
-
-/* El escenario según el nivel: cuántas micros, cuántos colores y qué parte
-   son buses largos (6 asientos en vez de 4). */
-function bjLevel(lt){
-  return { n: 11 + Math.round(5 * lt), colors: 4 + Math.round(2 * lt), pLong: 0.35 + 0.15 * lt };
+/* Las misteriosas muestran su color apenas tienen el camino libre. */
+function bjReveal(s){
+  let occ = null;
+  for (const v of s.vehicles){
+    if (!v.hidden || v.status !== 'lot') continue;
+    occ = occ || bjOccupancy(s, s.vehicles);
+    if (bjBlockDist(s, v, occ) < 0){ v.hidden = false; s.events.push({ kind: 'reveal', v }); }
+  }
 }
 
 function bjNew(w, h, lt){
@@ -2424,6 +2457,7 @@ function bjNew(w, h, lt){
     over: false, done: false, why: null, jam: false,
     queue: [], vehicles: [], boardT: 0, arrSeq: 0, events: [] };
   s.nBays = bjBays(lt);
+  s.limit = bjLevel(lt).limit;
   s.bays = new Array(s.nBays).fill(null);
   s.cols = BJ_COLS;
   s.rows = BJ_ROWS;
@@ -2494,8 +2528,20 @@ function bjMakeLot(s){
       const v = { len, horiz, dir: Math.random() < 0.5 ? 1 : -1,
         c: Math.floor(Math.random() * (s.cols - (horiz ? len - 1 : 0))),
         r: Math.floor(Math.random() * (s.rows - (horiz ? 0 : len - 1))) };
+      /* Con `inward`, mirando hacia el borde lejano (camino largo: más fácil
+         que otra se le cruce) en vez de al azar. */
+      if (L.inward && Math.random() < L.inward){
+        const ida = bjExitDist(s, Object.assign({}, v, { dir: 1 })), vuelta = bjExitDist(s, Object.assign({}, v, { dir: -1 }));
+        v.dir = ida >= vuelta ? 1 : -1;
+      }
       if (bjCells(v).some(([c, r]) => occ[r * s.cols + c])) continue;
       if (bjPath(s, v).some(([c, r]) => occ[r * s.cols + c])) continue;
+      /* ¿Tapa a alguna de las que ya estaban? Si no, con `interlock` se
+         descarta (pero no al final, cuando ya cuesta meter más). */
+      if (L.interlock && tries < 600 && Math.random() < L.interlock){
+        const mias = new Set(bjCells(v).map(([c, r]) => r * s.cols + c));
+        if (!cand.some(o => bjPath(s, o).some(([c, r]) => mias.has(r * s.cols + c)))) continue;
+      }
       for (const [c, r] of bjCells(v)) occ[r * s.cols + c] = v;
       cand.push(v);
     }
@@ -2513,6 +2559,10 @@ function bjMakeLot(s){
     color: colores[i], cap: v.len * 2, status: 'lot', off: 0, t: 0, bay: -1,
   }));
   s.vehicles = placed;
+  const occ0 = bjOccupancy(s, placed);
+  for (const v of placed) v.hidden = bjBlockDist(s, v, occ0) >= 0 && Math.random() < L.mystery;
+  bjReveal(s);
+  s.events.length = 0;
 
   /* La fila: se juega la solución (el orden inverso al de armado) con menos
      andenes de los que hay, y cada tanto sube un grupito de 1 a 3 a una de
@@ -2575,19 +2625,21 @@ function bjSend(s, v){
   return 'go';
 }
 
-/* La grúa: devuelve a su lugar la micro del andén que más tarde va a hacer
-   falta (la de un color que en la fila aparece más atrás; si empatan, la con
-   menos gente), y esa gente vuelve adelante en la fila. Antes se llevaba la
-   con menos gente y a veces era justo la que necesitaba el primero de la
-   fila. Su lugar está libre seguro: al estacionamiento nunca entra nadie. Se
-   puede llamar cuando sea, no solo con atasco. */
+/* La grúa: devuelve a su lugar la micro del andén con menos gente arriba
+   y, si empatan, la que más tarde va a hacer falta (la de un color que en la
+   fila aparece más atrás); esa gente vuelve adelante en la fila. Lo primero
+   es la gente: una versión elegía solo por "la que más tarde hace falta" y
+   se llevaba micros con 4 pasajeros, que volvían al frente de la fila y
+   obligaban a sacar esa misma micro otra vez: un atasco en ciclo. Su lugar
+   está libre seguro: al estacionamiento nunca entra nadie. Se puede llamar
+   cuando sea, no solo con atasco. */
 function bjTow(s){
   if (s.over) return null;
   const falta = b => { const i = s.queue.indexOf(b.v.color); return i < 0 ? Infinity : i; };
   let pick = null;
   for (const b of s.bays){
     if (!b || b.state !== 'open') continue;
-    if (!pick || falta(b) > falta(pick) || (falta(b) === falta(pick) && b.filled < pick.filled)) pick = b;
+    if (!pick || b.filled < pick.filled || (b.filled === pick.filled && falta(b) > falta(pick))) pick = b;
   }
   if (!pick) return null;
   const i = s.bays.indexOf(pick);
@@ -2616,8 +2668,9 @@ function bjJammed(s){
 
 function bjStep(s, dt){
   if (s.over) return;
+  bjReveal(s);
   s.time += dt;
-  if (s.time >= BJ_TIME_LIMIT){ s.over = true; s.why = 'time'; return; }
+  if (s.time >= s.limit){ s.over = true; s.why = 'time'; return; }
   for (const v of s.vehicles){
     if (v.status === 'bump'){
       v.t += dt;
@@ -2703,15 +2756,21 @@ function bjStars(s){
    veces toca una micro cualquiera (a veces bloqueada: falla) y solo mira al
    primero de la fila; el "experto" piensa ~0.55 s y, de las micros del color
    que hace falta, saca la que menos micros tiene encima (en cadena).
-   Medianas (tiempo, puntaje):
-     nivel 1 (11 micros, 50 pasajeros, meta 20 s): bueno 14 s y 131, experto 9 s y 155
-     nivel 3 (14 micros, 64 pasajeros, meta 25 s): bueno 18 s y 145, experto 12 s y 180
-     nivel 5 (16 micros, 72 pasajeros, meta 27 s): bueno 20 s y 151, experto 13 s y 192
-   El bueno completa el 90-98% de las partidas, el experto el 94-99% (lo que
-   falta son ciclos de atasco y grúa que se cortan a los BJ_TIME_LIMIT).
-   Estrellas del bueno en el nivel 1: 2% una, 28% dos, 68% tres.
-   Con (puntaje - 60) / 2 el bueno queda en ~36-46 de mérito y el experto en
-   ~48-66 (~45 = partida muy buena). El descuento de 60 es a propósito: sin
+   Medianas (tiempo, puntaje; % de partidas con tres estrellas):
+     nivel 1 (11 micros, 50 pasajeros, meta 20 s): bueno 14 s y 131 (67%), experto 9 s y 154 (89%)
+     nivel 3 (14 micros, 64 pasajeros, meta 25 s): bueno 19 s y 137 (35%), experto 13 s y 173 (68%)
+     nivel 5 (14 micros, 66 pasajeros, 5-6 grises, 4 andenes, meta 25 s):
+       bueno 20 s y 137 (29%), experto 13 s y 175 (66%)
+   El bot experto, además, destapa las grises cuando la que falta no está a
+   la vista y llama a la grúa antes del atasco si para sacar la que falta
+   hacen falta más andenes de los que hay. Un bot que sigue la solución
+   completa el 100% sin grúa en todos los niveles. En el nivel 5 el bueno
+   completa el 89% y el experto el 95% (lo que falta son puntos muertos que
+   llegan al tiempo límite). Los bots se ven poco afectados por las grises
+   (las destapan sistemáticamente); a una persona le pesan más.
+   Con (puntaje - 60) / 2 el bueno queda en ~35-39 de mérito y el experto en
+   ~47-57 (~45 = partida muy buena); en los niveles altos lo compensa el x2
+   de monedas. El descuento de 60 es a propósito: sin
    él, los pasajeros (que suben igual juegue como juegue) aplastaban la
    diferencia que hacen el tiempo y las fallas. */
 function bjMerit(score){ return Math.max(0, (score - 60) / 2); }
@@ -2818,7 +2877,7 @@ const bjSpriteCache = new Map();
    Devuelve también el costado: la misma silueta con el contorno en tinta y
    todo lo demás en el tono de sombra, que se apila abajo para dar volumen. */
 function bjPaintBus(color, len, cb, arrow, filled){
-  const col = BJ_COLORS[color], K = BJ_PAL;
+  const col = color < 0 ? BJ_HIDDEN : BJ_COLORS[color], K = BJ_PAL;
   const m = cb >= 16 ? 2 : 1;
   const W = cb - 2 * m, L = len * cb - 2 * m, cap = len * 2;
   const big = W >= 12;
@@ -3150,7 +3209,7 @@ function bjRect(s, v){
   return { x: Math.round(x), y: Math.round(y), w: v.horiz ? v.len * k : k, h: v.horiz ? k : v.len * k };
 }
 
-function bjLotSprite(s, v){ return bjBusSprite(v.color, v.len, s.g.cb, true, -1, bjDirKey(v)); }
+function bjLotSprite(s, v){ return bjBusSprite(v.hidden ? -1 : v.color, v.len, s.g.cb, true, -1, bjDirKey(v)); }
 
 /* La micro de un andén va parada, mirando hacia arriba (por donde se va); la
    gente sube por atrás, desde la vereda. */
@@ -3227,11 +3286,14 @@ function bjClock(t){
 function bjDrawHud(ctx, s, now){
   const g = s.g, P = g.P, K = BJ_PAL;
   const big = P === 2 ? 16 : 8, ph = P === 2 ? 24 : 15, y = Math.floor((g.hudH - ph) / 2 / P) * P;
-  const reloj = bjClock(s.time);
+  /* Los últimos 15 s del tiempo límite muestra lo que queda, en rojo y
+     latiendo; antes, lo que va (rojo pasada la meta). */
+  const queda = s.limit - s.time, apuro = queda <= 15 && !s.over;
+  const reloj = apuro ? bjClock(Math.ceil(queda)) : bjClock(s.time);
   ctx.font = `${big}px "Press Start 2P", monospace`;
   const cw = Math.ceil((ctx.measureText('0:00').width + 8 * P) / P) * P;
-  bjPill(ctx, 2 * P, y, cw, ph, P);
-  const tarde = s.time > s.par;
+  bjPill(ctx, 2 * P, y, cw, ph, P, apuro && Math.floor(now / 250) % 2 ? '#ffd9dc' : BJ_PAL.pill);
+  const tarde = apuro || s.time > s.par;
   bjText(ctx, reloj, 2 * P + cw / 2, y + Math.floor((ph - big) / 2), big, tarde ? K.bad : K.text, 'center');
 
   const sw = (3 * 10 + 6) * P;
@@ -3388,6 +3450,18 @@ function bjDraw(now){
     const te = (now - bj.lotAt) / 1000 - i * 0.04;
     if (te < 0.35){ const e = Math.max(0, te) / 0.35; dy = -Math.round((1 - e) * (1 - e) * 14) * P; alpha = Math.min(1, Math.max(0, e * 1.6)); }
     bjDrawBus(ctx, sp, r.x + (sp.m - 1) * P, r.y + (sp.m - 1 - sp.k) * P + dy, P, alpha);
+    if (v.hidden){
+      /* El "?" va hacia la cola, para no tapar la flecha. */
+      const k = s.cell, back = v.len * k * 0.3;
+      const cx = r.x + r.w / 2 - (v.horiz ? v.dir * back : 0), cy = r.y + r.h / 2 - (v.horiz ? 0 : v.dir * back) - g.k * P;
+      const x = Math.round((cx - 5 * P) / P) * P, y = Math.round((cy - 6 * P) / P) * P;
+      bjPill(ctx, x, y + dy, 10 * P, 11 * P, P);
+      bjText(ctx, '?', x + 5 * P, y + dy + Math.floor((11 * P - 8) / 2) - (P === 2 ? 1 : 0), 8, K.text, 'center');
+    } else if (v.revealAt && now - v.revealAt < 300 && Math.floor((now - v.revealAt) / 75) % 2 === 0){
+      ctx.globalCompositeOperation = 'lighter';
+      bjDrawBus(ctx, sp, r.x + (sp.m - 1) * P, r.y + (sp.m - 1 - sp.k) * P + dy, P, 0.5);
+      ctx.globalCompositeOperation = 'source-over';
+    }
   }
   ctx.restore();
 
@@ -3522,7 +3596,9 @@ function startBusGame(){
   };
   gc.addEventListener('pointerdown', bj.onDown);
   bjSyncControls();
-  bjBannerAdd({ text: '¡HORA PUNTA!', lines: [`meta ${bjClock(bj.par)}`, 'sin fallas: 3 estrellas'], ms: 1800, color: '#3d8bff' });
+  bjBannerAdd({ text: '¡HORA PUNTA!', ms: 2200, color: '#3d8bff',
+    lines: [`meta ${bjClock(bj.par)} · límite ${bjClock(bj.limit)}`, 'sin fallas: 3 estrellas']
+      .concat(bj.vehicles.some(v => v.hidden) ? ['las grises: color sorpresa'] : []) });
   bj.raf = requestAnimationFrame(bjLoop);
 }
 
@@ -3576,6 +3652,12 @@ function bjLoop(t){
       bj.starFlash = 0.6;
       tone({ freq: 196, durationMs: 110, type: 'square', vol: 0.07 });
       if (bj.bays.indexOf(null) < 0) bjBannerAdd({ text: '¡SIN ANDEN!', lines: ['espera que salga una'], ms: 1000, color: BJ_PAL.bad });
+    } else if (ev.kind === 'reveal'){
+      const r = bjRect(s, ev.v);
+      bjFx(r.x + r.w / 2, r.y + r.h / 2, 12, { speed: 70, life: 0.45, color: [BJ_COLORS[ev.v.color][0], BJ_COLORS[ev.v.color][1], '#ffffff'], size: 2 });
+      ev.v.revealAt = performance.now();
+      tone({ freq: SFX_SCALE[9], durationMs: 60, type: 'triangle', vol: 0.06 });
+      tone({ freq: SFX_SCALE[11], durationMs: 80, type: 'triangle', vol: 0.06, at: 0.05 });
     } else if (ev.kind === 'jam'){
       sfxFail();
     } else if (ev.kind === 'done'){
