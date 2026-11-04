@@ -571,8 +571,25 @@ por hora** mientras haya caca sin recoger (`HYGIENE_POOP_DECAY`, en vez de
 los 2; `decayRate()` elige), con el x1.5 de apuro bajo 20 y a la mitad de
 noche; dormir no la frena. Antes no bajaba nada sin caca y con caca ~28 por
 hora. Se sube de dos formas distintas a propósito:
-- **El botón Limpiar baña** (`btnClean()`, ícono 🧼): +25
-  (`CLEAN_HYGIENE`) y después hay que esperar 5 minutos reales
+- **El botón Limpiar baña** (`btnClean()`, ícono 🧼), pero **no de un
+  toque** (pedido así): saca un cepillo de pixel art (`startScrub()`) que
+  se arrastra con el dedo y hay que **restregarlo sobre la mascota**. Lo
+  que cuenta es cuánto se restriega encima de su cuadro (`SCRUB_NEED`
+  anchos del cuadro, ~3 s restregando), no dónde. Mientras, ella queda
+  quieta (rutina `kind:'scrub'`, que no cortan la tristeza ni la
+  enfermedad; sí dormirse o un minijuego), tiene manchitas de tierra que
+  se borran al pasarles el cepillo (sobre píxeles pintados del sprite si
+  el navegador deja leer el canvas), se le junta espuma y salen burbujas
+  (forma `bubble` de `PX_SHAPES`). Los mandos de abajo se cambian por una
+  barra de avance y Cancelar (`showGameControls()`); cancelar no gasta el
+  baño. Todo el piso es el mando mientras dura: un listener de captura en
+  `window` se come los toques (no son mimo, ni mueble, ni caca) y el piso
+  va con `touch-action:none`. Se dibuja en un canvas del piso en píxeles
+  físicos calzado a la grilla: manchas y espuma con el píxel de la
+  mascota, el cepillo con el de los muebles. Al llenarse la barra
+  (`finishScrub()` → `applyBath()`): +25
+  (`CLEAN_HYGIENE`), la espuma revienta y, con bañera, se va a enjuagar
+  ahí. El huevo se sigue limpiando de una. Después hay que esperar 5 minutos reales
   (`CLEAN_COOLDOWN_MS`, `state.lastClean`, `cleanWaitMs()`). Mientras
   espera se ve apagado (`.cooling`) y su etiqueta es la cuenta regresiva;
   apretarlo dice cuánto falta. Si hay caca, **también la recoge**, con su

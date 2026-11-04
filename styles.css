@@ -666,6 +666,15 @@ body{
 
 /* Mientras el láser o el jetpack se manejan con toques, el piso es un mando. */
 .creature-floor.floor-mode{cursor:crosshair;}
+/* Bañarla con el cepillo (startScrub en app.js): el piso entero es el mando,
+   sin scroll ni zoom mientras se restriega. */
+.creature-floor.scrubbing, .creature-floor.scrubbing *{touch-action:none; cursor:grab;}
+.creature-floor.scrubbing:active{cursor:grabbing;}
+.scrub-fx{position:absolute; z-index:8; pointer-events:none; image-rendering:pixelated;}
+.scrub-bar{height:14px; margin:0 8px; border-radius:7px; background:rgba(255,255,255,.3); overflow:hidden;
+  box-shadow:0 1px 2px rgba(0,0,0,.25) inset;}
+.scrub-bar i{display:block; height:100%; width:0; border-radius:inherit;
+  background:linear-gradient(90deg, var(--c-hygiene-hi), var(--c-hygiene));}
 
 /* Tele prendida: la imagen parpadea un poco, como pantalla de verdad. */
 .furni-part.flicker{animation:tvFlicker .24s steps(2) infinite;}

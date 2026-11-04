@@ -80,6 +80,7 @@ const PX_SHAPES = {
   drop:  ['x', 'x'],
   leaf:  ['.xx', 'xxx', 'xx.'],
   dust:  ['.x', 'xx'],
+  bubble: ['.xx.', 'x..x', 'x..x', '.xx.'],
 };
 
 const MAGIC = {

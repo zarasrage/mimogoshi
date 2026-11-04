@@ -2129,11 +2129,26 @@ function fmtWait(ms){
 
 /* Limpiar: un baño, +CLEAN_HYGIENE cada CLEAN_COOLDOWN_MS. Si hay caca,
    también la recoge (con su +POOP_CLEAN_HYGIENE, igual que tocarla); tocarla
-   sigue sirviendo mientras el botón espera. */
+   sigue sirviendo mientras el botón espera. El baño no es de un toque: saca
+   un cepillo y hay que restregarla (startScrub(), abajo); recién al terminar
+   cuenta. El huevo se sigue limpiando de una (dura segundos). */
 const btnClean = () => {
   const espera = cleanWaitMs();
   if (espera > 0){ say(`Recién se bañó: otra vez en ${fmtWait(espera)}`); return; }
+  if (scrub) return;
+  if (state.stage !== 'egg' && walker.activity && (walker.activity.kind === 'vaccine' || walker.activity.kind === 'chore')){
+    say('Primero que termine'); return;
+  }
   if (!tryWake()) return;
+  if (state.stage !== 'egg' && startScrub()) return;
+  applyBath();
+  say('Huevo brillante');
+  floatFx('🧼');
+};
+
+/* Lo que hace el baño en las barras (igual que siempre): +CLEAN_HYGIENE y,
+   si había caca, la recoge con su +POOP_CLEAN_HYGIENE. Arranca la espera. */
+function applyBath(){
   catchUp();
   const habiaCaca = state.poop;
   if (habiaCaca){
@@ -2143,12 +2158,296 @@ const btnClean = () => {
   }
   state.hygiene = clamp(state.hygiene + CLEAN_HYGIENE);
   state.lastClean = Date.now();
-  floatFx('🧼');
-  say(state.stage === 'egg' ? 'Huevo brillante'
-    : habiaCaca ? '¡Limpia y sin caca!' : '¡Ya quedó limpio!');
-  if (state.stage !== 'egg') triggerPetAction('clean');
   saveState(); render();
-};
+  return habiaCaca;
+}
+
+/* ---------- bañarla con el cepillo ----------
+   Limpiar saca un cepillo de pixel art que se arrastra con el dedo (o el
+   mouse) y hay que restregarlo sobre la mascota: lo que cuenta es cuánto se
+   restriega encima de su cuerpo (SCRUB_NEED anchos de su cuadro), no dónde.
+   Mientras tanto la mascota se queda quieta (rutina kind:'scrub', que no
+   cortan la tristeza ni la enfermedad), tiene manchitas de tierra que se
+   borran al pasarles el cepillo, se le va juntando espuma y salen burbujas.
+   Abajo, en lugar de los botones, una barra de avance y Cancelar (que no
+   gasta el baño). Al llenarse: la espuma revienta, +CLEAN_HYGIENE (y la
+   caca), y empieza la espera de CLEAN_COOLDOWN_MS. Con bañera puesta, se va
+   a enjuagar ahí.
+   Todo se dibuja en un canvas del tamaño del piso en píxeles físicos y
+   calzado a la grilla física: las manchas y la espuma con el píxel de la
+   mascota, el cepillo con el de los muebles (escalas enteras). */
+const SCRUB_NEED = 8;          // cuánto hay que restregar, en anchos del cuadro de la mascota
+const SCRUB_FOAM_MAX = 12;
+const SCRUB_TOP_PAD = 40;      // px CSS de canvas sobre el piso: el cepillo en la cabeza no se corta
+const SCRUB_BRUSH_ROWS = [
+  '...HHHHHH...',
+  '...H....H...',
+  '.LLLLLLLLLL.',
+  'LWWWWWWWWWWL',
+  'WWWWWWWWWWWW',
+  'DDDDDDDDDDDD',
+  'bwbwbwbwbwbw',
+  'bwbwbwbwbwbw',
+  'b.b.b.b.b.b.',
+];
+const SCRUB_BRUSH_W = 14, SCRUB_BRUSH_H = 11;    // con el contorno que agrega pxMap()
+const SCRUB_SPECKS = [['xx', 'xx'], ['xx.', 'xxx'], ['.x', 'xx'], ['xxx', '.x.'], ['x.', 'xx']];
+let scrub = null;
+
+function scrubBrushArt(){
+  if (scrubBrushArt.c) return scrubBrushArt.c;
+  const c = document.createElement('canvas');
+  c.width = SCRUB_BRUSH_W; c.height = SCRUB_BRUSH_H;
+  pxMap(pxPainter(c.getContext('2d')), 1, 1, SCRUB_BRUSH_ROWS, {
+    H: '#5aa7ff', L: '#d99a66', W: '#b9774a', D: '#8a5233', b: '#8cc4ff', w: '#f4efe9',
+  });
+  return (scrubBrushArt.c = c);
+}
+
+/* Dónde está el cuadro de la mascota, en px CSS del piso (y desde arriba). */
+function scrubGeo(){
+  const floor = document.getElementById('creatureFloor');
+  const f = floor.getBoundingClientRect();
+  const d = walker.drawn;
+  if (!d || !d.frame) return { f, box: null };
+  const c = document.getElementById('petCanvas').getBoundingClientRect();
+  const k = c.width / d.box.w;
+  const fwB = d.frame.w * d.scale, fhB = d.frame.h * d.scale;
+  const bx = walker.dir < 0 ? d.box.w - d.dx - fwB : d.dx;
+  return { f, d, box: { x: c.left - f.left + bx * k, y: c.top - f.top + d.dy * k, w: fwB * k, h: fhB * k } };
+}
+function scrubInBody(box, x, y){
+  const slop = 4;
+  return x >= box.x + box.w * 0.15 - slop && x <= box.x + box.w * 0.85 + slop &&
+         y >= box.y + box.h * 0.2 - slop && y <= box.y + box.h + slop;
+}
+
+/* Manchas sobre píxeles pintados del cuadro (si el navegador deja leer el
+   canvas; con file:// no, y van al centro del cuerpo). En fracciones del
+   cuadro tal como se ve (ya dado vuelta si mira al otro lado). */
+function scrubSpecks(geo){
+  const n = Math.max(3, Math.min(7, Math.round((100 - state.hygiene) / 12)));
+  const d = geo.d, out = [];
+  let data = null;
+  try {
+    const cv = document.getElementById('petCanvas');
+    data = { w: cv.width, h: cv.height, px: cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data };
+  } catch (e) { data = null; }
+  const fwB = d.frame.w * d.scale, fhB = d.frame.h * d.scale;
+  const solid = (x, y) => {
+    x = Math.round(x); y = Math.round(y);
+    return x >= 0 && y >= 0 && x < data.w && y < data.h && data.px[(y * data.w + x) * 4 + 3] > 0;
+  };
+  for (let i = 0; i < n; i++){
+    let u = 0.3 + Math.random() * 0.4, v = 0.5 + Math.random() * 0.35;
+    if (data){
+      for (let t = 0; t < 60; t++){
+        const uu = 0.12 + Math.random() * 0.76, vv = 0.3 + Math.random() * 0.62;
+        const x = d.dx + uu * fwB, y = d.dy + vv * fhB, m = d.scale * 2;
+        if (solid(x, y) && solid(x - m, y) && solid(x + m, y) && solid(x, y - m) && solid(x, y + m)){ u = uu; v = vv; break; }
+      }
+    }
+    if (walker.dir < 0) u = 1 - u;
+    out.push({ u, v, shape: pickOne(SCRUB_SPECKS), hp: 1, goneAt: 0, th: 0.12 + 0.76 * (i + Math.random() * 0.5) / n });
+  }
+  return out;
+}
+
+function startScrub(){
+  const geo = scrubGeo();
+  if (!geo.box) return false;
+  closeFoodTray();
+  if (typeof MAGIC !== 'undefined' && MAGIC.floorMode) endFloorMode();
+  if (walker.activity) endFurniActivity(walker);
+  petAction = null;
+  walker.y = 0;
+  const floor = document.getElementById('creatureFloor');
+  const canvas = document.createElement('canvas');
+  canvas.className = 'scrub-fx';
+  floor.appendChild(canvas);
+  floor.classList.add('scrubbing');
+  const box = geo.box;
+  scrub = {
+    canvas, specks: scrubSpecks(geo), foam: [], rub: 0, foamAcc: 0, rubUntil: 0, bubbleAt: 0, squeakAt: 0,
+    grab: false, seen: false, cx: box.x + box.w + 18, cy: box.y + box.h * 0.6, t0: performance.now(), raf: 0,
+  };
+  showGameControls(`
+    <div class="game-hint">Arrastra el cepillo y restriégala hasta que quede limpia</div>
+    <div class="scrub-bar"><i id="scrubFill"></i></div>
+    <button class="gbtn" id="btnScrubCancel">Cancelar</button>
+  `);
+  document.getElementById('btnScrubCancel').addEventListener('click', () => cancelScrub('Quedó a medio bañar'));
+  startActivity(walker, [{
+    anim: () => scrub && performance.now() < scrub.rubUntil ? 'clean' : 'idle',
+    dir: walker.dir, until: () => !scrub,
+  }], { kind: 'scrub', onEnd: () => cancelScrub('Quedó a medio bañar', true) });
+  scrub.raf = requestAnimationFrame(scrubFrame);
+  return true;
+}
+
+/* `fromEnd`: la llamó el fin de la rutina (se durmió, murió, un minijuego del
+   panel de prueba): la rutina ya se está cerrando sola. */
+function cancelScrub(msg, fromEnd = false){
+  const sc = scrub;
+  if (!sc) return;
+  scrub = null;
+  cancelAnimationFrame(sc.raf);
+  sc.canvas.remove();
+  document.getElementById('creatureFloor').classList.remove('scrubbing');
+  if (!activeMinigame) hideGameControls();
+  if (!fromEnd && walker.activity && walker.activity.kind === 'scrub') endFurniActivity(walker);
+  if (msg && !gameOver && !activeMinigame) say(msg);
+}
+
+function scrubNeed(box){ return SCRUB_NEED * box.w; }
+
+function finishScrub(){
+  const sc = scrub;
+  if (!sc) return;
+  const geo = scrubGeo();
+  scrub = null;
+  cancelAnimationFrame(sc.raf);
+  sc.canvas.remove();
+  document.getElementById('creatureFloor').classList.remove('scrubbing');
+  hideGameControls();
+  if (walker.activity && walker.activity.kind === 'scrub') endFurniActivity(walker);
+  const habiaCaca = applyBath();
+  /* La espuma revienta en burbujas y queda brillando. */
+  if (geo.box && typeof fxSpawn === 'function'){
+    const b = geo.box, up = y => geo.f.height - 4 - y;
+    for (const fo of sc.foam){
+      const x = b.x + fo.u * b.w, y = up(b.y + fo.v * b.h);
+      for (let i = 0; i < 2; i++) fxSpawn({ x: x + (Math.random() - 0.5) * 6, y, vx: (Math.random() - 0.5) * 30, vy: 20 + Math.random() * 30,
+        ay: 12, life: 900 + Math.random() * 500, shape: 'bubble', color: pickOne(['#ffffff', '#cfeaff', '#9fd8ff']), wob: 5, layer: 'front' });
+    }
+    fxBurst(b.x + b.w / 2, up(b.y + b.h * 0.55), 14, { colors: ['#ffffff', '#8ad6ff', '#fff6a8'], shapes: ['spark', 'star', 'plus'], speed: 70, life: 900, ay: -30 });
+  }
+  if (typeof tone === 'function'){
+    [660, 880, 1175, 1568].forEach((f, i) => tone({ freq: f, durationMs: 120, type: 'triangle', vol: 0.09, at: i * 0.07, attackMs: 6 }));
+  }
+  say(habiaCaca ? '¡Limpia y sin caca!' : '¡Ya quedó limpia!');
+  if (!startFurniRoutine('clean')) triggerPetAction('celebrate');
+  render();
+}
+
+/* El toque en el piso mientras se baña: agarra el cepillo (no es mimo, ni
+   mueble, ni caca). Mover con el botón apretado restriega. */
+function scrubMove(e){
+  const sc = scrub;
+  const f = document.getElementById('creatureFloor').getBoundingClientRect();
+  const x = Math.max(0, Math.min(f.width, e.clientX - f.left));
+  const y = Math.max(-SCRUB_TOP_PAD, Math.min(f.height, e.clientY - f.top));
+  const dist = Math.min(30, Math.hypot(x - sc.cx, y - sc.cy));
+  sc.cx = x; sc.cy = y; sc.seen = true;
+  if (!sc.grab) return;
+  const geo = scrubGeo();
+  if (!geo.box || !scrubInBody(geo.box, x, y) || dist < 0.5) return;
+  const b = geo.box, now = performance.now(), need = scrubNeed(b);
+  sc.rub += dist;
+  sc.rubUntil = now + 220;
+  const u = (x - b.x) / b.w, v = (y - b.y) / b.h;
+  /* Las manchas cerca del cepillo se gastan más rápido. */
+  for (const sp of sc.specks){
+    if (sp.goneAt) continue;
+    if (Math.hypot((sp.u - u) * b.w, (sp.v - v) * b.h) < b.w * 0.16) sp.hp -= dist / (need * 0.12);
+  }
+  sc.foamAcc += dist;
+  if (sc.foamAcc > b.w * 0.45 && sc.foam.length < SCRUB_FOAM_MAX){
+    sc.foamAcc = 0;
+    sc.foam.push({ u: Math.max(0.15, Math.min(0.85, u + (Math.random() - 0.5) * 0.15)),
+      v: Math.max(0.3, Math.min(0.95, v + (Math.random() - 0.5) * 0.15)), r: Math.random() < 0.5 ? 2 : 3 });
+  }
+  if (now - sc.bubbleAt > 110 && typeof fxSpawn === 'function'){
+    sc.bubbleAt = now;
+    fxSpawn({ x: x + (Math.random() - 0.5) * 10, y: f.height - 4 - y, vx: (Math.random() - 0.5) * 20, vy: 18 + Math.random() * 22,
+      ay: 10, life: 800 + Math.random() * 500, shape: 'bubble', color: pickOne(['#ffffff', '#cfeaff', '#9fd8ff']), wob: 6, layer: 'front' });
+  }
+  if (now - sc.squeakAt > 150 && typeof tone === 'function'){
+    sc.squeakAt = now;
+    tone({ freq: 1300 + Math.random() * 500, durationMs: 35, type: 'sine', vol: 0.025 });
+  }
+  if (sc.rub >= need) finishScrub();
+}
+
+function scrubFrame(now){
+  const sc = scrub;
+  if (!sc) return;
+  sc.raf = requestAnimationFrame(scrubFrame);
+  const geo = scrubGeo(), f = geo.f, cv = sc.canvas;
+  const W = Math.round(f.width * DPR), H = Math.round((f.height + SCRUB_TOP_PAD) * DPR);
+  if (cv.width !== W || cv.height !== H){ cv.width = W; cv.height = H; }
+  /* Calzado a la grilla física aunque el piso caiga en un píxel fraccionario. */
+  const fl = f.left * DPR - Math.floor(f.left * DPR), ft = f.top * DPR - Math.floor(f.top * DPR);
+  cv.style.width = (W / DPR) + 'px'; cv.style.height = (H / DPR) + 'px';
+  cv.style.left = (-fl / DPR) + 'px'; cv.style.top = (-SCRUB_TOP_PAD - ft / DPR) + 'px';
+  const X = x => Math.round(x * DPR + fl), Y = y => Math.round((y + SCRUB_TOP_PAD) * DPR + ft);
+  const ctx = cv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, W, H);
+  if (geo.box){
+    const b = geo.box, s = geo.d.scale, need = scrubNeed(b), prog = sc.rub / need;
+    const px = (x0, y0, ax, ay, c) => { ctx.fillStyle = c; ctx.fillRect(x0 + ax * s, y0 + ay * s, s, s); };
+    /* Las manchas de tierra. */
+    for (const sp of sc.specks){
+      if (!sp.goneAt && (sp.hp <= 0 || prog >= sp.th)){
+        sp.goneAt = now;
+        if (typeof fxBurst === 'function') fxBurst(b.x + sp.u * b.w, f.height - 4 - (b.y + sp.v * b.h), 4,
+          { colors: ['#ffffff', '#cfeaff'], shapes: ['bubble', 'sq'], speed: 35, life: 600, ay: 10 });
+      }
+      const fade = sp.goneAt ? 1 - (now - sp.goneAt) / 250 : 1;
+      if (fade <= 0) continue;
+      ctx.globalAlpha = fade;
+      const x0 = X(b.x + sp.u * b.w) - s, y0 = Y(b.y + sp.v * b.h) - s;
+      sp.shape.forEach((row, ay) => [...row].forEach((ch, ax) => {
+        if (ch === 'x') px(x0, y0, ax, ay, ax + ay === 0 ? '#9b6c40' : '#6b4a2b');
+      }));
+      ctx.globalAlpha = 1;
+    }
+    /* La espuma. */
+    for (const fo of sc.foam){
+      const x0 = X(b.x + fo.u * b.w), y0 = Y(b.y + fo.v * b.h), r = fo.r;
+      for (let j = -r; j < r; j++) for (let i = -r; i < r; i++){
+        const dd = Math.hypot(i + 0.5, j + 0.5);
+        if (dd > r) continue;
+        px(x0, y0, i, j, dd > r - 1 ? '#9cc3e6' : (i < 0 && j < 0 && dd < r - 1.2 ? '#ffffff' : '#e6f4ff'));
+      }
+    }
+    const fill = document.getElementById('scrubFill');
+    if (fill) fill.style.width = Math.min(100, prog * 100).toFixed(1) + '%';
+    /* Sin tocarlo todavía, el cepillo espera al lado meneándose. */
+    if (!sc.seen){
+      sc.cx = b.x + b.w * 0.85 + 14 + Math.round(Math.sin((now - sc.t0) / 140) * 4);
+      sc.cy = b.y + b.h * 0.62;
+    }
+  }
+  /* El cepillo: el punto de contacto es el centro de las cerdas. */
+  const bs = furniDeviceScale();
+  const bob = sc.grab && now < sc.rubUntil && Math.floor(now / 90) % 2 ? bs : 0;
+  ctx.drawImage(scrubBrushArt(), X(sc.cx) - 7 * bs, Y(sc.cy) - 9 * bs - bob, SCRUB_BRUSH_W * bs, SCRUB_BRUSH_H * bs);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  const inFloor = e => e.target && e.target.closest && e.target.closest('#creatureFloor');
+  window.addEventListener('pointerdown', e => {
+    if (!scrub || !inFloor(e)) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    scrub.grab = false;
+    scrubMove(e);          // el cepillo salta al dedo: ese salto no cuenta como restregar
+    scrub.grab = true;
+  }, true);
+  window.addEventListener('pointermove', e => {
+    if (!scrub) return;
+    if (!scrub.grab && e.pointerType !== 'mouse') return;
+    if (scrub.grab) e.preventDefault();
+    scrubMove(e);
+  }, true);
+  const up = () => { if (scrub) scrub.grab = false; };
+  window.addEventListener('pointerup', up, true);
+  window.addEventListener('pointercancel', up, true);
+  window.addEventListener('click', e => {
+    if (scrub && inFloor(e)){ e.stopImmediatePropagation(); e.preventDefault(); }
+  }, true);
+});
 
 /* Recoger la caca tocándola (o con el botón Limpiar). +POOP_CLEAN_HYGIENE. */
 function cleanPoop(){
@@ -2601,7 +2900,7 @@ function statInfoData(stat){
         { e: '🎮', t: 'Algunos minijuegos', d: 'Atrapa estrellas −5, Carrera en dupla −4, Espejo −3', v: 'hasta −5', down: true },
       ],
       up: [
-        { e: '🧼', t: 'Limpiar (bañarla)', d: espera ? `Otra vez en ${fmtWait(espera)} · una vez cada ${CLEAN_COOLDOWN_MS / 60000} min` : `Una vez cada ${CLEAN_COOLDOWN_MS / 60000} min · si hay caca, la recoge (+${POOP_CLEAN_HYGIENE})`, v: `+${CLEAN_HYGIENE}`, up: true, on: !espera && state.hygiene < 100 - CLEAN_HYGIENE / 2 },
+        { e: '🧼', t: 'Limpiar (bañarla)', d: espera ? `Otra vez en ${fmtWait(espera)} · una vez cada ${CLEAN_COOLDOWN_MS / 60000} min` : `Restregándola con el cepillo · una vez cada ${CLEAN_COOLDOWN_MS / 60000} min · si hay caca, la recoge (+${POOP_CLEAN_HYGIENE})`, v: `+${CLEAN_HYGIENE}`, up: true, on: !espera && state.hygiene < 100 - CLEAN_HYGIENE / 2 },
         { e: '💩', t: 'Recoger la caca', d: 'Tocándola en la pantalla, o con Limpiar', v: `+${POOP_CLEAN_HYGIENE}`, up: true, on: !!state.poop },
         { e: '🛡️', fx: true, t: 'Seguro de limpieza', d: seguro.owned ? (seguro.armed ? 'Activado: recoge sola la próxima caca' : 'Comprado, pero desactivado (Tienda → Mejoras)') : 'Mejora de la tienda: recoge sola una caca', v: `+${POOP_CLEAN_HYGIENE}`, up: true, on: !!(seguro.owned && seguro.armed) },
         ...(typeof ROBOT_CLEAN_EVERY_MS !== 'undefined' ? [{ e: '🤖', fx: true, t: 'Robot aspiradora', d: `Aspira una caca cada ${ROBOT_CLEAN_EVERY_MS / 3600000} h (objeto mágico)`, v: `+${POOP_CLEAN_HYGIENE}`, up: true, on: hasFurniAnywhere('robot') }] : []),
